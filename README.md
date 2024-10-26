@@ -1,4 +1,4 @@
-# physical-reasoning
+# scenic-reasoning
 
 # Installation steps
 1. `poetry install`
