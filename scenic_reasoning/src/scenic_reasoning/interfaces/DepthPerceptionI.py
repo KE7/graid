@@ -5,16 +5,18 @@ from matplotlib import pyplot as plt
 import numpy as np
 import torch
 
-class DepthPerceptionI(ABC):
+class DepthPerceptionI():
 
-    def __init__(self, image):
+    def __init__(self, image, depth_prediction=None, focallength_px=None, compute_preds=True):
         self.image = image
         self.channels, self.height, self.width = self.image.shape
         if not self.channels <= 3:
             raise ValueError("Image provided in wrong format. Please ensure channels are first and are in RGB or gray scale.")
-        self._depth_prediction = None
-        self._focallength_px = None
-        self.__init_depth_prediction__()
+        self._depth_prediction = depth_prediction
+        self._focallength_px = focallength_px
+
+        if compute_preds:
+            self.__init_depth_prediction__()
 
     @abstractmethod
     def __init_depth_prediction__(self):
@@ -28,17 +30,17 @@ class DepthPerceptionI(ABC):
     def get_focallength_px(self):
         return self._focallength_px
 
-    @staticmethod
-    def visualize_inverse_depth(input_depth: torch.Tensor) -> Image:
+
+    def visualize_inverse_depth(self) -> Image:
         """
         The following code is copied from Apple's ML Depth Pro
         """
-        if input_depth.get_device() != "cpu":
-            original_device = input_depth.get_device()
-            depth = np.copy.deepcopy(input_depth.cpu()) # avoid cuda oom errors
-            input_depth.to(original_device)
+        if self._depth_prediction.get_device() != "cpu":
+            original_device = self._depth_prediction.get_device()
+            depth = np.copy.deepcopy(self._depth_prediction.cpu()) # avoid cuda oom errors
+            self._depth_prediction.to(original_device)
         else:
-            depth = np.copy.deepcopy(input_depth)
+            depth = np.copy.deepcopy(self._depth_prediction)
         
         inverse_depth = 1 / depth
         # Visualize inverse depth instead of depth, clipped to [0.1m;250m] range for better visualization.
