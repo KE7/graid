@@ -11,7 +11,7 @@ from scenic_reasoning.src.scenic_reasoning.interfaces.ObjectDetectionI import (
 
 
 class Yolo:
-    def __init__(self, download_path, task : str = None, verbose : bool = False):
+    def __init__(self, download_path, task: str = None, verbose: bool = False):
         self._model = YOLO(download_path, task=task, verbose=verbose)
 
     def identify_for_image(self, image):
