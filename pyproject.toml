@@ -17,9 +17,15 @@ ultralytics = "^8.3.21"
 
 
 [tool.poetry.scripts]
-install_depth_pro = "scenic_reasoning.src.scenic_reasoning.setup:install_depth_pro"
+install_depth_pro  = "scenic_reasoning.src.scenic_reasoning.setup:install_depth_pro"
+install_detectron2 = "scenic_reasoning.src.scenic_reasoning.setup:install_detectron2"
+install_all = "scenic_reasoning.src.scenic_reasoning.setup:install_all"
 
+
+[tool.poetry.group.dev.dependencies]
+isort = "^5.13.2"
+black = "^24.10.0"
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = [ "setuptools", "wheel", "torch"]
+build-backend = "setuptools.build_meta:__legacy__"
