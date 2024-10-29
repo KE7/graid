@@ -62,8 +62,7 @@ class DepthProV():
                 depth_perception = DepthPerceptionI(
                     image=batch[j],
                     depth_prediction=predictions[j]["depth"],
-                    focallength_px=predictions[j]["focallength_px"],
-                    compute_preds=False
+                    focallength_px=predictions[j]["focallength_px"]
                 )
                 self._depth_map.append(depth_perception)
             

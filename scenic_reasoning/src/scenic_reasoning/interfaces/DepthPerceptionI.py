@@ -1,13 +1,12 @@
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 import PIL
 from PIL.Image import Image
 from matplotlib import pyplot as plt
 import numpy as np
-import torch
 
 class DepthPerceptionI():
 
-    def __init__(self, image, depth_prediction=None, focallength_px=None, compute_preds=True):
+    def __init__(self, image, depth_prediction=None, focallength_px=None):
         self.image = image
         self.channels, self.height, self.width = self.image.shape
         if not self.channels <= 3:
@@ -15,6 +14,7 @@ class DepthPerceptionI():
         self._depth_prediction = depth_prediction
         self._focallength_px = focallength_px
 
+        compute_preds = depth_prediction is None and focallength_px is None
         if compute_preds:
             self.__init_depth_prediction__()
 
