@@ -4,6 +4,6 @@
 
 ## Installation steps
 1. `poetry install`
-2. `install_depth_pro`
+2. `install_all`
 
 Done ✅
