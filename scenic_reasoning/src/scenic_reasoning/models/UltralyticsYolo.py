@@ -6,8 +6,10 @@ import torch
 from PIL import Image
 from ultralytics import YOLO
 
-from scenic_reasoning.src.scenic_reasoning.interfaces.ObjectDetectionI import (
-    BBox_Format, ObjectDetectionResult)
+from scenic_reasoning.interfaces.ObjectDetectionI import (
+    BBox_Format,
+    ObjectDetectionResult,
+)
 
 
 class Yolo:

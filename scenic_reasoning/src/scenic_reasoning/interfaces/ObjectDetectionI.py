@@ -1,12 +1,14 @@
 from enum import Enum
-from typing import Tuple, Union
+from typing import Dict, Tuple, Union
 
 import torch
-from ultralytics.engine.results import Boxes as UltralyticsBoxes
-
 from detectron2.structures.boxes import Boxes as Detectron2Boxes
-from detectron2.structures.boxes import (pairwise_intersection, pairwise_iou,
-                                         pairwise_point_box_distance)
+from detectron2.structures.boxes import (
+    pairwise_intersection,
+    pairwise_iou,
+    pairwise_point_box_distance,
+)
+from ultralytics.engine.results import Boxes as UltralyticsBoxes
 
 
 class BBox_Format(Enum):
@@ -25,6 +27,7 @@ class ObjectDetectionResultI:
         bbox: Union[torch.Tensor, Union[Detectron2Boxes, UltralyticsBoxes]],
         image_hw: Tuple[int, int],
         bbox_format: BBox_Format = BBox_Format.XYXY,
+        attributes: Dict = None,
     ):
         """
         Initialize ObjectDetectionResultI.
@@ -43,6 +46,7 @@ class ObjectDetectionResultI:
         self._scores = score
         self._class = cls
         self._labels = label
+        self._attributes = attributes
 
         if isinstance(bbox, UltralyticsBoxes):
             self._ultra_boxes = bbox
