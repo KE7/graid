@@ -80,7 +80,8 @@ def install_detectron2():
     if platform.system() == "Darwin":
         subprocess.run(
             [
-                'CC=clang CXX=clang++ ARCHFLAGS="-arch x86_64" python',
+                #'CC=clang CXX=clang++ ARCHFLAGS="-arch x86_64"',
+                "python",
                 "-m",
                 "pip",
                 "install",
@@ -197,6 +198,7 @@ def install_all():
     install_detectron2()
     install_mmdetection()
 
+install_detectron2()
 
 def clean_all():
     clean_depth_pro()
