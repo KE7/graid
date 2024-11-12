@@ -5,10 +5,14 @@ import depth_pro
 import torch
 from PIL import Image, ImageSequence
 
-from scenic_reasoning.src.scenic_reasoning.interfaces.DepthPerceptionI import (
-    DepthPerceptionI, DepthPerceptionResult)
-from scenic_reasoning.src.scenic_reasoning.utilities.common import (
-    get_default_device, project_root_dir)
+from scenic_reasoning.interfaces.DepthPerceptionI import (
+    DepthPerceptionI,
+    DepthPerceptionResult,
+)
+from scenic_reasoning.utilities.common import (
+    get_default_device,
+    project_root_dir,
+)
 
 
 class DepthPro(DepthPerceptionI):
