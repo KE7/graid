@@ -17,30 +17,46 @@ class Yolo(ObjectDetectionModelI):
     def __init__(self, model, task: str = None, verbose: bool = False):
         self._model = YOLO(model, task=task, verbose=verbose)
 
-    def identify_for_image(self, image) -> List[ObjectDetectionResultI]:
-        results = self._model(image)
+    def identify_for_image(self, image, **kwargs) -> List[List[ObjectDetectionResultI]]:
+        """
+        Run object detection on an image or a batch of images.
 
-        if len(results) == 0:
+        Args:
+            image: either a PIL image or a tensor of shape (B, C, H, W)
+                where B is the batch size, C is the channel size, H is the
+                height, and W is the width.
+
+        Returns:
+            A list of list of ObjectDetectionResultI, where the outer list
+            represents the batch of images, and the inner list represents the
+            detections in a particular image.
+        """
+        predictions = self._model.predict(image, **kwargs)
+
+        if len(predictions) == 0:
             return None
 
-        results = []
-        for result in results:
-            boxes = result.boxes
-            names = result.names
+        formatted_results = []
+        for y_hat in predictions:
+            result_for_image = []
+            boxes = y_hat.boxes
+            names = y_hat.names
 
             for box in boxes:
-                odr = ObjectDetectionResult(
+                odr = ObjectDetectionResultI(
                     score=box.conf.item(),
                     cls=int(box.cls.item()),
                     label=names[int(box.cls.item())],
-                    bbox=box,
+                    bbox=box.xyxy[0].tolist(),
                     image_hw=box.orig_shape,
-                    bbox_format=BBox_Format.Ultralytics,
+                    bbox_format=BBox_Format.XYXY,
                 )
 
-                results.append(odr)
+                result_for_image.append(odr)
 
-        return results
+            formatted_results.append(result_for_image)
+
+        return formatted_results
 
     def identify_for_video(
         self,

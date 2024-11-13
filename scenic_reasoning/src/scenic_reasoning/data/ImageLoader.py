@@ -38,16 +38,19 @@ class ImageDataset(Dataset):
         attributes = self.img_lables[idx]["attributes"]
         timestamp = self.img_lables[idx]["timestamp"]
 
+        if self.transform:
+            image = self.transform(image)
+        if self.target_transform:
+            labels = self.target_transform(labels)
         if self.merge_transform:
-            result = self.merge_transform(image, labels, attributes, timestamp)
-            return result
-        else:
-            if self.transform:
-                image = self.transform(image)
-            if self.target_transform:
-                labels = self.target_transform(labels)
+            image, labels, attributes, timestamp = self.merge_transform(image, labels, attributes, timestamp)
 
-            return image, labels, attributes, timestamp
+        return {
+            "image": image,
+            "labels": labels,
+            "attributes": attributes,
+            "timestamp": timestamp,
+        }
 
 
 class Bdd100kDataset(ImageDataset):
@@ -107,15 +110,18 @@ class Bdd100kDataset(ImageDataset):
         }
     """
 
-    def __init__(self, split: Union[Literal["train", "val", "test"]] = "train"):
+    def __init__(self, split: Union[Literal["train", "val", "test"]] = "train", **kwargs):
 
         root_dir = project_root_dir() / "data" / "bdd100k"
         img_dir = root_dir / "images" / "100k" / split
         annotations_file = root_dir / "labels" / "det_20" / f"det_{split}.json"
 
         def merge_transform(
-            image, labels, attributes, timestamp
-        ) -> List[List[Tuple[ObjectDetectionResultI, Dict, str]]]:
+            image : Tensor, 
+            labels : List[Dict[str, Any]], 
+            attributes : Dict[str, Any],
+            timestamp : str
+        ) -> Tuple[Tensor, List[Tuple[ObjectDetectionResultI, Dict[str, Any], str]], Dict[str, Any], str]:
             results = []
 
             for label in labels:
@@ -141,6 +147,6 @@ class Bdd100kDataset(ImageDataset):
                     )
                 )
 
-            return [results]
+            return (image, results, attributes, timestamp)
 
-        super().__init__(annotations_file, img_dir, merge_transform=merge_transform)
+        super().__init__(annotations_file, img_dir, merge_transform=merge_transform, **kwargs)
