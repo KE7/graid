@@ -17,7 +17,7 @@ def get_default_device() -> torch.device:
 
 
 def project_root_dir() -> Path:
-    current_dir = Path(__file__).parent.parent.parent.parent
+    current_dir = Path(__file__).parent.parent.parent.parent.parent
     return current_dir
 
 

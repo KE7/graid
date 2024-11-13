@@ -1,5 +1,6 @@
+from abc import ABC
 from enum import Enum
-from typing import Dict, Tuple, Union
+from typing import Dict, Iterator, List, Tuple, Union
 
 import torch
 from detectron2.structures.boxes import Boxes as Detectron2Boxes
@@ -8,6 +9,7 @@ from detectron2.structures.boxes import (
     pairwise_iou,
     pairwise_point_box_distance,
 )
+from PIL import Image
 from ultralytics.engine.results import Boxes as UltralyticsBoxes
 
 
@@ -124,3 +126,18 @@ class ObjectDetectionUtils:
         points: torch.Tensor, boxes: ObjectDetectionResultI
     ):
         return pairwise_point_box_distance(points, boxes._detectron2_boxes)
+
+
+class ObjectDetectionModelI(ABC):
+    def __init__(self):
+        pass
+
+    def identify_for_image(self, image : Union[Image.Image, torch.Tensor, List[torch.Tensor]]) -> List[ObjectDetectionResultI]:
+        pass
+
+    def identify_for_video(
+        self,
+        video: Union[Iterator[Image.Image], List[Image.Image]],
+        batch_size: int = 1,
+    ) -> Iterator[List[ObjectDetectionResultI]]:
+        pass

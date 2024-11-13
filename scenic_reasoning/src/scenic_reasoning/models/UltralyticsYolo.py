@@ -8,15 +8,16 @@ from ultralytics import YOLO
 
 from scenic_reasoning.interfaces.ObjectDetectionI import (
     BBox_Format,
-    ObjectDetectionResult,
+    ObjectDetectionModelI,
+    ObjectDetectionResultI,
 )
 
 
-class Yolo:
-    def __init__(self, download_path, task: str = None, verbose: bool = False):
-        self._model = YOLO(download_path, task=task, verbose=verbose)
+class Yolo(ObjectDetectionModelI):
+    def __init__(self, model, task: str = None, verbose: bool = False):
+        self._model = YOLO(model, task=task, verbose=verbose)
 
-    def identify_for_image(self, image):
+    def identify_for_image(self, image) -> List[ObjectDetectionResultI]:
         results = self._model(image)
 
         if len(results) == 0:
@@ -45,7 +46,7 @@ class Yolo:
         self,
         video: Union[Iterator[Image.Image], List[Image.Image]],
         batch_size: int = 1,
-    ) -> Iterator[List[List[ObjectDetectionResult]]]:
+    ) -> Iterator[List[List[ObjectDetectionResultI]]]:
         def batch_iterator(iterable, n):
             iterator = iter(iterable)
             return iter(lambda: list(islice(iterator, n)), [])
@@ -76,7 +77,7 @@ class Yolo:
                     names = frame_result.names
 
                     for box in boxes:
-                        odr = ObjectDetectionResult(
+                        odr = ObjectDetectionResultI(
                             score=box.conf.item(),
                             cls=int(box.cls.item()),
                             label=names[int(box.cls.item())],

@@ -1,12 +1,13 @@
 import json
 import os
-from typing import Any, Dict, Literal, Tuple, Union, Callable
+from typing import Any, Dict, List, Literal, Tuple, Union, Callable
 
 from torch import Tensor
 from torch.utils.data import Dataset
 from torchvision.io import decode_image
 
 from scenic_reasoning.interfaces.ObjectDetectionI import (
+    BBox_Format,
     ObjectDetectionResultI,
 )
 from scenic_reasoning.utilities.common import project_root_dir
@@ -114,24 +115,32 @@ class Bdd100kDataset(ImageDataset):
 
         def merge_transform(
             image, labels, attributes, timestamp
-        ) -> Tuple[ObjectDetectionResultI, Dict, str]:
-            return (
-                ObjectDetectionResultI(
-                    score=1.0,
-                    cls=-1,
-                    label=labels["category"],
-                    bbox=[
-                        labels["box2d"]["x1"],
-                        labels["box2d"]["y1"],
-                        labels["box2d"]["x2"],
-                        labels["box2d"]["y2"],
-                    ],
-                    image_hw=(image.size[1], image.size[0]),
-                    bbox_format=ObjectDetectionResultI.BBox_Format.XYXY,
-                    attributes=labels["attributes"],
-                ),
-                attributes,
-                timestamp,
-            )
+        ) -> List[List[Tuple[ObjectDetectionResultI, Dict, str]]]:
+            results = []
+
+            for label in labels:
+                channels, height, width = image.shape
+                results.append(
+                    (
+                        ObjectDetectionResultI(
+                            score=1.0,
+                            cls=-1,
+                            label=label["category"],
+                            bbox=[
+                                label["box2d"]["x1"],
+                                label["box2d"]["y1"],
+                                label["box2d"]["x2"],
+                                label["box2d"]["y2"],
+                            ],
+                            image_hw=(height, width),
+                            bbox_format=BBox_Format.XYXY,
+                            attributes=label["attributes"],
+                        ),
+                        label["attributes"],
+                        timestamp,
+                    )
+                )
+
+            return [results]
 
         super().__init__(annotations_file, img_dir, merge_transform=merge_transform)
