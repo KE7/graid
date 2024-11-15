@@ -266,7 +266,7 @@ def download_and_check_md5(file_url, file_name, md5_url, md5_name):
 
     with open(md5_name, "r") as f:
         expected_md5 = (
-            f.read().strip().split(" ")[0] # Only take the hash, ignore the filename
+            f.read().strip().split(" ")[0]  # Only take the hash, ignore the filename
         )
 
     if not _check_md5(file_name, expected_md5):

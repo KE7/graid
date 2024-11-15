@@ -4,15 +4,11 @@ from typing import Iterator, List, Union, override
 import depth_pro
 import torch
 from PIL import Image, ImageSequence
-
 from scenic_reasoning.interfaces.DepthPerceptionI import (
     DepthPerceptionI,
     DepthPerceptionResult,
 )
-from scenic_reasoning.utilities.common import (
-    get_default_device,
-    project_root_dir,
-)
+from scenic_reasoning.utilities.common import get_default_device, project_root_dir
 
 
 class DepthPro(DepthPerceptionI):
@@ -46,7 +42,7 @@ class DepthPro(DepthPerceptionI):
         prediction = self.model.infer(image, f_px=f_px)
         depth_prediction = prediction["depth"]
         focallength_px = prediction["focallength_px"]
-        
+
         result = DepthPerceptionResult(
             depth_prediction=depth_prediction,
             focallength_px=focallength_px,
@@ -113,7 +109,7 @@ class DepthPro(DepthPerceptionI):
 
 
 class DepthProV:
-    # TODO: ImageSequence is the wrong type. Should be list of PIL images but requires 
+    # TODO: ImageSequence is the wrong type. Should be list of PIL images but requires
     #      fixing the for loop as well
     def __init__(self, video: ImageSequence, batch_size: int, **kwargs):
         model_path = kwargs.get(

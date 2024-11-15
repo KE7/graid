@@ -1,16 +1,15 @@
 import json
 import os
-from typing import Any, Dict, List, Literal, Tuple, Union, Callable
-
-from torch import Tensor
-from torch.utils.data import Dataset
-from torchvision.io import decode_image
+from typing import Any, Callable, Dict, List, Literal, Tuple, Union
 
 from scenic_reasoning.interfaces.ObjectDetectionI import (
     BBox_Format,
     ObjectDetectionResultI,
 )
 from scenic_reasoning.utilities.common import project_root_dir
+from torch import Tensor
+from torch.utils.data import Dataset
+from torchvision.io import decode_image
 
 
 class ImageDataset(Dataset):
@@ -43,7 +42,9 @@ class ImageDataset(Dataset):
         if self.target_transform:
             labels = self.target_transform(labels)
         if self.merge_transform:
-            image, labels, attributes, timestamp = self.merge_transform(image, labels, attributes, timestamp)
+            image, labels, attributes, timestamp = self.merge_transform(
+                image, labels, attributes, timestamp
+            )
 
         return {
             "image": image,
@@ -128,18 +129,25 @@ class Bdd100kDataset(ImageDataset):
     def category_to_cls(self, category: str) -> int:
         return self._CATEGORIES[category]
 
-    def __init__(self, split: Union[Literal["train", "val", "test"]] = "train", **kwargs):
+    def __init__(
+        self, split: Union[Literal["train", "val", "test"]] = "train", **kwargs
+    ):
 
         root_dir = project_root_dir() / "data" / "bdd100k"
         img_dir = root_dir / "images" / "100k" / split
         annotations_file = root_dir / "labels" / "det_20" / f"det_{split}.json"
 
         def merge_transform(
-            image : Tensor, 
-            labels : List[Dict[str, Any]], 
-            attributes : Dict[str, Any],
-            timestamp : str
-        ) -> Tuple[Tensor, List[Tuple[ObjectDetectionResultI, Dict[str, Any], str]], Dict[str, Any], str]:
+            image: Tensor,
+            labels: List[Dict[str, Any]],
+            attributes: Dict[str, Any],
+            timestamp: str,
+        ) -> Tuple[
+            Tensor,
+            List[Tuple[ObjectDetectionResultI, Dict[str, Any], str]],
+            Dict[str, Any],
+            str,
+        ]:
             results = []
 
             for label in labels:
@@ -167,4 +175,6 @@ class Bdd100kDataset(ImageDataset):
 
             return (image, results, attributes, timestamp)
 
-        super().__init__(annotations_file, img_dir, merge_transform=merge_transform, **kwargs)
+        super().__init__(
+            annotations_file, img_dir, merge_transform=merge_transform, **kwargs
+        )

@@ -4,20 +4,21 @@ from typing import Iterator, List, Union
 import numpy as np
 import torch
 from PIL import Image
-from ultralytics import YOLO
-
 from scenic_reasoning.interfaces.ObjectDetectionI import (
     BBox_Format,
     ObjectDetectionModelI,
     ObjectDetectionResultI,
 )
+from ultralytics import YOLO
 
 
 class Yolo(ObjectDetectionModelI):
     def __init__(self, model, task: str = None, verbose: bool = False):
         self._model = YOLO(model, task=task, verbose=verbose)
 
-    def identify_for_image(self, image, debug = False, **kwargs) -> List[List[ObjectDetectionResultI]]:
+    def identify_for_image(
+        self, image, debug=False, **kwargs
+    ) -> List[List[ObjectDetectionResultI]]:
         """
         Run object detection on an image or a batch of images.
 

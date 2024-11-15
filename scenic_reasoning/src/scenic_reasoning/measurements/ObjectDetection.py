@@ -1,20 +1,16 @@
-from collections import defaultdict
-from itertools import islice
 import tempfile
 from typing import Iterator
-import numpy as np
-from detectron2.utils.visualizer import Visualizer
-from detectron2.data import MetadataCatalog
-from scenic_reasoning.data.ImageLoader import Bdd100kDataset, ImageDataset
-from scenic_reasoning.interfaces.ObjectDetectionI import ObjectDetectionModelI, ObjectDetectionUtils
+
+import torch
+from scenic_reasoning.data.ImageLoader import ImageDataset
+from scenic_reasoning.interfaces.ObjectDetectionI import (
+    ObjectDetectionModelI,
+    ObjectDetectionUtils,
+)
 from scenic_reasoning.models.UltralyticsYolo import Yolo
 from scenic_reasoning.utilities.common import get_default_device
-import torch
 from torch.utils.data import DataLoader
-from ultralytics.data.augment import LetterBox
 from ultralytics.engine.results import Results
-import matplotlib.pyplot as plt
-import cv2
 
 
 class ObjectDetectionMeasurements:
@@ -28,7 +24,14 @@ class ObjectDetectionMeasurements:
         - IoU per class
         - IoU per image (over all classes for that image)
     """
-    def __init__(self, model : ObjectDetectionModelI, dataset : ImageDataset, batch_size : int = 1, collate_fn=None):
+
+    def __init__(
+        self,
+        model: ObjectDetectionModelI,
+        dataset: ImageDataset,
+        batch_size: int = 1,
+        collate_fn=None,
+    ):
         """
         Initialize the ObjectDetectionMeasurements object.
 
@@ -43,11 +46,20 @@ class ObjectDetectionMeasurements:
         self.batch_size = batch_size
         self.collate_fn = collate_fn
 
-    def iter_measurements(self, bbox_offset : int = 0, debug : bool = False, **kwargs) -> Iterator:
+    def iter_measurements(
+        self, bbox_offset: int = 0, debug: bool = False, **kwargs
+    ) -> Iterator:
         if self.collate_fn is not None:
-            data_loader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False, collate_fn=self.collate_fn)
+            data_loader = DataLoader(
+                self.dataset,
+                batch_size=self.batch_size,
+                shuffle=False,
+                collate_fn=self.collate_fn,
+            )
         else:
-            data_loader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
+            data_loader = DataLoader(
+                self.dataset, batch_size=self.batch_size, shuffle=False
+            )
 
         for batch in data_loader:
             x = torch.stack([sample["image"] for sample in batch])
@@ -62,8 +74,10 @@ class ObjectDetectionMeasurements:
                 self.model.to(device="cpu")
 
             results = []
-            for idx, (odrs, gt) in enumerate(zip(prediction, y)): # odr = object detection result, gt = ground truth
-                measurements : dict = self._calculate_measurements(odrs, gt)
+            for idx, (odrs, gt) in enumerate(
+                zip(prediction, y)
+            ):  # odr = object detection result, gt = ground truth
+                measurements: dict = self._calculate_measurements(odrs, gt)
                 results.append(measurements)
                 if debug:
                     self._show_debug_image(x[idx], gt, bbox_offset)
@@ -73,7 +87,7 @@ class ObjectDetectionMeasurements:
         data_loader.close()
         self.model.to(device="cpu")
 
-    def _show_debug_image(self, image, gt, bbox_offset : int = 0):
+    def _show_debug_image(self, image, gt, bbox_offset: int = 0):
         names = {}
         boxes = []
         for ground_truth in gt:
@@ -95,15 +109,16 @@ class ObjectDetectionMeasurements:
             boxes=boxes,
         )
         im.show()
-        
 
-    def _calculate_measurements(self, odr, gt, iou_threshold : float = 0.5):
+    def _calculate_measurements(self, odr, gt, iou_threshold: float = 0.5):
         return ObjectDetectionUtils.compute_metrics(
-            ground_truth=[res[0] for res in gt], # BDD GT is a tuple of (ODR, attributes, timestamp)
+            ground_truth=[
+                res[0] for res in gt
+            ],  # BDD GT is a tuple of (ODR, attributes, timestamp)
             predictions=odr,
             iou_threshold=iou_threshold,
         )
-    
+
 
 # # 768 - 720 = 48 so we need to shift bounding boxes by 48/2 = 24 pixels in the y direction
 
@@ -121,7 +136,6 @@ class ObjectDetectionMeasurements:
 #     return image
 
 
-
 # bdd = Bdd100kDataset(split="val", transform=transform_image_for_yolo) # YOLO requires images to be 640x640 but BDD100K images are 720x1280
 # # https://docs.ultralytics.com/models/yolov5/#performance-metrics
 # model = Yolo(model="yolov5x6u.pt") # v5 can handle 1280 while v8 can handle 640. makes no sense ><
@@ -130,11 +144,11 @@ class ObjectDetectionMeasurements:
 # # WARNING ⚠️ imgsz=[720, 1280] must be multiple of max stride 64, updating to [768, 1280]
 # from pprint import pprint
 # for results in islice(measurements.iter_measurements(
-#         device=get_default_device(), 
+#         device=get_default_device(),
 #         imgsz=[768, 1280],
 #         bbox_offset=24,
 #         debug=True,
 #         conf=0.1,
-#         ), 
+#         ),
 #     3):
 #     pprint(results)

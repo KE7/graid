@@ -2,6 +2,7 @@ from abc import ABC
 from enum import Enum
 from typing import Dict, Iterator, List, Tuple, Union
 
+import numpy as np
 import torch
 from detectron2.structures.boxes import Boxes as Detectron2Boxes
 from detectron2.structures.boxes import (
@@ -11,9 +12,6 @@ from detectron2.structures.boxes import (
 )
 from PIL import Image
 from ultralytics.engine.results import Boxes as UltralyticsBoxes
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
 
 
 class BBox_Format(Enum):
@@ -100,11 +98,11 @@ class ObjectDetectionResultI:
     @property
     def cls(self):
         return self._class
-    
+
     @property
     def as_ultra_box(self):
         return self._ultra_boxes
-    
+
     @property
     def as_detectron_box(self):
         return self.as_detectron_box
@@ -140,7 +138,7 @@ class ObjectDetectionUtils:
         points: torch.Tensor, boxes: ObjectDetectionResultI
     ):
         return pairwise_point_box_distance(points, boxes._detectron2_boxes)
-    
+
     @staticmethod
     def compute_metrics(
         ground_truth: List[ObjectDetectionResultI],
@@ -164,14 +162,16 @@ class ObjectDetectionUtils:
             }
 
         gt_boxes = Detectron2Boxes(
-            torch.stack([gt._detectron2_boxes.tensor for gt in ground_truth], 
-                        dim=0).squeeze(1)
+            torch.stack(
+                [gt._detectron2_boxes.tensor for gt in ground_truth], dim=0
+            ).squeeze(1)
         )
         pred_boxes = Detectron2Boxes(
-            torch.stack([pred._detectron2_boxes.tensor for pred in predictions], 
-                        dim=0).squeeze(1)
+            torch.stack(
+                [pred._detectron2_boxes.tensor for pred in predictions], dim=0
+            ).squeeze(1)
         )
-        
+
         # Given two lists of boxes of size N and M, compute the IoU
         # (intersection over union) between **all** N x M pairs of boxes.
         ious = pairwise_iou(gt_boxes, pred_boxes)  # Shape: (N, M)
@@ -209,10 +209,14 @@ class ObjectDetectionUtils:
                 continue
 
             cls_gt_boxes = Detectron2Boxes(
-                torch.stack([gt._detectron2_boxes.tensor for gt in cls_gt], dim=0).squeeze(1)
+                torch.stack(
+                    [gt._detectron2_boxes.tensor for gt in cls_gt], dim=0
+                ).squeeze(1)
             )
             cls_pred_boxes = Detectron2Boxes(
-                torch.stack([pred._detectron2_boxes.tensor for pred in cls_pred], dim=0).squeeze(1)
+                torch.stack(
+                    [pred._detectron2_boxes.tensor for pred in cls_pred], dim=0
+                ).squeeze(1)
             )
 
             ious = pairwise_iou(cls_gt_boxes, cls_pred_boxes)
@@ -257,7 +261,9 @@ class ObjectDetectionModelI(ABC):
     def __init__(self):
         pass
 
-    def identify_for_image(self, image : Union[Image.Image, torch.Tensor, List[torch.Tensor]]) -> List[ObjectDetectionResultI]:
+    def identify_for_image(
+        self, image: Union[Image.Image, torch.Tensor, List[torch.Tensor]]
+    ) -> List[ObjectDetectionResultI]:
         pass
 
     def identify_for_video(
