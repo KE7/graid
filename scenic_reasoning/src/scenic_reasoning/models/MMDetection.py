@@ -1,0 +1,103 @@
+from typing import Iterator, List, Union, Dict
+from itertools import islice
+
+import torch
+import numpy as np
+from PIL import Image
+from mmdet.apis import init_detector, inference_detector
+
+from scenic_reasoning.interfaces.ObjectDetectionI import (
+    BBox_Format,
+    ObjectDetectionModelI,
+    ObjectDetectionResultI,
+)
+
+
+class MMDetection(ObjectDetectionModelI):
+    def __init__(self, config: str, checkpoint: str, device: str = 'cuda:0'):
+        self._model = init_detector(config, checkpoint, device=device)
+
+    def identify_for_image(self, image: Union[Image.Image, torch.Tensor], **kwargs) -> List[List[ObjectDetectionResultI]]:
+        """
+        Run object detection on a single image.
+        
+        Args:
+            image: A PIL image or a tensor of shape (C, H, W).
+        
+        Returns:
+            A list of list of ObjectDetectionResultI, where each inner list represents 
+            detections in a single image.
+        """
+        result = inference_detector(self._model, image)
+
+        formatted_results = []
+        if len(result.pred_instances) > 0:
+            boxes = result.pred_instances.bboxes
+            scores = result.pred_instances.scores
+            labels = result.pred_instances.labels
+
+            result_for_image = []
+            for i in range(len(boxes)):
+                attributes = {}
+
+                odr = ObjectDetectionResultI(
+                    score=float(scores[i]),
+                    cls=int(labels[i]),
+                    label=str(labels[i]),  
+                    bbox=boxes[i].tolist(), 
+                    image_hw=image.size if isinstance(image, Image.Image) else image.shape[1:],
+                    bbox_format=BBox_Format.XYXY,
+                    attributes=attributes,
+                )
+                result_for_image.append(odr)
+
+            formatted_results.append(result_for_image)
+
+        return formatted_results
+
+    def identify_for_video(self, video: Union[Iterator[Image.Image], List[Image.Image]], batch_size: int = 1) -> Iterator[List[List[ObjectDetectionResultI]]]:
+        def batch_iterator(iterable, n):
+            iterator = iter(iterable)
+            return iter(lambda: list(islice(iterator, n)), [])
+
+        # Convert video to iterator of batches
+        if isinstance(video, list):
+            video_iterator = batch_iterator(video, batch_size)
+        else:
+            video_iterator = batch_iterator(video, batch_size)
+
+        for batch in video_iterator:
+            if not batch:  # End of iterator
+                break
+
+            images = [np.array(img) for img in batch]
+            batch_results = inference_detector(self._model, images)
+
+            boxes_across_frames = []
+
+            if len(batch_results) == 0:
+                boxes_across_frames = [[None] * len(batch)]
+            else:
+                for frame_result in batch_results:
+                    per_frame_results = []
+                    boxes = frame_result.pred_instances.bboxes
+                    scores = frame_result.pred_instances.scores
+                    labels = frame_result.pred_instances.labels
+
+                    for i in range(len(boxes)):
+                        attributes = {}
+
+                        odr = ObjectDetectionResultI(
+                            score=float(scores[i]),
+                            cls=int(labels[i]),
+                            label=str(labels[i]),  
+                            bbox=boxes[i].tolist(), 
+                            image_hw=batch[0].size if isinstance(batch[0], Image.Image) else batch[0].shape[1:],
+                            bbox_format=BBox_Format.XYXY,
+                            attributes=attributes,
+                        )
+                        per_frame_results.append(odr)
+
+                    boxes_across_frames.append(per_frame_results)
+
+            yield boxes_across_frames
