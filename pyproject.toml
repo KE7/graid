@@ -18,15 +18,16 @@ opencv-python = "^4.10.0.84"
 
 
 [tool.poetry.scripts]
-install_depth_pro  = "scenic_reasoning.src.scenic_reasoning.setup:install_depth_pro"
-install_detectron2 = "scenic_reasoning.src.scenic_reasoning.setup:install_detectron2"
-install_mmdetection = "scenic_reasoning.src.scenic_reasoning.setup:install_mmdetection"
-install_all = "scenic_reasoning.src.scenic_reasoning.setup:install_all"
-clean_all = "scenic_reasoning.src.scenic_reasoning.setup:clean_all"
-clean_depth_pro = "scenic_reasoning.src.scenic_reasoning.setup:clean_depth_pro"
-clean_detectron2 = "scenic_reasoning.src.scenic_reasoning.setup:clean_detectron2"
-clean_mmdetection = "scenic_reasoning.src.scenic_reasoning.setup:clean_mmdetection"
-download_nuscenes = "scenic_reasoning.src.scenic_reasoning.setup:download_nuscenes"
+install_depth_pro  = "scenic_reasoning.setup:install_depth_pro"
+install_detectron2 = "scenic_reasoning.setup:install_detectron2"
+install_mmdetection = "scenic_reasoning.setup:install_mmdetection"
+install_all = "scenic_reasoning.setup:install_all"
+clean_all = "scenic_reasoning.setup:clean_all"
+clean_depth_pro = "scenic_reasoning.setup:clean_depth_pro"
+clean_detectron2 = "scenic_reasoning.setup:clean_detectron2"
+clean_mmdetection = "scenic_reasoning.setup:clean_mmdetection"
+download_nuscenes = "scenic_reasoning.setup:download_nuscenes"
+download_bdd = "scenic_reasoning.setup:download_bdd"
 
 
 [tool.poetry.group.dev.dependencies]

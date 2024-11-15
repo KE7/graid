@@ -6,44 +6,66 @@ import torch
 from PIL import Image
 from ultralytics import YOLO
 
-from scenic_reasoning.src.scenic_reasoning.interfaces.ObjectDetectionI import (
-    BBox_Format, ObjectDetectionResult)
+from scenic_reasoning.interfaces.ObjectDetectionI import (
+    BBox_Format,
+    ObjectDetectionModelI,
+    ObjectDetectionResultI,
+)
 
 
-class Yolo:
-    def __init__(self, download_path, task: str = None, verbose: bool = False):
-        self._model = YOLO(download_path, task=task, verbose=verbose)
+class Yolo(ObjectDetectionModelI):
+    def __init__(self, model, task: str = None, verbose: bool = False):
+        self._model = YOLO(model, task=task, verbose=verbose)
 
-    def identify_for_image(self, image):
-        results = self._model(image)
+    def identify_for_image(self, image, debug = False, **kwargs) -> List[List[ObjectDetectionResultI]]:
+        """
+        Run object detection on an image or a batch of images.
 
-        if len(results) == 0:
+        Args:
+            image: either a PIL image or a tensor of shape (B, C, H, W)
+                where B is the batch size, C is the channel size, H is the
+                height, and W is the width.
+
+        Returns:
+            A list of list of ObjectDetectionResultI, where the outer list
+            represents the batch of images, and the inner list represents the
+            detections in a particular image.
+        """
+        predictions = self._model.predict(image, **kwargs)
+
+        if len(predictions) == 0:
             return None
 
-        results = []
-        for result in results:
-            boxes = result.boxes
-            names = result.names
+        formatted_results = []
+        for y_hat in predictions:
+            result_for_image = []
+            boxes = y_hat.boxes
+            names = y_hat.names
+
+            if debug:
+                y_hat.show()
 
             for box in boxes:
-                odr = ObjectDetectionResult(
+                odr = ObjectDetectionResultI(
                     score=box.conf.item(),
                     cls=int(box.cls.item()),
                     label=names[int(box.cls.item())],
-                    bbox=box,
+                    bbox=box.cpu(),
                     image_hw=box.orig_shape,
-                    bbox_format=BBox_Format.Ultralytics,
+                    bbox_format=BBox_Format.UltralyticsBox,
                 )
 
-                results.append(odr)
+                result_for_image.append(odr)
 
-        return results
+            formatted_results.append(result_for_image)
+
+        return formatted_results
 
     def identify_for_video(
         self,
         video: Union[Iterator[Image.Image], List[Image.Image]],
         batch_size: int = 1,
-    ) -> Iterator[List[List[ObjectDetectionResult]]]:
+    ) -> Iterator[List[List[ObjectDetectionResultI]]]:
         def batch_iterator(iterable, n):
             iterator = iter(iterable)
             return iter(lambda: list(islice(iterator, n)), [])
@@ -74,7 +96,7 @@ class Yolo:
                     names = frame_result.names
 
                     for box in boxes:
-                        odr = ObjectDetectionResult(
+                        odr = ObjectDetectionResultI(
                             score=box.conf.item(),
                             cls=int(box.cls.item()),
                             label=names[int(box.cls.item())],
