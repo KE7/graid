@@ -5,9 +5,9 @@ from detectron2.structures import BitMasks
 from detectron2.utils.memory import retry_if_cuda_oom
 from detectron2.structures.masks import polygons_to_bitmask
 class Mask_Format(Enum):
-    # not sure what this needs to be here
     BITMASK = 0
     POLYGON = 1
+    RLE = 2
 class InstanceSegmentationResultI:
     def __init__(
         self,

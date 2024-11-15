@@ -12,6 +12,7 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
     ObjectDetectionResultI,
 )
 
+#Need class for InstanceSegmentation here
 
 class Yolo(ObjectDetectionModelI):
     def __init__(self, model, task: str = None, verbose: bool = False):
