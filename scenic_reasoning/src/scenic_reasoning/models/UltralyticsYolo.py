@@ -17,7 +17,7 @@ class Yolo(ObjectDetectionModelI):
     def __init__(self, model, task: str = None, verbose: bool = False):
         self._model = YOLO(model, task=task, verbose=verbose)
 
-    def identify_for_image(self, image, **kwargs) -> List[List[ObjectDetectionResultI]]:
+    def identify_for_image(self, image, debug = False, **kwargs) -> List[List[ObjectDetectionResultI]]:
         """
         Run object detection on an image or a batch of images.
 
@@ -42,14 +42,17 @@ class Yolo(ObjectDetectionModelI):
             boxes = y_hat.boxes
             names = y_hat.names
 
+            if debug:
+                y_hat.show()
+
             for box in boxes:
                 odr = ObjectDetectionResultI(
                     score=box.conf.item(),
                     cls=int(box.cls.item()),
                     label=names[int(box.cls.item())],
-                    bbox=box.xyxy[0].tolist(),
+                    bbox=box.cpu(),
                     image_hw=box.orig_shape,
-                    bbox_format=BBox_Format.XYXY,
+                    bbox_format=BBox_Format.UltralyticsBox,
                 )
 
                 result_for_image.append(odr)

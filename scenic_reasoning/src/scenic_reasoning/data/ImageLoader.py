@@ -110,6 +110,24 @@ class Bdd100kDataset(ImageDataset):
         }
     """
 
+    _CATEGORIES = {
+        "pedestrian": 0,
+        "person": 1,
+        "rider": 2,
+        "car": 3,
+        "truck": 4,
+        "bus": 5,
+        "train": 6,
+        "motorcycle": 7,
+        "bicycle": 8,
+        "traffic light": 9,
+        "traffic sign": 10,
+        "sidewalk": 11,
+    }
+
+    def category_to_cls(self, category: str) -> int:
+        return self._CATEGORIES[category]
+
     def __init__(self, split: Union[Literal["train", "val", "test"]] = "train", **kwargs):
 
         root_dir = project_root_dir() / "data" / "bdd100k"
@@ -130,7 +148,7 @@ class Bdd100kDataset(ImageDataset):
                     (
                         ObjectDetectionResultI(
                             score=1.0,
-                            cls=-1,
+                            cls=self.category_to_cls(label["category"]),
                             label=label["category"],
                             bbox=[
                                 label["box2d"]["x1"],
