@@ -27,7 +27,7 @@ class ImageDataset(Dataset):
         self.target_transform = target_transform
         self.merge_transform = merge_transform
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.img_lables)
 
     def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:

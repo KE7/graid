@@ -1,15 +1,17 @@
 import tempfile
-from typing import Iterator
+from typing import Dict, Iterator, List, Tuple, Union
 
 import torch
-from scenic_reasoning.data.ImageLoader import ImageDataset
+from scenic_reasoning.data.ImageLoader import Bdd100kDataset, ImageDataset
 from scenic_reasoning.interfaces.ObjectDetectionI import (
     ObjectDetectionModelI,
+    ObjectDetectionResultI,
     ObjectDetectionUtils,
 )
 from scenic_reasoning.models.UltralyticsYolo import Yolo
 from scenic_reasoning.utilities.common import get_default_device
 from torch.utils.data import DataLoader
+from ultralytics.data.augment import LetterBox
 from ultralytics.engine.results import Results
 
 
@@ -30,8 +32,8 @@ class ObjectDetectionMeasurements:
         model: ObjectDetectionModelI,
         dataset: ImageDataset,
         batch_size: int = 1,
-        collate_fn=None,
-    ):
+        collate_fn: callable = None,
+    ) -> None:
         """
         Initialize the ObjectDetectionMeasurements object.
 
@@ -39,7 +41,8 @@ class ObjectDetectionMeasurements:
             model (ObjectDetectionModelI): Object detection model to use.
             dataset (ImageDataset): Dataset to use for measurements.
             batch_size (int, optional): Batch size for data loader. Defaults to 1.
-            collate_fn (function, optional): Function to use for collating batches. Defaults to None.
+            collate_fn (function, optional): Function to use for collating batches.
+                Defaults to None.
         """
         self.model = model
         self.dataset = dataset
@@ -48,7 +51,7 @@ class ObjectDetectionMeasurements:
 
     def iter_measurements(
         self, bbox_offset: int = 0, debug: bool = False, **kwargs
-    ) -> Iterator:
+    ) -> Iterator[Union[List[Dict], Tuple[List[Dict], List[Results]]]]:
         if self.collate_fn is not None:
             data_loader = DataLoader(
                 self.dataset,
@@ -74,20 +77,30 @@ class ObjectDetectionMeasurements:
                 self.model.to(device="cpu")
 
             results = []
+            ims = []
             for idx, (odrs, gt) in enumerate(
                 zip(prediction, y)
             ):  # odr = object detection result, gt = ground truth
                 measurements: dict = self._calculate_measurements(odrs, gt)
                 results.append(measurements)
                 if debug:
-                    self._show_debug_image(x[idx], gt, bbox_offset)
+                    im = self._show_debug_image(x[idx], gt, bbox_offset)
+                    ims.append(im)
 
-            yield results
+            if debug:
+                yield results, ims
+            else:
+                yield results
 
         data_loader.close()
         self.model.to(device="cpu")
 
-    def _show_debug_image(self, image, gt, bbox_offset: int = 0):
+    def _show_debug_image(
+        self,
+        image: torch.Tensor,
+        gt: List[ObjectDetectionResultI],
+        bbox_offset: int = 0,
+    ) -> Results:
         names = {}
         boxes = []
         for ground_truth in gt:
@@ -101,6 +114,7 @@ class ObjectDetectionMeasurements:
             boxes.append(torch.tensor(box))
 
         boxes = torch.stack(boxes)
+        print("Boxes has shape: ", boxes.shape)
 
         im = Results(
             orig_img=image.unsqueeze(0),  # Add batch dimension
@@ -110,7 +124,14 @@ class ObjectDetectionMeasurements:
         )
         im.show()
 
-    def _calculate_measurements(self, odr, gt, iou_threshold: float = 0.5):
+        return im
+
+    def _calculate_measurements(
+        self,
+        odr: List[ObjectDetectionResultI],
+        gt: List[List[ObjectDetectionResultI]],
+        iou_threshold: float = 0.5,
+    ) -> List[Dict]:
         return ObjectDetectionUtils.compute_metrics(
             ground_truth=[
                 res[0] for res in gt
@@ -120,12 +141,17 @@ class ObjectDetectionMeasurements:
         )
 
 
-# # 768 - 720 = 48 so we need to shift bounding boxes by 48/2 = 24 pixels in the y direction
+
+# TODO: delete this code and replace with metrics computed over the entire dataset
+
+# 768 - 720 = 48 so we need to shift bounding boxes by 48/2 = 24 pixels in the y direction
 
 # shape_transform = LetterBox(new_shape=(768, 1280))
-# def transform_image_for_yolo(image : torch.Tensor):
+
+
+# def transform_image_for_yolo(image: torch.Tensor):
 #     # 1) convert from tensor to cv2 image
-#     image_np  = image.permute(1, 2, 0).numpy()
+#     image_np = image.permute(1, 2, 0).numpy()
 #     # 2) resize to 768x1280
 #     image_np = shape_transform(image=image_np)
 #     # 3) convert back to tensor
@@ -136,8 +162,10 @@ class ObjectDetectionMeasurements:
 #     return image
 
 
-# bdd = Bdd100kDataset(split="val", transform=transform_image_for_yolo) # YOLO requires images to be 640x640 but BDD100K images are 720x1280
-# # https://docs.ultralytics.com/models/yolov5/#performance-metrics
+# bdd = Bdd100kDataset(
+#     split="val", transform=transform_image_for_yolo
+# )  # YOLO requires images to be 640x640 but BDD100K images are 720x1280
+# https://docs.ultralytics.com/models/yolov5/#performance-metrics
 # model = Yolo(model="yolov5x6u.pt") # v5 can handle 1280 while v8 can handle 640. makes no sense ><
 # measurements = ObjectDetectionMeasurements(model, bdd, batch_size=2, collate_fn=lambda x: x) # hacky way to avoid RuntimeError: each element in list of batch should be of equal size
 

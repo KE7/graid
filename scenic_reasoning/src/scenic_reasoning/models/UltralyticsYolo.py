@@ -1,4 +1,5 @@
 from itertools import islice
+from pathlib import Path
 from typing import Iterator, List, Union
 
 import numpy as np
@@ -13,11 +14,18 @@ from ultralytics import YOLO
 
 
 class Yolo(ObjectDetectionModelI):
-    def __init__(self, model, task: str = None, verbose: bool = False):
+    def __init__(
+        self, model: str | Path, task: str = None, verbose: bool = False
+    ) -> None:
         self._model = YOLO(model, task=task, verbose=verbose)
 
     def identify_for_image(
-        self, image, debug=False, **kwargs
+        self,
+        image: Union[
+            str, Path, int, Image.Image, list, tuple, np.ndarray, torch.Tensor
+        ],
+        debug: bool = False,
+        **kwargs
     ) -> List[List[ObjectDetectionResultI]]:
         """
         Run object detection on an image or a batch of images.
@@ -67,16 +75,16 @@ class Yolo(ObjectDetectionModelI):
         video: Union[Iterator[Image.Image], List[Image.Image]],
         batch_size: int = 1,
     ) -> Iterator[List[List[ObjectDetectionResultI]]]:
-        def batch_iterator(iterable, n):
+        def _batch_iterator(iterable, n):
             iterator = iter(iterable)
             return iter(lambda: list(islice(iterator, n)), [])
 
         # If video is a list, convert it to an iterator of batches
         if isinstance(video, list):
-            video_iterator = batch_iterator(video, batch_size)
+            video_iterator = _batch_iterator(video, batch_size)
         else:
             # If video is already an iterator, create batches from it
-            video_iterator = batch_iterator(video, batch_size)
+            video_iterator = _batch_iterator(video, batch_size)
 
         for batch in video_iterator:
             if not batch:  # End of iterator

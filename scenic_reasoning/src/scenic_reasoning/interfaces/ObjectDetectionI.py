@@ -1,4 +1,4 @@
-from abc import ABC
+from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Dict, Iterator, List, Tuple, Union
 
@@ -23,31 +23,38 @@ class BBox_Format(Enum):
     UltralyticsBox = 5
 
 
-# TODO: Tensor-size this class since there can be a lot of boxes
 class ObjectDetectionResultI:
     def __init__(
         self,
-        score: float,
-        cls: int,
-        label: str,
-        bbox: Union[torch.Tensor, Union[Detectron2Boxes, UltralyticsBoxes]],
+        score: Union[float, torch.Tensor],
+        cls: Union[int, torch.Tensor],
+        label: Union[str, torch.Tensor],
+        bbox: Union[
+            Union[torch.Tensor, List[float]], Union[Detectron2Boxes, UltralyticsBoxes]
+        ],
         image_hw: Tuple[int, int],
         bbox_format: BBox_Format = BBox_Format.XYXY,
         attributes: Dict = None,
     ):
         """
-        Initialize ObjectDetectionResultI.
+        Initialize ObjectDetectionResultI. If you are creating multiple
+            bounding boxes, via a tensor, only XYXY format is supported.
         Note: Requires double the amount of memory to store a result
         (one for UltralyticsBoxes and one for Detectron2Boxes),
         but has methods to convert between different formats.
 
         Args:
-            score (float): detection confidence
-            cls (int): class id
-            label (str): class label
-            bbox (Union[torch.Tensor, Union[Detectron2Boxes, UltralyticsBoxes]]): bounding box data
+            score (Union[float, torch.Tensor]):
+                detection confidence. If a tensor, should have shape (# of boxes,)
+            cls (Union[int, torch.Tensor]):
+                class id. If a tensor, should have shape (# of boxes,)
+            label (Union[str, torch.Tensor]):
+                class label. If a tensor, should have shape (# of boxes,)
+            bbox (Union[torch.Tensor, Union[Detectron2Boxes, UltralyticsBoxes]]):
+                bounding box data
             image_hw (Tuple[int, int]): image size
-            bbox_format (BBox_Format, optional): format of the bounding box. Defaults to BBox_Format.XYXY.
+            bbox_format (BBox_Format, optional):
+                format of the bounding box. Defaults to BBox_Format.XYXY.
         """
         self._scores = score
         self._class = cls
@@ -57,7 +64,39 @@ class ObjectDetectionResultI:
         if isinstance(bbox, UltralyticsBoxes):
             self._ultra_boxes = bbox
             self._detectron2_boxes = Detectron2Boxes(bbox.xyxy)
-        else:
+        elif isinstance(bbox, torch.Tensor):
+            # should have shape (# of boxes, 6) where each row is:
+            #   (x1, y1, x2, y2, score, cls, <optional: track_id>)
+
+            assert (
+                bbox_format == BBox_Format.XYXY
+            ), "Only XYXY format supported for tensor input"
+
+            if (
+                bbox.shape[1] == 4
+                and isinstance(score, torch.Tensor)
+                and isinstance(cls, torch.Tensor)
+            ):
+                bbox = torch.cat([bbox, score.unsqueeze(1), cls.unsqueeze(1)], dim=1)
+            elif bbox.shape[1] == 4:
+                raise ValueError(
+                    f"Tried to initialize DetectionResult with {bbox.shape[0]} many "
+                    "bounding boxes but only a single score and class provided."
+                )
+            elif bbox.shape[1] != 6 and bbox.shape[1] != 7:
+                raise ValueError(
+                    f"{bbox.shape[1]} not supported for initializing DetectionResult"
+                    " (should be 6 or 7)"
+                )
+            # all x1 < x2 and y1 < y2
+            if torch.any(bbox[:, 0] > bbox[:, 2]) or torch.any(bbox[:, 1] > bbox[:, 3]):
+                raise ValueError(
+                    f"Bounding box coordinates are not in the correct format. "
+                    "All x1 < x2 and y1 < y2 but found "
+                    f"{bbox[:, 0]} > {bbox[:, 2]} and {bbox[:, 1]} > {bbox[:, 3]}"
+                )
+            self._ultra_boxes = UltralyticsBoxes(boxes=bbox, orig_shape=image_hw)
+        elif isinstance(bbox, List):
             x1, y1, x2, y2 = None, None, None, None
 
             if bbox_format == BBox_Format.XYWH:
@@ -75,36 +114,36 @@ class ObjectDetectionResultI:
             self._ultra_boxes = UltralyticsBoxes(boxes=box, orig_shape=image_hw)
             self._detectron2_boxes = Detectron2Boxes(self._ultra_boxes.xyxy)
 
-    def as_xyxy(self):
+    def as_xyxy(self) -> torch.Tensor:
         return self._ultra_boxes.xyxy
 
-    def as_xyxyn(self):
+    def as_xyxyn(self) -> torch.Tensor:
         return self._ultra_boxes.xyxyn
 
-    def as_xywh(self):
+    def as_xywh(self) -> torch.Tensor:
         return self._ultra_boxes.xywh
 
-    def as_xywhn(self):
+    def as_xywhn(self) -> torch.Tensor:
         return self._ultra_boxes.xywhn
 
     @property
-    def scores(self):
+    def scores(self) -> Union[float, torch.Tensor]:
         return self._scores
 
     @property
-    def label(self):
+    def label(self) -> Union[str, torch.Tensor]:
         return self._label
 
     @property
-    def cls(self):
+    def cls(self) -> Union[int, torch.Tensor]:
         return self._class
 
     @property
-    def as_ultra_box(self):
+    def as_ultra_box(self) -> UltralyticsBoxes:
         return self._ultra_boxes
 
     @property
-    def as_detectron_box(self):
+    def as_detectron_box(self) -> Detectron2Boxes:
         return self.as_detectron_box
 
     # the rest of this code is adapted from
@@ -124,19 +163,21 @@ class ObjectDetectionResultI:
 
 class ObjectDetectionUtils:
     @staticmethod
-    def pairwise_iou(boxes1: ObjectDetectionResultI, boxes2: ObjectDetectionResultI):
+    def pairwise_iou(
+        boxes1: ObjectDetectionResultI, boxes2: ObjectDetectionResultI
+    ) -> torch.Tensor:
         return pairwise_iou(boxes1._detectron2_boxes, boxes2._detectron2_boxes)
 
     @staticmethod
     def pairwise_intersection_area(
         boxes1: ObjectDetectionResultI, boxes2: ObjectDetectionResultI
-    ):
+    ) -> torch.Tensor:
         return pairwise_intersection(boxes1._detectron2_boxes, boxes2._detectron2_boxes)
 
     @staticmethod
     def pairwise_point_box_distance(
         points: torch.Tensor, boxes: ObjectDetectionResultI
-    ):
+    ) -> torch.Tensor:
         return pairwise_point_box_distance(points, boxes._detectron2_boxes)
 
     @staticmethod
@@ -258,14 +299,17 @@ class ObjectDetectionUtils:
 
 
 class ObjectDetectionModelI(ABC):
+    @abstractmethod
     def __init__(self):
         pass
 
+    @abstractmethod
     def identify_for_image(
         self, image: Union[Image.Image, torch.Tensor, List[torch.Tensor]]
     ) -> List[ObjectDetectionResultI]:
         pass
 
+    @abstractmethod
     def identify_for_video(
         self,
         video: Union[Iterator[Image.Image], List[Image.Image]],

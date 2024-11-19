@@ -49,7 +49,8 @@ class DepthPerceptionI:
             depth = np.copy.deepcopy(depth)
 
         inverse_depth = 1 / depth
-        # Visualize inverse depth instead of depth, clipped to [0.1m;250m] range for better visualization.
+        # Visualize inverse depth instead of depth,
+        #   clipped to [0.1m;250m] range for better visualization
         max_invdepth_vizu = min(inverse_depth.max(), 1 / 0.1)
         min_invdepth_vizu = max(1 / 250, inverse_depth.min())
         inverse_depth_normalized = (inverse_depth - min_invdepth_vizu) / (
