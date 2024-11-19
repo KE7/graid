@@ -4,26 +4,22 @@ from typing import Iterator, List, Union, override
 import depth_pro
 import torch
 from PIL import Image, ImageSequence
-
 from scenic_reasoning.interfaces.DepthPerceptionI import (
     DepthPerceptionI,
     DepthPerceptionResult,
 )
-from scenic_reasoning.utilities.common import (
-    get_default_device,
-    project_root_dir,
-)
+from scenic_reasoning.utilities.common import get_default_device, project_root_dir
 
 
 class DepthPro(DepthPerceptionI):
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs) -> None:
         model_path = kwargs.get(
             "model_path", project_root_dir() / "checkpoints" / "depth_pro.pt"
         )
         if not model_path.exists():
             raise FileNotFoundError(
                 f"Model path does not exist: {model_path}",
-                f"Please follow the project's readme to install all components.",
+                "Please follow the project's readme to install all components.",
             )
 
         depth_pro.depth_pro.DEFAULT_MONODEPTH_CONFIG_DICT.checkpoint_uri = model_path
@@ -40,13 +36,18 @@ class DepthPro(DepthPerceptionI):
         self._depth_map = None
 
     @override
-    def predict_depth(self, image):
+    def predict_depth(self, image: Image.Image) -> DepthPerceptionResult:
         image, _, f_px = depth_pro.load_rgb(image)
         image = self.transform(image)
-        self._prediction = self.model.infer(image, f_px=f_px)
-        self._depth_prediction = self._prediction["depth"]
-        self._focallength_px = self._prediction["focallength_px"]
-        return self._depth_prediction
+        prediction = self.model.infer(image, f_px=f_px)
+        depth_prediction = prediction["depth"]
+        focallength_px = prediction["focallength_px"]
+
+        result = DepthPerceptionResult(
+            depth_prediction=depth_prediction,
+            focallength_px=focallength_px,
+        )
+        return result
 
     @override
     def predict_depths(
@@ -68,16 +69,16 @@ class DepthPro(DepthPerceptionI):
             An iterator of batches of DepthPerceptionResult objects
         """
 
-        def batch_iterator(iterable, n):
+        def _batch_iterator(iterable, n):
             iterator = iter(iterable)
             return iter(lambda: list(islice(iterator, n)), [])
 
         # If video is a list, convert it to an iterator of batches
         if isinstance(video, list):
-            video_iterator = batch_iterator(video, batch_size)
+            video_iterator = _batch_iterator(video, batch_size)
         else:
             # If video is already an iterator, create batches from it
-            video_iterator = batch_iterator(video, batch_size)
+            video_iterator = _batch_iterator(video, batch_size)
 
         for batch in video_iterator:
             if not batch:  # End of iterator
@@ -108,8 +109,9 @@ class DepthPro(DepthPerceptionI):
 
 
 class DepthProV:
-    # TODO: ImageSequence is the wrong type. Should be list of PIL images
-    def __init__(self, video: ImageSequence, batch_size: int, **kwargs):
+    # TODO: ImageSequence is the wrong type. Should be list of PIL images but requires
+    #      fixing the for loop as well
+    def __init__(self, video: ImageSequence, batch_size: int, **kwargs) -> None:
         model_path = kwargs.get(
             "model_path", project_root_dir() / "checkpoints" / "depth_pro.pt"
         )

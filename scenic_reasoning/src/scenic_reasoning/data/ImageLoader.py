@@ -1,15 +1,15 @@
 import json
 import os
-from typing import Any, Dict, Literal, Tuple, Union, Callable
-
-from torch import Tensor
-from torch.utils.data import Dataset
-from torchvision.io import decode_image
+from typing import Any, Callable, Dict, List, Literal, Tuple, Union
 
 from scenic_reasoning.interfaces.ObjectDetectionI import (
+    BBox_Format,
     ObjectDetectionResultI,
 )
 from scenic_reasoning.utilities.common import project_root_dir
+from torch import Tensor
+from torch.utils.data import Dataset
+from torchvision.io import decode_image
 
 
 class ImageDataset(Dataset):
@@ -27,7 +27,7 @@ class ImageDataset(Dataset):
         self.target_transform = target_transform
         self.merge_transform = merge_transform
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.img_lables)
 
     def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
@@ -37,16 +37,21 @@ class ImageDataset(Dataset):
         attributes = self.img_lables[idx]["attributes"]
         timestamp = self.img_lables[idx]["timestamp"]
 
+        if self.transform:
+            image = self.transform(image)
+        if self.target_transform:
+            labels = self.target_transform(labels)
         if self.merge_transform:
-            result = self.merge_transform(image, labels, attributes, timestamp)
-            return result
-        else:
-            if self.transform:
-                image = self.transform(image)
-            if self.target_transform:
-                labels = self.target_transform(labels)
+            image, labels, attributes, timestamp = self.merge_transform(
+                image, labels, attributes, timestamp
+            )
 
-            return image, labels, attributes, timestamp
+        return {
+            "image": image,
+            "labels": labels,
+            "attributes": attributes,
+            "timestamp": timestamp,
+        }
 
 
 class Bdd100kDataset(ImageDataset):
@@ -106,32 +111,70 @@ class Bdd100kDataset(ImageDataset):
         }
     """
 
-    def __init__(self, split: Union[Literal["train", "val", "test"]] = "train"):
+    _CATEGORIES = {
+        "pedestrian": 0,
+        "person": 1,
+        "rider": 2,
+        "car": 3,
+        "truck": 4,
+        "bus": 5,
+        "train": 6,
+        "motorcycle": 7,
+        "bicycle": 8,
+        "traffic light": 9,
+        "traffic sign": 10,
+        "sidewalk": 11,
+    }
+
+    def category_to_cls(self, category: str) -> int:
+        return self._CATEGORIES[category]
+
+    def __init__(
+        self, split: Union[Literal["train", "val", "test"]] = "train", **kwargs
+    ):
 
         root_dir = project_root_dir() / "data" / "bdd100k"
         img_dir = root_dir / "images" / "100k" / split
         annotations_file = root_dir / "labels" / "det_20" / f"det_{split}.json"
 
         def merge_transform(
-            image, labels, attributes, timestamp
-        ) -> Tuple[ObjectDetectionResultI, Dict, str]:
-            return (
-                ObjectDetectionResultI(
-                    score=1.0,
-                    cls=-1,
-                    label=labels["category"],
-                    bbox=[
-                        labels["box2d"]["x1"],
-                        labels["box2d"]["y1"],
-                        labels["box2d"]["x2"],
-                        labels["box2d"]["y2"],
-                    ],
-                    image_hw=(image.size[1], image.size[0]),
-                    bbox_format=ObjectDetectionResultI.BBox_Format.XYXY,
-                    attributes=labels["attributes"],
-                ),
-                attributes,
-                timestamp,
-            )
+            image: Tensor,
+            labels: List[Dict[str, Any]],
+            attributes: Dict[str, Any],
+            timestamp: str,
+        ) -> Tuple[
+            Tensor,
+            List[Tuple[ObjectDetectionResultI, Dict[str, Any], str]],
+            Dict[str, Any],
+            str,
+        ]:
+            results = []
 
-        super().__init__(annotations_file, img_dir, merge_transform=merge_transform)
+            for label in labels:
+                channels, height, width = image.shape
+                results.append(
+                    (
+                        ObjectDetectionResultI(
+                            score=1.0,
+                            cls=self.category_to_cls(label["category"]),
+                            label=label["category"],
+                            bbox=[
+                                label["box2d"]["x1"],
+                                label["box2d"]["y1"],
+                                label["box2d"]["x2"],
+                                label["box2d"]["y2"],
+                            ],
+                            image_hw=(height, width),
+                            bbox_format=BBox_Format.XYXY,
+                            attributes=label["attributes"],
+                        ),
+                        label["attributes"],
+                        timestamp,
+                    )
+                )
+
+            return (image, results, attributes, timestamp)
+
+        super().__init__(
+            annotations_file, img_dir, merge_transform=merge_transform, **kwargs
+        )

@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
+from typing import List
 
 import requests
 from tqdm import tqdm
@@ -14,7 +15,7 @@ from tqdm import tqdm
 PROJECT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..")
 
 
-def install_depth_pro():
+def install_depth_pro() -> None:
     root_dir = PROJECT_DIR
 
     os.chdir(root_dir)
@@ -44,7 +45,7 @@ def install_depth_pro():
         subprocess.run(["bash", "ml-depth-pro/get_pretrained_models.sh"])
 
 
-def clean_depth_pro():
+def clean_depth_pro() -> None:
     root_dir = PROJECT_DIR
 
     os.chdir(root_dir)
@@ -61,7 +62,7 @@ def clean_depth_pro():
     os.chdir("..")
 
 
-def install_detectron2():
+def install_detectron2() -> None:
     # https://detectron2.readthedocs.io/en/latest/tutorials/install.html
 
     root_dir = PROJECT_DIR
@@ -103,7 +104,7 @@ def install_detectron2():
     os.chdir("..")
 
 
-def clean_detectron2():
+def clean_detectron2() -> None:
     root_dir = PROJECT_DIR
 
     os.chdir(root_dir)
@@ -120,7 +121,7 @@ def clean_detectron2():
     os.chdir("..")
 
 
-def install_mmdetection():
+def install_mmdetection() -> None:
     subprocess.run(["pip", "install", "--upgrade", "openmim"])
     subprocess.run(["mim", "install", "mmengine"])
     subprocess.run(["mim", "install", "mmcv==2.1.0"])
@@ -149,7 +150,7 @@ def install_mmdetection():
     os.chdir("..")
 
 
-def clean_mmdetection():
+def clean_mmdetection() -> None:
     root_dir = PROJECT_DIR
 
     os.chdir(root_dir)
@@ -166,7 +167,9 @@ def clean_mmdetection():
     os.chdir("..")
 
 
-def _download_chunk(url, start, end, chunk_index, temp_dir):
+def _download_chunk(
+    url: str, start: int, end: int, chunk_index: int, temp_dir: str
+) -> None:
     headers = {"Range": f"bytes={start}-{end}"}
     response = requests.get(url, headers=headers, stream=True)
     response.raise_for_status()
@@ -186,13 +189,16 @@ def _download_chunk(url, start, end, chunk_index, temp_dir):
     downloaded_chunk_size = os.path.getsize(chunk_path)
     if downloaded_chunk_size != chunk_size:
         raise ValueError(
-            f"Chunk {chunk_index} was not downloaded correctly. Expected {chunk_size} bytes, got {downloaded_chunk_size} bytes."
+            f"Chunk {chunk_index} was not downloaded correctly. "
+            f"Expected {chunk_size} bytes, got {downloaded_chunk_size} bytes."
         )
 
     return chunk_path
 
 
-def _merge_chunks(temp_dir, dest_path, num_chunks, file_size):
+def _merge_chunks(
+    temp_dir: str, dest_path: str, num_chunks: int, file_size: int
+) -> None:
     with open(dest_path, "wb") as dest_file, tqdm(
         total=file_size, unit="B", unit_scale=True, desc="Writing"
     ) as pbar:
@@ -208,7 +214,7 @@ def _merge_chunks(temp_dir, dest_path, num_chunks, file_size):
             os.remove(chunk_path)
 
 
-def _download_file(url, dest_path, num_threads=10):
+def _download_file(url: str, dest_path: str, num_threads: int = 10) -> None:
     response = requests.head(url)
     file_size = int(response.headers["Content-Length"])
 
@@ -218,7 +224,8 @@ def _download_file(url, dest_path, num_threads=10):
     chunk_size = (file_size + num_threads - 1) // num_threads
 
     print(
-        f"Downloading {url} to {os.path.abspath(dest_path)} using {num_threads} threads."
+        f"Downloading {url} to {os.path.abspath(dest_path)} using "
+        f"{num_threads} threads."
     )
 
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -243,7 +250,7 @@ def _download_file(url, dest_path, num_threads=10):
     return True
 
 
-def _check_md5(file_path, expected_md5):
+def _check_md5(file_path: str, expected_md5: str) -> bool:
     hash_md5 = hashlib.md5()
     with open(file_path, "rb") as f:
         for chunk in iter(lambda: f.read(4096), b""):
@@ -251,13 +258,15 @@ def _check_md5(file_path, expected_md5):
     return hash_md5.hexdigest() == expected_md5
 
 
-def cleanup(files):
+def cleanup(files: List[str]) -> None:
     for file in files:
         if os.path.exists(file):
             os.remove(file)
 
 
-def download_and_check_md5(file_url, file_name, md5_url, md5_name):
+def download_and_check_md5(
+    file_url: str, file_name: str, md5_url: str, md5_name: str
+) -> None:
     if not _download_file(file_url, file_name):
         raise RuntimeError(f"Failed to download file {file_url}.")
     if not _download_file(md5_url, md5_name, num_threads=1):
@@ -266,7 +275,7 @@ def download_and_check_md5(file_url, file_name, md5_url, md5_name):
 
     with open(md5_name, "r") as f:
         expected_md5 = (
-            f.read().strip().split(" ")[0] # Only take the hash, ignore the filename
+            f.read().strip().split(" ")[0]  # Only take the hash, ignore the filename
         )
 
     if not _check_md5(file_name, expected_md5):
@@ -275,13 +284,13 @@ def download_and_check_md5(file_url, file_name, md5_url, md5_name):
         raise RuntimeError("MD5 mismatch for downloaded file.")
 
 
-def unzip_file(zip_path, extract_to):
+def unzip_file(zip_path: str, extract_to: str) -> None:
     print(f"Extracting {zip_path} to {os.path.abspath(extract_to)}")
     with zipfile.ZipFile(zip_path, "r") as zip_ref:
         zip_ref.extractall(extract_to)
 
 
-def download_bdd(task=None, split=None):
+def download_bdd(task: str = None, split: str = None) -> None:
     if task is None or split is None:
         parser = argparse.ArgumentParser()
         parser.add_argument(
@@ -375,7 +384,7 @@ def download_bdd(task=None, split=None):
     print("Download and extraction complete.")
 
 
-def download_nuscenes():
+def download_nuscenes() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--size", type=str, default="mini", help="mini or full", required=True
@@ -391,9 +400,11 @@ def download_nuscenes():
     subprocess.run(["mkdir", "-p", "data/nuscenes"])
 
     if size == "mini":
-        # !wget https://www.nuscenes.org/data/v1.0-mini.tgz  # Download the nuScenes mini split.
+        # Download the nuScenes mini split.
+        # !wget https://www.nuscenes.org/data/v1.0-mini.tgz
 
-        # !tar -xf v1.0-mini.tgz -C /data/sets/nuscenes  # Uncompress the nuScenes mini split.
+        # Uncompress the nuScenes mini split.
+        # !tar -xf v1.0-mini.tgz -C /data/sets/nuscenes
 
         # !pip install nuscenes-devkit &> /dev/null  # Install nuScenes.
         location = "https://www.nuscenes.org/data/v1.0-mini.tgz"
@@ -408,13 +419,13 @@ def download_nuscenes():
     subprocess.run(["pip", "install", "nuscenes-devkit"])
 
 
-def install_all():
+def install_all() -> None:
     install_depth_pro()
     install_detectron2()
     install_mmdetection()
 
 
-def clean_all():
+def clean_all() -> None:
     clean_depth_pro()
     clean_detectron2()
     clean_mmdetection()
@@ -422,7 +433,7 @@ def clean_all():
     subprocess.run(["rmdir", "install"])
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Dataset download utilities")
     subparsers = parser.add_subparsers(dest="command")
 
