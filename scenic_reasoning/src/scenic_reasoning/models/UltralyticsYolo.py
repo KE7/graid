@@ -15,7 +15,7 @@ from ultralytics import YOLO
 
 class Yolo(ObjectDetectionModelI):
     def __init__(
-        self, model: str | Path, task: str = None, verbose: bool = False
+        self, model: Union[str, Path], task: str = None, verbose: bool = False
     ) -> None:
         self._model = YOLO(model, task=task, verbose=verbose)
 

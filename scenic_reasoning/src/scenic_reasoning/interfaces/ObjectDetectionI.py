@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from collections import defaultdict
 from enum import Enum
 from typing import Dict, Iterator, List, Tuple, Union
 
@@ -188,108 +189,130 @@ class ObjectDetectionUtils:
         debug: bool = False,
         image: Image.Image = None,
     ) -> Dict[str, float]:
-        true_positives = 0
-        false_positives = 0
-        false_negatives = 0
-
-        if len(ground_truth) == 0 or len(predictions) == 0:
-            return {
-                "true_positives": true_positives,
-                "false_positives": false_positives,
-                "false_negatives": false_negatives,
-                "precision": 0,
-                "recall": 0,
-                "f1": 0,
-            }
-
-        gt_boxes = Detectron2Boxes(
-            torch.stack(
-                [gt._detectron2_boxes.tensor for gt in ground_truth], dim=0
-            ).squeeze(1)
-        )
-        pred_boxes = Detectron2Boxes(
-            torch.stack(
-                [pred._detectron2_boxes.tensor for pred in predictions], dim=0
-            ).squeeze(1)
-        )
-
-        # Given two lists of boxes of size N and M, compute the IoU
-        # (intersection over union) between **all** N x M pairs of boxes.
-        ious = pairwise_iou(gt_boxes, pred_boxes)  # Shape: (N, M)
-
-        # Find best matching predicted box for each ground truth box
-        max_ious_per_gt = torch.max(ious, axis=1)  # Shape: (N,)
-
-        # Find best matching ground truth box for each predicted box
-        max_ious_per_pred = torch.max(ious, axis=0)  # Shape: (M,)
-
-        # True positives: ground truth boxes matched with predictions above threshold
-        true_positives = torch.sum(max_ious_per_gt.values >= iou_threshold)
-
-        # False positives are predicted boxes that were not matched
-        false_positives = torch.sum(max_ious_per_pred.values < iou_threshold)
-
-        # False negatives are ground truth boxes that were not matched
-        false_negatives = torch.sum(max_ious_per_gt.values < iou_threshold)
-
-        # Calculate precision and recall
-        precision = true_positives / (true_positives + false_positives)
-        recall = true_positives / (true_positives + false_negatives)
-
-        # Calculate AP per class
-        ground_truth_classes = set([gt.label.lower() for gt in ground_truth])
-        predictions_classes = set([pred.label.lower() for pred in predictions])
-        classes = ground_truth_classes.union(predictions_classes)
+        # Initialize variables
         ap_per_class = {}
-        for cls in classes:
-            cls_gt = [gt for gt in ground_truth if gt.label.lower() == cls]
-            cls_pred = [pred for pred in predictions if pred.label.lower() == cls]
+        all_detections = defaultdict(list)
+        all_annotations = defaultdict(list)
 
-            if len(cls_gt) == 0 or len(cls_pred) == 0:
+        # Collect annotations and detections per class
+        for gt in ground_truth:
+            all_annotations[gt.label.lower()].append(gt)
+
+        for pred in predictions:
+            all_detections[pred.label.lower()].append(pred)
+
+        classes = set(all_annotations.keys()).union(set(all_detections.keys()))
+
+        # For overall metrics
+        total_true_positives = 0
+        total_false_positives = 0
+        total_false_negatives = 0
+
+        for cls in classes:
+            cls_gt = all_annotations.get(cls, [])
+            cls_pred = all_detections.get(cls, [])
+
+            n_gt = len(cls_gt)
+            n_pred = len(cls_pred)
+
+            # No ground truth or predictions for this class
+            if n_gt == 0 and n_pred == 0:
+                ap_per_class[cls] = 0
+                continue
+            elif n_gt == 0:
+                # All predictions are false positives
+                total_false_positives += n_pred
+                ap_per_class[cls] = 0
+                continue
+            elif n_pred == 0:
+                # All ground truths are false negatives
+                total_false_negatives += n_gt
                 ap_per_class[cls] = 0
                 continue
 
-            cls_gt_boxes = Detectron2Boxes(
-                torch.stack(
-                    [gt._detectron2_boxes.tensor for gt in cls_gt], dim=0
-                ).squeeze(1)
-            )
-            cls_pred_boxes = Detectron2Boxes(
-                torch.stack(
-                    [pred._detectron2_boxes.tensor for pred in cls_pred], dim=0
-                ).squeeze(1)
-            )
+            # Extract tensors from your class
+            gt_boxes_tensor = torch.cat([gt._detectron2_boxes.tensor for gt in cls_gt], dim=0)  # Shape: [n_gt, 4]
+            pred_boxes_tensor = torch.cat([pred._detectron2_boxes.tensor for pred in cls_pred], dim=0)  # Shape: [n_pred, 4]
+            pred_scores = torch.tensor([pred.scores for pred in cls_pred])  # Shape: [n_pred]
 
-            ious = pairwise_iou(cls_gt_boxes, cls_pred_boxes)
-            max_ious_per_gt = torch.max(ious, axis=1)
-            max_ious_per_pred = torch.max(ious, axis=0)
+            # Sort predictions by confidence score
+            sorted_indices = torch.argsort(pred_scores, descending=True)
+            pred_boxes_tensor = pred_boxes_tensor[sorted_indices]
+            pred_scores = pred_scores[sorted_indices]
 
-            true_positives = torch.sum(max_ious_per_gt.values >= iou_threshold).item()
-            false_positives = torch.sum(max_ious_per_pred.values < iou_threshold).item()
-            false_negatives = torch.sum(max_ious_per_gt.values < iou_threshold).item()
+            # Compute IoU matrix between all predictions and all ground truths
+            iou_matrix = pairwise_iou(
+                Detectron2Boxes(pred_boxes_tensor),
+                Detectron2Boxes(gt_boxes_tensor)
+            )  # Shape: [n_pred, n_gt]
 
-            precision = true_positives / (true_positives + false_positives)
-            recall = true_positives / (true_positives + false_negatives)
+            # Initialize matches (1: matched, 0: unmatched)
+            matched_gt = torch.zeros(n_gt, dtype=torch.bool)
 
-            denominator = precision + recall
-            if denominator == 0:
-                ap_per_class[cls] = 0
-            else:
-                ap_per_class[cls] = 2 * (precision * recall) / denominator
+            # True positives and false positives
+            TP = torch.zeros(n_pred)
+            FP = torch.zeros(n_pred)
 
-        # Calculate mAP
-        mAP = np.mean(list(ap_per_class.values()))
+            # For each prediction, find the best matching ground truth
+            for pred_idx in range(n_pred):
+                # Get IoUs for this prediction with all ground truths
+                ious = iou_matrix[pred_idx]  # Shape: [n_gt]
 
-        f1_denominator = precision + recall
-        if f1_denominator == 0:
-            f1 = 0
-        else:
-            f1 = 2 * (precision * recall) / f1_denominator
+                # Set IoUs to zero for already matched ground truths
+                ious[matched_gt] = 0
+
+                # Find the maximum IoU and the corresponding ground truth index
+                max_iou, max_gt_idx = torch.max(ious, dim=0)
+
+                if max_iou >= iou_threshold:
+                    TP[pred_idx] = 1
+                    matched_gt[max_gt_idx] = True
+                else:
+                    FP[pred_idx] = 1
+
+            # Compute cumulative true positives and false positives
+            cum_TP = torch.cumsum(TP, dim=0)
+            cum_FP = torch.cumsum(FP, dim=0)
+
+            # Compute precision and recall
+            precision = cum_TP / (cum_TP + cum_FP + 1e-16)
+            recall = cum_TP / (n_gt + 1e-16)
+
+            # Append sentinel values
+            mrec = torch.cat((torch.tensor([0.0]), recall, torch.tensor([1.0])))
+            mpre = torch.cat((torch.tensor([0.0]), precision, torch.tensor([0.0])))
+
+            # Compute the precision envelope
+            for i in range(mpre.numel() - 2, -1, -1):
+                mpre[i] = torch.max(mpre[i], mpre[i + 1])
+
+            # Integrate area under curve
+            idx = torch.where(mrec[1:] != mrec[:-1])[0]
+            ap = torch.sum((mrec[idx + 1] - mrec[idx]) * mpre[idx + 1]).item()
+
+            ap_per_class[cls] = ap
+
+            # Collect overall metrics
+            total_true_positives += TP.sum().item()
+            total_false_positives += FP.sum().item()
+            total_false_negatives += n_gt - TP.sum().item()
+
+        # Compute mAP
+        mAP = np.mean(list(ap_per_class.values())) if len(ap_per_class) > 0 else 0
+
+        # Compute overall precision and recall
+        total_precision_denominator = total_true_positives + total_false_positives + 1e-16
+        total_recall_denominator = total_true_positives + total_false_negatives + 1e-16
+
+        precision = total_true_positives / total_precision_denominator
+        recall = total_true_positives / total_recall_denominator
+
+        f1 = 2 * (precision * recall) / (precision + recall + 1e-16)
 
         return {
-            "true_positives": true_positives,
-            "false_positives": false_positives,
-            "false_negatives": false_negatives,
+            "true_positives": int(total_true_positives),
+            "false_positives": int(total_false_positives),
+            "false_negatives": int(total_false_negatives),
             "precision": precision,
             "recall": recall,
             "f1": f1,

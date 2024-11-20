@@ -70,6 +70,9 @@ class ObjectDetectionMeasurements:
 
             x = x.to(device=get_default_device())
             if isinstance(self.model, Yolo):
+                # Convert RGB to BGR because Ultralytics YOLO expects BGR
+                # https://github.com/ultralytics/ultralytics/issues/9912
+                x = x[:, [2, 1, 0], ...] 
                 prediction = self.model.identify_for_image(x, debug=debug, **kwargs)
             else:
                 self.model.to(device=get_default_device())
@@ -114,7 +117,6 @@ class ObjectDetectionMeasurements:
             boxes.append(torch.tensor(box))
 
         boxes = torch.stack(boxes)
-        print("Boxes has shape: ", boxes.shape)
 
         im = Results(
             orig_img=image.unsqueeze(0),  # Add batch dimension
