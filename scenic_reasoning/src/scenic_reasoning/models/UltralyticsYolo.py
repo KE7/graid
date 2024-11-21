@@ -70,6 +70,52 @@ class Yolo(ObjectDetectionModelI):
 
         return formatted_results
 
+    def identify_for_image_as_tensor(
+        self,
+        image: Union[
+            str, Path, int, Image.Image, list, tuple, np.ndarray, torch.Tensor
+        ],
+        debug: bool = False,
+        **kwargs
+    ) -> List[ObjectDetectionResultI]:
+        predictions = self._model.predict(image, **kwargs)
+
+        if len(predictions) == 0:
+            return None
+
+        result_per_image = []
+        for y_hat in predictions:
+            boxes = y_hat.boxes
+            names = y_hat.names
+
+            if debug:
+                y_hat.show()
+
+            bboxes = []
+            scores = []
+            classes = []
+            for box in boxes:
+                bboxes.append(box.cpu())
+                scores.append(box.conf.item())
+                classes.append(int(box.cls.item()))
+
+            bboxes = torch.stack(bboxes)
+            scores = torch.tensor(scores)
+            classes = torch.tensor(classes)
+
+            odr = ObjectDetectionResultI(
+                score=scores,
+                cls=classes,
+                label=names[classes],  # shape: (# of boxes,)
+                bbox=bboxes,
+                image_hw=boxes[0].orig_shape,
+                bbox_format=BBox_Format.XYXY,
+            )
+
+            result_per_image.append(odr)
+
+        return result_per_image
+
     def identify_for_video(
         self,
         video: Union[Iterator[Image.Image], List[Image.Image]],

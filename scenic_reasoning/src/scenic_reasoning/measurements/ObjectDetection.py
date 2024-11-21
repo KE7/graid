@@ -1,4 +1,5 @@
 import tempfile
+from itertools import islice
 from typing import Dict, Iterator, List, Tuple, Union
 
 import torch
@@ -72,7 +73,7 @@ class ObjectDetectionMeasurements:
             if isinstance(self.model, Yolo):
                 # Convert RGB to BGR because Ultralytics YOLO expects BGR
                 # https://github.com/ultralytics/ultralytics/issues/9912
-                x = x[:, [2, 1, 0], ...] 
+                x = x[:, [2, 1, 0], ...]
                 prediction = self.model.identify_for_image(x, debug=debug, **kwargs)
             else:
                 self.model.to(device=get_default_device())
@@ -110,10 +111,12 @@ class ObjectDetectionMeasurements:
             cls = ground_truth[0].cls
             label = ground_truth[0].label
             names[cls] = label
-            box = ground_truth[0].as_ultra_box.xyxy.tolist()[0]
+            box = ground_truth[0].as_ultra_box.xyxy.tolist()[
+                0
+            ]  # TODO: fix this hack. BDD GT is a tuple of (ODR, attributes, timestamp) but we can preprocess and drop the attributes and timestamp
             box[1] += bbox_offset
             box[3] += bbox_offset
-            box += [ground_truth[0].scores, ground_truth[0].cls]
+            box += [ground_truth[0].score, ground_truth[0].cls]
             boxes.append(torch.tensor(box))
 
         boxes = torch.stack(boxes)
@@ -135,7 +138,7 @@ class ObjectDetectionMeasurements:
         iou_threshold: float = 0.5,
     ) -> List[Dict]:
         return ObjectDetectionUtils.compute_metrics(
-            ground_truth=[
+            ground_truth=[  # TODO: this should be done by the caller all the way up
                 res[0] for res in gt
             ],  # BDD GT is a tuple of (ODR, attributes, timestamp)
             predictions=odr,
@@ -143,11 +146,9 @@ class ObjectDetectionMeasurements:
         )
 
 
-
 # TODO: delete this code and replace with metrics computed over the entire dataset
 
 # 768 - 720 = 48 so we need to shift bounding boxes by 48/2 = 24 pixels in the y direction
-
 # shape_transform = LetterBox(new_shape=(768, 1280))
 
 
@@ -167,18 +168,25 @@ class ObjectDetectionMeasurements:
 # bdd = Bdd100kDataset(
 #     split="val", transform=transform_image_for_yolo
 # )  # YOLO requires images to be 640x640 but BDD100K images are 720x1280
-# https://docs.ultralytics.com/models/yolov5/#performance-metrics
-# model = Yolo(model="yolov5x6u.pt") # v5 can handle 1280 while v8 can handle 640. makes no sense ><
-# measurements = ObjectDetectionMeasurements(model, bdd, batch_size=2, collate_fn=lambda x: x) # hacky way to avoid RuntimeError: each element in list of batch should be of equal size
+# # https://docs.ultralytics.com/models/yolov5/#performance-metrics
+# model = Yolo(
+#     model="yolov5x6u.pt"
+# )  # v5 can handle 1280 while v8 can handle 640. makes no sense ><
+# measurements = ObjectDetectionMeasurements(
+#     model, bdd, batch_size=1, collate_fn=lambda x: x
+# )  # hacky way to avoid RuntimeError: each element in list of batch should be of equal size
 
 # # WARNING ⚠️ imgsz=[720, 1280] must be multiple of max stride 64, updating to [768, 1280]
 # from pprint import pprint
-# for results in islice(measurements.iter_measurements(
+
+# for results in islice(
+#     measurements.iter_measurements(
 #         device=get_default_device(),
 #         imgsz=[768, 1280],
 #         bbox_offset=24,
 #         debug=True,
 #         conf=0.1,
-#         ),
-#     3):
+#     ),
+#     1,
+# ):
 #     pprint(results)
