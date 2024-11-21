@@ -108,15 +108,17 @@ class ObjectDetectionMeasurements:
         names = {}
         boxes = []
         for ground_truth in gt:
-            cls = ground_truth[0].cls
-            label = ground_truth[0].label
+            cls = ground_truth.cls
+            label = ground_truth.label
             names[cls] = label
-            box = ground_truth[0].as_ultra_box.xyxy.tolist()[
-                0
-            ]  # TODO: fix this hack. BDD GT is a tuple of (ODR, attributes, timestamp) but we can preprocess and drop the attributes and timestamp
+            box = ground_truth.as_ultra_box.xyxy.tolist()[0]
+            # box = ground_truth[0].as_ultra_box.xyxy.tolist()[
+            #     0
+            # ]  # TODO: fix this hack. BDD GT is a tuple of (ODR, attributes, timestamp) but we can preprocess and drop the attributes and timestamp
             box[1] += bbox_offset
             box[3] += bbox_offset
-            box += [ground_truth[0].score, ground_truth[0].cls]
+            # box += [ground_truth[0].score, ground_truth[0].cls]
+            box += [ground_truth.score, ground_truth.cls]
             boxes.append(torch.tensor(box))
 
         boxes = torch.stack(boxes)
@@ -138,9 +140,10 @@ class ObjectDetectionMeasurements:
         iou_threshold: float = 0.5,
     ) -> List[Dict]:
         return ObjectDetectionUtils.compute_metrics(
-            ground_truth=[  # TODO: this should be done by the caller all the way up
-                res[0] for res in gt
-            ],  # BDD GT is a tuple of (ODR, attributes, timestamp)
+            ground_truth=gt,
+            # ground_truth=[  # TODO: this should be done by the caller all the way up
+            #     res[0] for res in gt
+            # ],  # BDD GT is a tuple of (ODR, attributes, timestamp)
             predictions=odr,
             iou_threshold=iou_threshold,
         )

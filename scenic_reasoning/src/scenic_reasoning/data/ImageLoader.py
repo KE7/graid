@@ -20,17 +20,25 @@ class ImageDataset(Dataset):
         transform: Union[Callable, None] = None,
         target_transform: Union[Callable, None] = None,
         merge_transform: Union[Callable, None] = None,
+        use_extended_annotations: bool = False,
     ):
         self.img_lables = json.load(open(annotations_file))
         self.img_dir = img_dir
         self.transform = transform
         self.target_transform = target_transform
         self.merge_transform = merge_transform
+        self.use_extended_annotations = use_extended_annotations
 
     def __len__(self) -> int:
         return len(self.img_lables)
 
-    def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
+    def __getitem__(
+            self, 
+            idx: int
+        ) -> Union[
+            Dict[Tensor, Dict], 
+            Tuple[Tensor, Dict, Dict, str]
+        ]:
         img_path = os.path.join(self.img_dir, self.img_lables[idx]["name"])
         image = decode_image(img_path)
         labels = self.img_lables[idx]["labels"]
@@ -42,9 +50,18 @@ class ImageDataset(Dataset):
         if self.target_transform:
             labels = self.target_transform(labels)
         if self.merge_transform:
-            image, labels, attributes, timestamp = self.merge_transform(
-                image, labels, attributes, timestamp
-            )
+            if self.use_extended_annotations:
+                image, labels, attributes, timestamp = self.merge_transform(
+                    image, labels, attributes, timestamp
+                )
+            else:
+                image, labels = self.merge_transform(
+                    image, labels, attributes, timestamp
+                )
+                return {
+                    "image": image,
+                    "labels": labels,
+                }
 
         return {
             "image": image,
@@ -214,5 +231,9 @@ class Bdd100kDataset(ImageDataset):
                 return (image, results)
 
         super().__init__(
-            annotations_file, img_dir, merge_transform=merge_transform, **kwargs
+            annotations_file, 
+            img_dir, 
+            merge_transform=merge_transform, 
+            use_extended_annotations=use_extended_annotations,
+            **kwargs
         )
