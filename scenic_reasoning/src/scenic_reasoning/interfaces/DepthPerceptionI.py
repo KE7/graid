@@ -1,15 +1,18 @@
+import copy
 from abc import abstractmethod
 from typing import Iterator
 
 import numpy as np
 import PIL
+import PIL.Image
 from matplotlib import pyplot as plt
 from PIL.Image import Image
+from torch import Tensor
 
 
 class DepthPerceptionResult:
 
-    def __init__(self, depth_prediction, focallength_px):
+    def __init__(self, depth_prediction: Tensor, focallength_px):
         self.depth_prediction = depth_prediction
         self.focallength_px = focallength_px
 
@@ -43,10 +46,10 @@ class DepthPerceptionI:
 
         if depth.get_device() != "cpu":
             original_device = depth.get_device()
-            depth = np.copy.deepcopy(depth.cpu())  # avoid cuda oom errors
+            depth = copy.deepcopy(depth.cpu())  # avoid cuda oom errors
             depth.to(original_device)
         else:
-            depth = np.copy.deepcopy(depth)
+            depth = copy.deepcopy(depth)
 
         inverse_depth = 1 / depth
         # Visualize inverse depth instead of depth,

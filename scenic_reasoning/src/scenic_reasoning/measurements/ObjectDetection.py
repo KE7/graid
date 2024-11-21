@@ -1,6 +1,6 @@
 import tempfile
 from itertools import islice
-from typing import Dict, Iterator, List, Tuple, Union
+from typing import Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import torch
 from scenic_reasoning.data.ImageLoader import Bdd100kDataset, ImageDataset
@@ -33,7 +33,7 @@ class ObjectDetectionMeasurements:
         model: ObjectDetectionModelI,
         dataset: ImageDataset,
         batch_size: int = 1,
-        collate_fn: callable = None,
+        collate_fn: Optional[Callable] = None,
     ) -> None:
         """
         Initialize the ObjectDetectionMeasurements object.
@@ -96,9 +96,6 @@ class ObjectDetectionMeasurements:
             else:
                 yield results
 
-        data_loader.close()
-        self.model.to(device="cpu")
-
     def _show_debug_image(
         self,
         image: torch.Tensor,
@@ -136,10 +133,10 @@ class ObjectDetectionMeasurements:
     def _calculate_measurements(
         self,
         odr: List[ObjectDetectionResultI],
-        gt: List[List[ObjectDetectionResultI]],
+        gt: List[ObjectDetectionResultI],
         iou_threshold: float = 0.5,
-    ) -> List[Dict]:
-        return ObjectDetectionUtils.compute_metrics(
+    ) -> Dict:
+        return ObjectDetectionUtils.compute_metrics_for_single_img(
             ground_truth=gt,
             # ground_truth=[  # TODO: this should be done by the caller all the way up
             #     res[0] for res in gt

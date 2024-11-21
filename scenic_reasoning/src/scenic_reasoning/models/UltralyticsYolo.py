@@ -1,6 +1,6 @@
 from itertools import islice
 from pathlib import Path
-from typing import Iterator, List, Union
+from typing import Iterator, List, Optional, Union
 
 import numpy as np
 import torch
@@ -10,14 +10,13 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
     ObjectDetectionModelI,
     ObjectDetectionResultI,
 )
+from scenic_reasoning.utilities.common import get_default_device
 from ultralytics import YOLO
 
 
 class Yolo(ObjectDetectionModelI):
-    def __init__(
-        self, model: Union[str, Path], task: str = None, verbose: bool = False
-    ) -> None:
-        self._model = YOLO(model, task=task, verbose=verbose)
+    def __init__(self, model: Union[str, Path], **kwargs) -> None:
+        self._model = YOLO(model, **kwargs)
 
     def identify_for_image(
         self,
@@ -26,7 +25,7 @@ class Yolo(ObjectDetectionModelI):
         ],
         debug: bool = False,
         **kwargs
-    ) -> List[List[ObjectDetectionResultI]]:
+    ) -> List[List[Optional[ObjectDetectionResultI]]]:
         """
         Run object detection on an image or a batch of images.
 
@@ -40,10 +39,10 @@ class Yolo(ObjectDetectionModelI):
             represents the batch of images, and the inner list represents the
             detections in a particular image.
         """
-        predictions = self._model.predict(image, **kwargs)
+        predictions = self._model.predict(image, device=get_default_device(), **kwargs)
 
         if len(predictions) == 0:
-            return None
+            return [[None]]
 
         formatted_results = []
         for y_hat in predictions:
@@ -53,6 +52,10 @@ class Yolo(ObjectDetectionModelI):
 
             if debug:
                 y_hat.show()
+
+            if boxes is None or len(boxes) == 0:
+                formatted_results.append(None)
+                continue
 
             for box in boxes:
                 odr = ObjectDetectionResultI(
@@ -77,11 +80,24 @@ class Yolo(ObjectDetectionModelI):
         ],
         debug: bool = False,
         **kwargs
-    ) -> List[ObjectDetectionResultI]:
+    ) -> List[Optional[ObjectDetectionResultI]]:
+        """
+        Run object detection on an image or a batch of images.
+
+        Args:
+            image: either a PIL image or a tensor of shape (B, C, H, W)
+                where B is the batch size, C is the channel size, H is the
+                height, and W is the width.
+
+        Returns:
+            A list of list of ObjectDetectionResultI, where the outer list
+            represents the batch of images, and the inner list represents the
+            detections in a particular image.
+        """
         predictions = self._model.predict(image, **kwargs)
 
         if len(predictions) == 0:
-            return None
+            return [None]
 
         result_per_image = []
         for y_hat in predictions:
@@ -94,6 +110,11 @@ class Yolo(ObjectDetectionModelI):
             bboxes = []
             scores = []
             classes = []
+
+            if boxes is None or len(boxes) == 0:
+                result_per_image.append(None)
+                continue
+
             for box in boxes:
                 bboxes.append(box.cpu())
                 scores.append(box.conf.item())
@@ -120,7 +141,7 @@ class Yolo(ObjectDetectionModelI):
         self,
         video: Union[Iterator[Image.Image], List[Image.Image]],
         batch_size: int = 1,
-    ) -> Iterator[List[List[ObjectDetectionResultI]]]:
+    ) -> Iterator[List[Optional[ObjectDetectionResultI]]]:
         def _batch_iterator(iterable, n):
             iterator = iter(iterable)
             return iter(lambda: list(islice(iterator, n)), [])
@@ -142,7 +163,7 @@ class Yolo(ObjectDetectionModelI):
             boxes_across_frames = []
 
             if len(batch_results) == 0:
-                boxes_across_frames = [[None] * len(batch)]
+                boxes_across_frames = [None for _ in batch]
             else:
                 for frame_result in batch_results:
                     per_frame_results = []
@@ -157,7 +178,7 @@ class Yolo(ObjectDetectionModelI):
                             label=names[int(box.cls.item())],
                             bbox=box,
                             image_hw=box.orig_shape,
-                            bbox_format=BBox_Format.Ultralytics,
+                            bbox_format=BBox_Format.UltralyticsBox,
                         )
 
                         per_frame_results.append(odr)

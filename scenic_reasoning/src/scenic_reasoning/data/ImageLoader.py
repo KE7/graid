@@ -32,15 +32,9 @@ class ImageDataset(Dataset):
     def __len__(self) -> int:
         return len(self.img_lables)
 
-    def __getitem__(
-            self, 
-            idx: int
-        ) -> Union[
-            Dict[Tensor, Dict], 
-            Tuple[Tensor, Dict, Dict, str]
-        ]:
+    def __getitem__(self, idx: int) -> Dict[str, Any]:
         img_path = os.path.join(self.img_dir, self.img_lables[idx]["name"])
-        image = decode_image(img_path)
+        image: Tensor = decode_image(img_path)
         labels = self.img_lables[idx]["labels"]
         attributes = self.img_lables[idx]["attributes"]
         timestamp = self.img_lables[idx]["timestamp"]
@@ -166,7 +160,7 @@ class Bdd100kDataset(ImageDataset):
 
     def __init__(
         self,
-        split: Union[Literal["train", "val", "test"]] = "train",
+        split: Literal["train", "val", "test"] = "train",
         use_original_categories: bool = True,
         use_extended_annotations: bool = True,
         **kwargs,
@@ -181,11 +175,14 @@ class Bdd100kDataset(ImageDataset):
             labels: List[Dict[str, Any]],
             attributes: Dict[str, Any],
             timestamp: str,
-        ) -> Tuple[
-            Tensor,
-            List[Tuple[ObjectDetectionResultI, Dict[str, Any], str]],
-            Dict[str, Any],
-            str,
+        ) -> Union[
+            Tuple[Tensor, List[ObjectDetectionResultI]],
+            Tuple[
+                Tensor,
+                List[Tuple[ObjectDetectionResultI, Dict[str, Any], str]],
+                Dict[str, Any],
+                str,
+            ],
         ]:
             results = []
 
@@ -231,9 +228,9 @@ class Bdd100kDataset(ImageDataset):
                 return (image, results)
 
         super().__init__(
-            annotations_file, 
-            img_dir, 
-            merge_transform=merge_transform, 
+            str(annotations_file),
+            str(img_dir),
+            merge_transform=merge_transform,
             use_extended_annotations=use_extended_annotations,
-            **kwargs
+            **kwargs,
         )

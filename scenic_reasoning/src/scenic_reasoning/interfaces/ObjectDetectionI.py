@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Iterator, List, Tuple, Union
+from typing import Dict, Iterator, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -37,7 +37,7 @@ class ObjectDetectionResultI:
         ],
         image_hw: Tuple[int, int],
         bbox_format: BBox_Format = BBox_Format.XYXY,
-        attributes: Dict = None,
+        attributes: Optional[Dict] = None,
     ):
         """
         Initialize ObjectDetectionResultI. If you are creating multiple
@@ -86,7 +86,7 @@ class ObjectDetectionResultI:
                     f"Tried to initialize DetectionResult with {bbox.shape[0]} many "
                     "bounding boxes but only a single score and class provided."
                 )
-            elif box.shape[1] == 6 or bbox.shape[1] == 7:
+            elif bbox.shape[1] == 6 or bbox.shape[1] == 7:
                 self._score = bbox[:, 4]
                 self._class = bbox[:, 5]
             elif bbox.shape[1] != 6 and bbox.shape[1] != 7:
@@ -199,8 +199,8 @@ class ObjectDetectionResultI:
     def get_center(self) -> torch.Tensor:
         return self._detectron2_boxes.get_centers()
 
-    def get_area(self) -> float:
-        return self._detectron2_boxes.area()[0]
+    def get_area(self) -> torch.Tensor:
+        return self._detectron2_boxes.area()
 
 
 class ObjectDetectionUtils:
@@ -223,143 +223,13 @@ class ObjectDetectionUtils:
         return pairwise_point_box_distance(points, boxes._detectron2_boxes)
 
     @staticmethod
-    def compute_metrics(
+    def compute_metrics_for_single_img(
         ground_truth: List[ObjectDetectionResultI],
         predictions: List[ObjectDetectionResultI],
         iou_threshold: float = 0.5,
         debug: bool = False,
-        image: Image.Image = None,
+        image: Optional[Image.Image] = None,
     ) -> Dict[str, float]:
-        # # Initialize variables
-        # ap_per_class = {}
-        # all_detections = defaultdict(list)
-        # all_annotations = defaultdict(list)
-
-        # # Collect annotations and detections per class
-        # for gt in ground_truth:
-        #     all_annotations[gt.label.lower()].append(gt)
-
-        # for pred in predictions:
-        #     all_detections[pred.label.lower()].append(pred)
-
-        # classes = set(all_annotations.keys()).union(set(all_detections.keys()))
-
-        # # For overall metrics
-        # total_true_positives = 0
-        # total_false_positives = 0
-        # total_false_negatives = 0
-
-        # for cls in classes:
-        #     cls_gt = all_annotations.get(cls, [])
-        #     cls_pred = all_detections.get(cls, [])
-
-        #     n_gt = len(cls_gt)
-        #     n_pred = len(cls_pred)
-
-        #     # No ground truth or predictions for this class
-        #     if n_gt == 0 and n_pred == 0:
-        #         ap_per_class[cls] = 0
-        #         continue
-        #     elif n_gt == 0:
-        #         # All predictions are false positives
-        #         total_false_positives += n_pred
-        #         ap_per_class[cls] = 0
-        #         continue
-        #     elif n_pred == 0:
-        #         # All ground truths are false negatives
-        #         total_false_negatives += n_gt
-        #         ap_per_class[cls] = 0
-        #         continue
-
-        #     # Extract tensors from your class
-        #     gt_boxes_tensor = torch.cat([gt._detectron2_boxes.tensor for gt in cls_gt], dim=0)  # Shape: [n_gt, 4]
-        #     pred_boxes_tensor = torch.cat([pred._detectron2_boxes.tensor for pred in cls_pred], dim=0)  # Shape: [n_pred, 4]
-        #     pred_scores = torch.tensor([pred.scores for pred in cls_pred])  # Shape: [n_pred]
-
-        #     # Sort predictions by confidence score
-        #     sorted_indices = torch.argsort(pred_scores, descending=True)
-        #     pred_boxes_tensor = pred_boxes_tensor[sorted_indices]
-        #     pred_scores = pred_scores[sorted_indices]
-
-        #     # Compute IoU matrix between all predictions and all ground truths
-        #     iou_matrix = pairwise_iou(
-        #         Detectron2Boxes(pred_boxes_tensor),
-        #         Detectron2Boxes(gt_boxes_tensor)
-        #     )  # Shape: [n_pred, n_gt]
-
-        #     # Initialize matches (1: matched, 0: unmatched)
-        #     matched_gt = torch.zeros(n_gt, dtype=torch.bool)
-
-        #     # True positives and false positives
-        #     TP = torch.zeros(n_pred)
-        #     FP = torch.zeros(n_pred)
-
-        #     # For each prediction, find the best matching ground truth
-        #     for pred_idx in range(n_pred):
-        #         # Get IoUs for this prediction with all ground truths
-        #         ious = iou_matrix[pred_idx]  # Shape: [n_gt]
-
-        #         # Set IoUs to zero for already matched ground truths
-        #         ious[matched_gt] = 0
-
-        #         # Find the maximum IoU and the corresponding ground truth index
-        #         max_iou, max_gt_idx = torch.max(ious, dim=0)
-
-        #         if max_iou >= iou_threshold:
-        #             TP[pred_idx] = 1
-        #             matched_gt[max_gt_idx] = True
-        #         else:
-        #             FP[pred_idx] = 1
-
-        #     # Compute cumulative true positives and false positives
-        #     cum_TP = torch.cumsum(TP, dim=0)
-        #     cum_FP = torch.cumsum(FP, dim=0)
-
-        #     # Compute precision and recall
-        #     precision = cum_TP / (cum_TP + cum_FP + 1e-16)
-        #     recall = cum_TP / (n_gt + 1e-16)
-
-        #     # Append sentinel values
-        #     mrec = torch.cat((torch.tensor([0.0]), recall, torch.tensor([1.0])))
-        #     mpre = torch.cat((torch.tensor([0.0]), precision, torch.tensor([0.0])))
-
-        #     # Compute the precision envelope
-        #     for i in range(mpre.numel() - 2, -1, -1):
-        #         mpre[i] = torch.max(mpre[i], mpre[i + 1])
-
-        #     # Integrate area under curve
-        #     idx = torch.where(mrec[1:] != mrec[:-1])[0]
-        #     ap = torch.sum((mrec[idx + 1] - mrec[idx]) * mpre[idx + 1]).item()
-
-        #     ap_per_class[cls] = ap
-
-        #     # Collect overall metrics
-        #     total_true_positives += TP.sum().item()
-        #     total_false_positives += FP.sum().item()
-        #     total_false_negatives += n_gt - TP.sum().item()
-
-        # # Compute mAP
-        # mAP = np.mean(list(ap_per_class.values())) if len(ap_per_class) > 0 else 0
-
-        # # Compute overall precision and recall
-        # total_precision_denominator = total_true_positives + total_false_positives + 1e-16
-        # total_recall_denominator = total_true_positives + total_false_negatives + 1e-16
-
-        # precision = total_true_positives / total_precision_denominator
-        # recall = total_true_positives / total_recall_denominator
-
-        # f1 = 2 * (precision * recall) / (precision + recall + 1e-16)
-
-        # return {
-        #     "true_positives": int(total_true_positives),
-        #     "false_positives": int(total_false_positives),
-        #     "false_negatives": int(total_false_negatives),
-        #     "precision": precision,
-        #     "recall": recall,
-        #     "f1": f1,
-        #     "ap_per_class": ap_per_class,
-        #     "mAP": mAP,
-        # }
         boxes = []
         scores = []
         classes = []
@@ -368,7 +238,6 @@ class ObjectDetectionUtils:
             scores.append(truth.score)  # score is a float or tensor
             classes.append(truth.cls)
 
-        # boxes = torch.stack(boxes) # shape: (num_boxes, 1, 4)
         boxes = torch.cat(boxes)  # shape: (num_boxes, 4)
         scores = (
             torch.tensor(scores) if isinstance(scores[0], float) else torch.cat(scores)
@@ -427,7 +296,7 @@ class ObjectDetectionModelI(ABC):
             str, Path, int, Image.Image, list, tuple, np.ndarray, torch.Tensor
         ],
         debug: bool = False,
-    ) -> List[ObjectDetectionResultI]:
+    ) -> List[List[Optional[ObjectDetectionResultI]]]:
         pass
 
     @abstractmethod
@@ -438,7 +307,7 @@ class ObjectDetectionModelI(ABC):
         ],
         debug: bool = False,
         **kwargs,
-    ) -> List[ObjectDetectionResultI]:
+    ) -> List[Optional[ObjectDetectionResultI]]:
         pass
 
     @abstractmethod
@@ -446,5 +315,9 @@ class ObjectDetectionModelI(ABC):
         self,
         video: Union[Iterator[Image.Image], List[Image.Image]],
         batch_size: int = 1,
-    ) -> Iterator[List[ObjectDetectionResultI]]:
+    ) -> Iterator[List[Optional[ObjectDetectionResultI]]]:
+        pass
+
+    @abstractmethod
+    def to(self, device: Union[str, torch.device]):
         pass
