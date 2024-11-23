@@ -9,23 +9,39 @@ from detectron2.structures import BitMasks
 from itertools import islice
 from typing import List, Iterator, Union
 
-from InstanceSegmentation import InstanceSegmentationResultI, Mask_Format  
+from scenic_reasoning.interfaces.InstanceSegmentationI import InstanceSegmentationResultI, Mask_Format  
 from scenic_reasoning.interfaces.ObjectDetectionI import ObjectDetectionResultI, BBox_Format 
 
-# changes are definitely needed, idk what yet
 
 class Detectron2InstanceSegmentation:
     def __init__(self, model_path: str, config_file: str):
         cfg = get_cfg()
-        cfg.merge_from_file(config_file)
+        #cfg.merge_from_file(config_file)
         cfg.MODEL.WEIGHTS = model_path
         cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.5
         cfg.MODEL.DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
         self.predictor = DefaultPredictor(cfg)
         self.metadata = MetadataCatalog.get(cfg.DATASETS.TRAIN[0])
 
-    def identify_for_image(self, image_path: str) -> List[InstanceSegmentationResultI]:
-        image = cv2.imread(image_path)
+    # new method for running the model for prediction
+    def predict(self, image_tensor: torch.Tensor):
+        image = image_tensor.permute(1, 2, 0).numpy()  # Convert from (C, H, W) to (H, W, C)
+        outputs = self.predictor(image)
+        instances = outputs["instances"]
+        results = []
+
+        for idx in range(len(instances)):
+            results.append({
+                "score": instances.scores[idx].item(),
+                "cls": instances.pred_classes[idx].item(),
+                "bbox": instances.pred_boxes[idx].tensor.numpy()[0],  # Convert bbox to array
+            })
+
+        return results
+    
+    def identify_for_tensor(self, image_tensor: torch.Tensor) -> List[InstanceSegmentationResultI]:
+        # Convert PyTorch tensor (C, H, W) to OpenCV format (H, W, C)
+        image = image_tensor.permute(1, 2, 0).numpy()
         height, width = image.shape[:2]
         outputs = self.predictor(image)
         instances = outputs["instances"]
@@ -40,7 +56,7 @@ class Detectron2InstanceSegmentation:
                 instance_id=idx,
                 mask=mask,
                 image_hw=(height, width),
-                mask_format=Mask_Format.BITMASK
+                mask_format=Mask_Format.BITMASK,
             )
             results.append(result)
 
