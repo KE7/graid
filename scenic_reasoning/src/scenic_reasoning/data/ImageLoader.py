@@ -20,19 +20,21 @@ class ImageDataset(Dataset):
         transform: Union[Callable, None] = None,
         target_transform: Union[Callable, None] = None,
         merge_transform: Union[Callable, None] = None,
+        use_extended_annotations: bool = False,
     ):
         self.img_lables = json.load(open(annotations_file))
         self.img_dir = img_dir
         self.transform = transform
         self.target_transform = target_transform
         self.merge_transform = merge_transform
+        self.use_extended_annotations = use_extended_annotations
 
     def __len__(self) -> int:
         return len(self.img_lables)
 
-    def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
+    def __getitem__(self, idx: int) -> Dict[str, Any]:
         img_path = os.path.join(self.img_dir, self.img_lables[idx]["name"])
-        image = decode_image(img_path)
+        image: Tensor = decode_image(img_path)
         labels = self.img_lables[idx]["labels"]
         attributes = self.img_lables[idx]["attributes"]
         timestamp = self.img_lables[idx]["timestamp"]
@@ -42,9 +44,18 @@ class ImageDataset(Dataset):
         if self.target_transform:
             labels = self.target_transform(labels)
         if self.merge_transform:
-            image, labels, attributes, timestamp = self.merge_transform(
-                image, labels, attributes, timestamp
-            )
+            if self.use_extended_annotations:
+                image, labels, attributes, timestamp = self.merge_transform(
+                    image, labels, attributes, timestamp
+                )
+            else:
+                image, labels = self.merge_transform(
+                    image, labels, attributes, timestamp
+                )
+                return {
+                    "image": image,
+                    "labels": labels,
+                }
 
         return {
             "image": image,
@@ -111,6 +122,21 @@ class Bdd100kDataset(ImageDataset):
         }
     """
 
+    _CATEGORIES_TO_COCO = {
+        "pedestrian": 0,  # in COCO there is no pedestrian so map to person
+        "person": 0,
+        "rider": 0,  # in COCO there is no rider so map to person
+        "car": 2,
+        "truck": 7,
+        "bus": 5,
+        "train": 6,
+        "motorcycle": 3,
+        "bicycle": 1,
+        "traffic light": 9,
+        "traffic sign": 11,  # in COCO there is no traffic sign. closest is a stop sign
+        "sidewalk": 0,  # in COCO there is no sidewalk so map to person
+    }
+
     _CATEGORIES = {
         "pedestrian": 0,
         "person": 1,
@@ -129,8 +155,15 @@ class Bdd100kDataset(ImageDataset):
     def category_to_cls(self, category: str) -> int:
         return self._CATEGORIES[category]
 
+    def category_to_coco_cls(self, category: str) -> int:
+        return self._CATEGORIES_TO_COCO[category]
+
     def __init__(
-        self, split: Union[Literal["train", "val", "test"]] = "train", **kwargs
+        self,
+        split: Literal["train", "val", "test"] = "train",
+        use_original_categories: bool = True,
+        use_extended_annotations: bool = True,
+        **kwargs,
     ):
 
         root_dir = project_root_dir() / "data" / "bdd100k"
@@ -142,39 +175,62 @@ class Bdd100kDataset(ImageDataset):
             labels: List[Dict[str, Any]],
             attributes: Dict[str, Any],
             timestamp: str,
-        ) -> Tuple[
-            Tensor,
-            List[Tuple[ObjectDetectionResultI, Dict[str, Any], str]],
-            Dict[str, Any],
-            str,
+        ) -> Union[
+            Tuple[Tensor, List[ObjectDetectionResultI]],
+            Tuple[
+                Tensor,
+                List[Tuple[ObjectDetectionResultI, Dict[str, Any], str]],
+                Dict[str, Any],
+                str,
+            ],
         ]:
             results = []
 
             for label in labels:
                 channels, height, width = image.shape
-                results.append(
-                    (
-                        ObjectDetectionResultI(
-                            score=1.0,
-                            cls=self.category_to_cls(label["category"]),
-                            label=label["category"],
-                            bbox=[
-                                label["box2d"]["x1"],
-                                label["box2d"]["y1"],
-                                label["box2d"]["x2"],
-                                label["box2d"]["y2"],
-                            ],
-                            image_hw=(height, width),
-                            bbox_format=BBox_Format.XYXY,
-                            attributes=label["attributes"],
-                        ),
-                        label["attributes"],
-                        timestamp,
-                    )
+                if use_original_categories:
+                    cls = self.category_to_cls(label["category"])
+                    res_label = label["category"]
+                else:
+                    cls = self.category_to_coco_cls(label["category"])
+                    # handle the case where exact category is not in COCO aka different names for people
+                    res_label = label["category"] if cls != 0 else "person"
+
+                odr = ObjectDetectionResultI(
+                    score=1.0,
+                    cls=cls,
+                    label=res_label,
+                    bbox=[
+                        label["box2d"]["x1"],
+                        label["box2d"]["y1"],
+                        label["box2d"]["x2"],
+                        label["box2d"]["y2"],
+                    ],
+                    image_hw=(height, width),
+                    bbox_format=BBox_Format.XYXY,
+                    attributes=label["attributes"],
                 )
 
-            return (image, results, attributes, timestamp)
+                if use_extended_annotations:
+                    results.append(
+                        (
+                            odr,
+                            label["attributes"],
+                            timestamp,
+                        )
+                    )
+                else:
+                    results.append(odr)
+
+            if use_extended_annotations:
+                return (image, results, attributes, timestamp)
+            else:
+                return (image, results)
 
         super().__init__(
-            annotations_file, img_dir, merge_transform=merge_transform, **kwargs
+            str(annotations_file),
+            str(img_dir),
+            merge_transform=merge_transform,
+            use_extended_annotations=use_extended_annotations,
+            **kwargs,
         )

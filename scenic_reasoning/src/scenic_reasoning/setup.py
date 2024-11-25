@@ -7,7 +7,7 @@ import subprocess
 import tempfile
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
-from typing import List
+from typing import List, Optional
 
 import requests
 from tqdm import tqdm
@@ -193,8 +193,6 @@ def _download_chunk(
             f"Expected {chunk_size} bytes, got {downloaded_chunk_size} bytes."
         )
 
-    return chunk_path
-
 
 def _merge_chunks(
     temp_dir: str, dest_path: str, num_chunks: int, file_size: int
@@ -219,7 +217,7 @@ def _download_file(url: str, dest_path: str, num_threads: int = 10) -> None:
     file_size = int(response.headers["Content-Length"])
 
     if os.path.exists(dest_path) and os.path.getsize(dest_path) == file_size:
-        return True
+        return
 
     chunk_size = (file_size + num_threads - 1) // num_threads
 
@@ -247,7 +245,7 @@ def _download_file(url: str, dest_path: str, num_threads: int = 10) -> None:
         _merge_chunks(temp_dir, dest_path, num_threads, file_size)
 
     print(f"Download completed: {dest_path}")
-    return True
+    return
 
 
 def _check_md5(file_path: str, expected_md5: str) -> bool:
@@ -290,7 +288,7 @@ def unzip_file(zip_path: str, extract_to: str) -> None:
         zip_ref.extractall(extract_to)
 
 
-def download_bdd(task: str = None, split: str = None) -> None:
+def download_bdd(task: Optional[str] = None, split: Optional[str] = None) -> None:
     if task is None or split is None:
         parser = argparse.ArgumentParser()
         parser.add_argument(
