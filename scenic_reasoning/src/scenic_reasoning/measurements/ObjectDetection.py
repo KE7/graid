@@ -51,7 +51,12 @@ class ObjectDetectionMeasurements:
         self.collate_fn = collate_fn
 
     def iter_measurements(
-        self, bbox_offset: int = 0, debug: bool = False, **kwargs
+        self, 
+        bbox_offset: int = 0, 
+        class_metrics: bool = False, 
+        extended_summary: bool = False,
+        debug: bool = False, 
+        **kwargs
     ) -> Iterator[Union[List[Dict], Tuple[List[Dict], List[Results]]]]:
         if self.collate_fn is not None:
             data_loader = DataLoader(
@@ -85,7 +90,12 @@ class ObjectDetectionMeasurements:
             for idx, (odrs, gt) in enumerate(
                 zip(prediction, y)
             ):  # odr = object detection result, gt = ground truth
-                measurements: dict = self._calculate_measurements(odrs, gt)
+                measurements: dict = self._calculate_measurements(
+                        odrs, 
+                        gt,
+                        class_metrics=class_metrics,
+                        extended_summary=extended_summary,
+                    )
                 results.append(measurements)
                 if debug:
                     im = self._show_debug_image(x[idx], gt, bbox_offset)
@@ -134,7 +144,8 @@ class ObjectDetectionMeasurements:
         self,
         odr: List[ObjectDetectionResultI],
         gt: List[ObjectDetectionResultI],
-        iou_threshold: float = 0.5,
+        class_metrics: bool,
+        extended_summary: bool,
     ) -> Dict:
         return ObjectDetectionUtils.compute_metrics_for_single_img(
             ground_truth=gt,
@@ -142,7 +153,8 @@ class ObjectDetectionMeasurements:
             #     res[0] for res in gt
             # ],  # BDD GT is a tuple of (ODR, attributes, timestamp)
             predictions=odr,
-            iou_threshold=iou_threshold,
+            class_metrics=class_metrics,
+            extended_summary=extended_summary,
         )
 
 

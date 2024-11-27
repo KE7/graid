@@ -226,7 +226,8 @@ class ObjectDetectionUtils:
     def compute_metrics_for_single_img(
         ground_truth: List[ObjectDetectionResultI],
         predictions: List[ObjectDetectionResultI],
-        iou_threshold: float = 0.5,
+        class_metrics: bool = False,
+        extended_summary: bool = False,
         debug: bool = False,
         image: Optional[Image.Image] = None,
     ) -> Dict[str, float]:
@@ -275,8 +276,8 @@ class ObjectDetectionUtils:
         ]
 
         metric = MeanAveragePrecision(
-            class_metrics=True,
-            extended_summary=True,
+            class_metrics=class_metrics,
+            extended_summary=extended_summary,
         )
 
         metric.update(targets, preds)
