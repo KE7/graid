@@ -10,6 +10,10 @@ from scenic_reasoning.utilities.common import project_root_dir
 from torch import Tensor
 from torch.utils.data import Dataset
 from torchvision.io import decode_image
+from torchvision import transforms
+import pandas as pd
+from PIL import Image
+import io
 
 
 class ImageDataset(Dataset):
@@ -33,11 +37,8 @@ class ImageDataset(Dataset):
         return len(self.img_labels)
 
     def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
-        try:
-            img_path = os.path.join(self.img_dir, self.img_labels[idx]["name"])
-            image = decode_image(img_path)
-        except Exception as err:
-            raise RuntimeError(f"Error: {img_path} failed to read, {err}")
+        img_path = os.path.join(self.img_dir, self.img_labels[idx]["name"])
+        image = decode_image(img_path)
         
         labels = self.img_labels[idx]["labels"]
         attributes = self.img_labels[idx]["attributes"]
@@ -65,7 +66,7 @@ class ImageDataset(Dataset):
             "image": image,
             "labels": labels,
             "attributes": attributes,
-            "timestamp": timestamp,
+            "timestamp": timestamp
         }
 
 
@@ -153,7 +154,7 @@ class Bdd100kDataset(ImageDataset):
         "bicycle": 8,
         "traffic light": 9,
         "traffic sign": 10,
-        "sidewalk": 11,
+        "sidewalk": 11
     }
 
     def category_to_cls(self, category: str) -> int:
@@ -409,12 +410,8 @@ class NuImagesDataset(ImageDataset):
         img_filename = self.img_labels[idx]["filename"]
         img_token = self.img_labels[idx]["token"]
         timestamp = self.img_labels[idx]["timestamp"]
-
-        try:
-            img_path = os.path.join(self.img_dir, img_filename)
-            image = decode_image(img_path)
-        except Exception as err:
-            raise RuntimeError(f"Error: {img_path} failed to read, {err}")
+        img_path = os.path.join(self.img_dir, img_filename)
+        image = decode_image(img_path)
         
         obj_labels = self.filter_by_token(self.obj_annotations, "sample_data_token", img_token)
         obj_attribute_tokens = []
@@ -436,4 +433,178 @@ class NuImagesDataset(ImageDataset):
             "attributes": attributes,
             "timestamp": timestamp,
         }
+ 
+class WaymoDataset(ImageDataset):
+    """
+    camera_image/{segment_context_name}.parquet
+    15 columns
+    Index(['key.segment_context_name', 'key.frame_timestamp_micros',
+       'key.camera_name', '[CameraImageComponent].image',
+       '[CameraImageComponent].pose.transform',
+       '[CameraImageComponent].velocity.linear_velocity.x',
+       '[CameraImageComponent].velocity.linear_velocity.y',
+       '[CameraImageComponent].velocity.linear_velocity.z',
+       '[CameraImageComponent].velocity.angular_velocity.x',
+       '[CameraImageComponent].velocity.angular_velocity.y',
+       '[CameraImageComponent].velocity.angular_velocity.z',
+       '[CameraImageComponent].pose_timestamp',
+       '[CameraImageComponent].rolling_shutter_params.shutter',
+       '[CameraImageComponent].rolling_shutter_params.camera_trigger_time',
+       '[CameraImageComponent].rolling_shutter_params.camera_readout_done_time'],
+      dtype='object')
+    (variable_size_rows, 15)
 
+    camera_box/{segment_context_name}.parquet
+    11 columns 
+    Index(['key.segment_context_name', 'key.frame_timestamp_micros',
+       'key.camera_name', 'key.camera_object_id',
+       '[CameraBoxComponent].box.center.x',
+       '[CameraBoxComponent].box.center.y', '[CameraBoxComponent].box.size.x',
+       '[CameraBoxComponent].box.size.y', '[CameraBoxComponent].type',
+       '[CameraBoxComponent].difficulty_level.detection',
+       '[CameraBoxComponent].difficulty_level.tracking'],
+      dtype='object')
+    (variable_size_rows, 11) 
+
+    """
+    _CATEGORIES = {
+        "TYPE_UNKNOWN": 0,
+        "TYPE_VEHICLE": 1,
+        "TYPE_PEDESTRIAN": 2,
+        "TYPE_SIGN": 3,
+        "TYPE_CYCLIST": 4
+    }
+
+    _CLS_TO_CATEGORIES = {
+        "0": "TYPE_UNKNOWN",
+        "1": "TYPE VEHICLE",
+        "2": "TYPE_PEDESTRIAN",
+        "3": "TYPE_SIGN",
+        "4": "TYPE_CYCLIST"
+    }
+
+    def category_to_cls(self, category: str) -> int:
+        return self._CATEGORIES[category]
+    
+    def cls_to_category(self, cls: int) -> str:
+        return self._CLS_TO_CATEGORIES[str(cls)]
+    
+    def convert_to_xyxy(center_x: int, center_y:int, width:int, height:int):
+        """Converts bounding box from center-width-height format to XYXY format.
+        Returns:
+            A tuple (x1, y1, x2, y2) representing the bounding box in XYXY format.
+        """
+        x1 = center_x - width / 2
+        y1 = center_y - height / 2
+        x2 = center_x + width / 2
+        y2 = center_y + height / 2
+        return x1, y1, x2, y2
+    
+    def __init__(self, split: Union[Literal["training", "validation", "testing"]] = "training", **kwargs):
+        root_dir = project_root_dir() / "data" / "waymo"
+        camera_img_dir = root_dir / f"{split}" / "camera_image"
+        camera_box_dir = root_dir / f"{split}" / "camera_box"
+        camera_image_files = [f for f in os.listdir(camera_img_dir) if f.endswith('.parquet')]
+        self.img_labels = []
+        #Iterate over each file and pair with corresponding camera_box file
+        for image_file in camera_image_files:
+            # Get the matching camera_box filename for the image
+            box_file = image_file.replace("camera_image", "camera_box")
+            print(f"Box file: {box_file}")
+
+            # Load the image data (camera image)
+            image_df = pd.read_parquet(os.path.join(camera_img_dir, image_file))
+
+            # Load the corresponding bounding box annotations
+            box_file_path = os.path.join(camera_box_dir, box_file)
+            box_data_df = pd.read_parquet(os.path.join(camera_box_dir, box_file))
+
+            # Merge the image box dataframe
+            merged_image_box_df = pd.merge(image_df, box_data_df, on=["key.segment_context_name", "key.frame_timestamp_micros"], how="inner")
+            merged_image_box_records = merged_image_box_df.to_dict("records")
+            self.img_labels.append(merged_image_box_records)
+
+        def merge_transform(
+            image: Tensor,
+            labels: List[Dict[str, Any]],
+            attributes: Dict[str, Any],
+            timestamp: str,
+        ) -> Tuple[
+            Tensor,
+            List[Tuple[ObjectDetectionResultI, Dict[str, Any], str]],
+            Dict[str, Any],
+            str,
+        ]:
+            results = []
+
+            obj_attributes = {}
+
+            for obj_label in labels:
+                _, height, width = image.shape
+                object_category_cls = obj_label["[CameraBoxComponent].type"]
+                box_center_x = obj_label["[CameraBoxComponent].box.center.x"]
+                box_center_y = obj_label["[CameraBoxComponent].box.center.y"]
+                box_width = obj_label["[CameraBoxComponent].box.size.x"]
+                box_height = obj_label["[CameraBoxComponent].box.size.y"]
+
+                box_x1,box_y1,box_x2,box_y2 = self.convert_to_xyxy(box_center_x, box_center_y, box_width, box_height)
+
+                results.append(
+                    (
+                        ObjectDetectionResultI(
+                            score=1.0,
+                            cls= object_category_cls,
+                            label=self.cls_to_category(object_category_cls),
+                            bbox=[
+                                box_x1,
+                                box_y1,
+                                box_x2,
+                                box_y2,
+                            ],
+                            image_hw=(height, width),
+                            bbox_format=BBox_Format.XYXY,
+                            attributes=obj_attributes,
+                        ),
+                        obj_attributes,
+                        timestamp,
+                    )
+                )
+
+            return (image, results, attributes, timestamp)
+        
+        # initialize "annotations_file" as the camera_box_dir path
+        super().__init__(
+            camera_box_dir, camera_img_dir, merge_transform=merge_transform, **kwargs
+        )
+    
+    def __len__(self) -> int:
+        return len(self.img_labels)
+    
+    def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
+        # take the first detected object of image for name and timestamp, they are the same
+        segment_context_name = self.img_labels[idx][0]["key.segment_context_name"]      
+        frame_timestamp_micros = self.img_labels[idx][0]["key.frame_timestamp_micros"]
+        img_bytes = self.img_labels[0]["[CameraImageComponent].image"]
+        attributes = {}   # May add more information as needed in future
+        timestamp = str(frame_timestamp_micros)
+        img_path = os.path.join(self.img_dir, segment_context_name)
+        image_from_PIL = Image.open(io.BytesIO(img_bytes))
+        transform = transforms.ToTensor()
+        image = transform(image_from_PIL)
+        obj_attribute_tokens = []
+        
+        if self.transform:
+            image = self.transform(image)
+        if self.target_transform:
+            labels = self.target_transform(labels)
+        if self.merge_transform:
+            image, labels, attributes, timestamp = self.merge_transform(
+                image, self.img_labels, obj_attribute_tokens, timestamp
+            )
+
+        return {
+            "image": image,
+            "labels": labels,
+            "attributes": attributes,
+            "timestamp": str(frame_timestamp_micros)
+        }
