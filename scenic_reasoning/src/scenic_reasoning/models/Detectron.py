@@ -1,18 +1,17 @@
-from typing import Iterator, List, Union
 from itertools import islice
+from typing import Iterator, List, Union
 
-import torch
-from PIL import Image
 import numpy as np
+from detectron2.config import get_cfg
 from detectron2.data import MetadataCatalog
 from detectron2.engine import DefaultPredictor
-from detectron2.config import get_cfg
-
+from PIL import Image
 from scenic_reasoning.interfaces.ObjectDetectionI import (
     BBox_Format,
     ObjectDetectionModelI,
     ObjectDetectionResultI,
 )
+
 
 class Detectron2Model(ObjectDetectionModelI):
     def __init__(self, config_file: str, weights_file: str, threshold: float = 0.5):
@@ -42,10 +41,10 @@ class Detectron2Model(ObjectDetectionModelI):
             image = np.array(image)
 
         predictions = self._predictor(image)
-    
+
         if len(predictions) == 0:
             return None
-        
+
         instances = predictions["instances"]
 
         formatted_results = []
@@ -83,7 +82,7 @@ class Detectron2Model(ObjectDetectionModelI):
             video_iterator = batch_iterator(video, batch_size)
 
         for batch in video_iterator:
-            if not batch: # End of iterator
+            if not batch:  # End of iterator
                 break
 
             batch_results = []

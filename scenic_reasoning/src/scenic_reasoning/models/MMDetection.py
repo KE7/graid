@@ -1,31 +1,37 @@
-from typing import Iterator, List, Union, Dict
 from itertools import islice
+from typing import Iterator, List, Optional, Union
 
-import torch
 import numpy as np
+import torch
+from mmdet.apis import inference_detector, init_detector
 from PIL import Image
-from mmdet.apis import init_detector, inference_detector
-
 from scenic_reasoning.interfaces.ObjectDetectionI import (
     BBox_Format,
     ObjectDetectionModelI,
     ObjectDetectionResultI,
 )
+from scenic_reasoning.utilities.common import get_default_device
 
 
 class MMDetection(ObjectDetectionModelI):
-    def __init__(self, config: str, checkpoint: str, device: str = 'cuda:0'):
+    def __init__(
+        self, config: str, checkpoint: str, device: Optional[str] = None
+    ) -> None:
+        if device is None:
+            device = get_default_device()
         self._model = init_detector(config, checkpoint, device=device)
 
-    def identify_for_image(self, image: Union[Image.Image, torch.Tensor], **kwargs) -> List[List[ObjectDetectionResultI]]:
+    def identify_for_image(
+        self, image: Union[Image.Image, torch.Tensor], **kwargs
+    ) -> List[List[ObjectDetectionResultI]]:
         """
         Run object detection on a single image.
-        
+
         Args:
             image: A PIL image or a tensor of shape (C, H, W).
-        
+
         Returns:
-            A list of list of ObjectDetectionResultI, where each inner list represents 
+            A list of list of ObjectDetectionResultI, where each inner list represents
             detections in a single image.
         """
         result = inference_detector(self._model, image)
@@ -43,9 +49,13 @@ class MMDetection(ObjectDetectionModelI):
                 odr = ObjectDetectionResultI(
                     score=float(scores[i]),
                     cls=int(labels[i]),
-                    label=str(labels[i]),  
-                    bbox=boxes[i].tolist(), 
-                    image_hw=image.size if isinstance(image, Image.Image) else image.shape[1:],
+                    label=str(labels[i]),
+                    bbox=boxes[i].tolist(),
+                    image_hw=(
+                        image.size
+                        if isinstance(image, Image.Image)
+                        else image.shape[1:]
+                    ),
                     bbox_format=BBox_Format.XYXY,
                     attributes=attributes,
                 )
@@ -55,7 +65,11 @@ class MMDetection(ObjectDetectionModelI):
 
         return formatted_results
 
-    def identify_for_video(self, video: Union[Iterator[Image.Image], List[Image.Image]], batch_size: int = 1) -> Iterator[List[List[ObjectDetectionResultI]]]:
+    def identify_for_video(
+        self,
+        video: Union[Iterator[Image.Image], List[Image.Image]],
+        batch_size: int = 1,
+    ) -> Iterator[List[List[ObjectDetectionResultI]]]:
         def batch_iterator(iterable, n):
             iterator = iter(iterable)
             return iter(lambda: list(islice(iterator, n)), [])
@@ -90,9 +104,13 @@ class MMDetection(ObjectDetectionModelI):
                         odr = ObjectDetectionResultI(
                             score=float(scores[i]),
                             cls=int(labels[i]),
-                            label=str(labels[i]),  
-                            bbox=boxes[i].tolist(), 
-                            image_hw=batch[0].size if isinstance(batch[0], Image.Image) else batch[0].shape[1:],
+                            label=str(labels[i]),
+                            bbox=boxes[i].tolist(),
+                            image_hw=(
+                                batch[0].size
+                                if isinstance(batch[0], Image.Image)
+                                else batch[0].shape[1:]
+                            ),
                             bbox_format=BBox_Format.XYXY,
                             attributes=attributes,
                         )
