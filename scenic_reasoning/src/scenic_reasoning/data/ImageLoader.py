@@ -10,6 +10,9 @@ from scenic_reasoning.utilities.common import project_root_dir
 from torch import Tensor
 from torch.utils.data import Dataset
 from torchvision.io import decode_image
+from torchvision.ops import masks_to_boxes
+from pycocotools import mask as coco_mask
+import numpy as np
 
 
 class ImageDataset(Dataset):
@@ -468,10 +471,13 @@ class Bdd10kDataset(ImageDataset):
 
             for label in labels:
                 channels, height, width = image.shape
-                polygons = []
+                # polygons = []
+                rles = []
                 for poly in label.get("poly2d", []):
-                    vertices = poly["vertices"]
-                    polygons.append(vertices)
+                    # vertices = poly["vertices"]
+                    # polygons.append(vertices)
+                    rle = self.polygons_to_rle(poly["vertices"], height, width)
+                    rles.append(rle)
 
                 results.append(
                     (
@@ -479,7 +485,8 @@ class Bdd10kDataset(ImageDataset):
                             score=1.0,
                             cls=self.category_to_cls(label["category"]),
                             label=label["category"],
-                            polygons=polygons,
+                            # polygons=polygons,
+                            rles = rles,
                             image_hw=(height, width),
                             attributes=label.get("attributes", {}),
                         ),
@@ -494,27 +501,47 @@ class Bdd10kDataset(ImageDataset):
             annotations_file, img_dir, merge_transform=merge_transform, **kwargs
         )
 
+        def polygons_to_rle(self, vertices: List[List[float]], height: int, width: int) -> Dict[str, Any]:
+            """
+            Converts a single polygon annotation into a COCO-style RLE mask.
+
+            Args:
+                vertices: List of vertex coordinates defining the polygon.
+                height: Image height.
+                width: Image width.
+
+            Returns:
+                A dictionary representing the RLE mask.
+            """
+            mask = np.zeros((height, width), dtype=np.uint8)
+            polygon = np.array(vertices, dtype=np.int32)
+            cv2.fillPoly(mask, [polygon], 1)  # Fill the polygon with 1s
+
+            # Convert the binary mask to RLE format
+            rle = coco_mask.encode(np.asfortranarray(mask))
+            return rle
+
         def polygons_to_mask(self, polygons: List[Dict[str, Any]], height: int, width: int) -> np.ndarray:
-        """
-        Converts polygon annotations to a bitmask.
+            """
+            Converts polygon annotations to a bitmask.
 
-        Args:
-            polygons: List of polygon annotations, each containing "vertices" and other attributes.
-            height: Height of the image.
-            width: Width of the image.
+            Args:
+                polygons: List of polygon annotations, each containing "vertices" and other attributes.
+                height: Height of the image.
+                width: Width of the image.
 
-        Returns:
-            Bitmask of shape (H, W).
+            Returns:
+                Bitmask of shape (H, W).
 
-        BDD10k Docs reference:
-        You can run the conversion from poly2d to masks/bitmasks by this command:
+            BDD10k Docs reference:
+            You can run the conversion from poly2d to masks/bitmasks by this command:
 
-        python3 -m bdd100k.label.to_mask -m sem_seg|drivable|lane_mark|ins_seg|pan_seg|seg_track \
-            -i ${in_path} -o ${out_path} [--nproc ${process_num}]
-        process_num: the number of processes used for the conversion. Default as 4.
-        """
-        mask = np.zeros((height, width), dtype=np.uint8)
-        for poly in polygons:
-            vertices = np.array(poly["vertices"], dtype=np.int32)
-            cv2.fillPoly(mask, [vertices], 1)  # Fill the polygon region with 1
-        return mask
+            python3 -m bdd100k.label.to_mask -m sem_seg|drivable|lane_mark|ins_seg|pan_seg|seg_track \
+                -i ${in_path} -o ${out_path} [--nproc ${process_num}]
+            process_num: the number of processes used for the conversion. Default as 4.
+            """
+            mask = np.zeros((height, width), dtype=np.uint8)
+            for poly in polygons:
+                vertices = np.array(poly["vertices"], dtype=np.int32)
+                cv2.fillPoly(mask, [vertices], 1)  # Fill the polygon region with 1
+            return mask
