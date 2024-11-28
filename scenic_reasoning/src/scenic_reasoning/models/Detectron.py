@@ -2,6 +2,8 @@ from itertools import islice
 from typing import Iterator, List, Union
 
 import numpy as np
+import torch
+from detectron2 import model_zoo
 from detectron2.config import get_cfg
 from detectron2.data import MetadataCatalog
 from detectron2.engine import DefaultPredictor
@@ -11,14 +13,16 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
     ObjectDetectionModelI,
     ObjectDetectionResultI,
 )
+from scenic_reasoning.utilities.common import get_default_device
 
 
 class Detectron2Model(ObjectDetectionModelI):
     def __init__(self, config_file: str, weights_file: str, threshold: float = 0.5):
         # Input Detectron2 config file and weights file
         cfg = get_cfg()
-        cfg.MODEL.WEIGHTS = weights_file
-        cfg.merge_from_file(config_file)
+        cfg.MODEL.DEVICE = str(get_default_device())
+        cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url(weights_file)
+        cfg.merge_from_file(model_zoo.get_config_file(config_file))
         cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = threshold
         self._predictor = DefaultPredictor(cfg)
         self._metadata = MetadataCatalog.get(cfg.DATASETS.TRAIN[0])
@@ -40,6 +44,13 @@ class Detectron2Model(ObjectDetectionModelI):
         if isinstance(image, Image.Image):
             image = np.array(image)
 
+        # TODO: Detectron2 predictor does not support batched inputs
+        #  so either we loop through the batch or we do the preprocessing steps
+        #  of the predictor ourselves and then call the model
+        #  I prefer the latter approach. Preprocessing steps are in the predictor:
+        #   - load the checkpoint
+        #   - take the image in BGR format and apply conversion defined by cfg.INPUT.FORMAT
+        #   - resize the image
         predictions = self._predictor(image)
 
         if len(predictions) == 0:
@@ -66,6 +77,11 @@ class Detectron2Model(ObjectDetectionModelI):
             formatted_results.append(odr)
 
         return formatted_results
+
+    def identify_for_image_as_tensor(
+        self, image, **kwargs
+    ) -> List[ObjectDetectionResultI]:
+        raise NotImplementedError
 
     def identify_for_video(
         self,
@@ -112,3 +128,8 @@ class Detectron2Model(ObjectDetectionModelI):
                 batch_results.append(per_frame_results)
 
             yield batch_results
+
+    def to(self, device: Union[str, torch.device]):
+        raise RuntimeError(
+            "Moving devices is an unsupported " "operation for the Detectron2 library"
+        )

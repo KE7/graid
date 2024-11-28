@@ -9,6 +9,7 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
     ObjectDetectionResultI,
     ObjectDetectionUtils,
 )
+from scenic_reasoning.models.Detectron import Detectron2Model
 from scenic_reasoning.models.UltralyticsYolo import Yolo
 from scenic_reasoning.utilities.common import get_default_device
 from torch.utils.data import DataLoader
@@ -80,6 +81,9 @@ class ObjectDetectionMeasurements:
                 # https://github.com/ultralytics/ultralytics/issues/9912
                 x = x[:, [2, 1, 0], ...]
                 prediction = self.model.identify_for_image(x, debug=debug, **kwargs)
+            elif isinstance(self.model, Detectron2Model):
+                # don't move devices because Detectron2 statically defines the device
+                prediction = self.model.identify_for_image(x)
             else:
                 self.model.to(device=get_default_device())
                 prediction = self.model.identify_for_image(x)
