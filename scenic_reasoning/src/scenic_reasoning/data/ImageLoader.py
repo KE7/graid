@@ -10,6 +10,9 @@ from scenic_reasoning.utilities.common import project_root_dir
 from torch import Tensor
 from torch.utils.data import Dataset
 from torchvision.io import decode_image
+from torchvision.ops import masks_to_boxes
+from pycocotools import mask as coco_mask
+import numpy as np
 
 
 class ImageDataset(Dataset):
@@ -21,10 +24,6 @@ class ImageDataset(Dataset):
         target_transform: Union[Callable, None] = None,
         merge_transform: Union[Callable, None] = None,
     ):
-        # hard coding the img label and img dir file paths for now
-        annotations_file = os.path.join(project_root_dir(), "data", "bdd100k", "labels", "det_20", "det_val.json")
-        img_dir = os.path.join(project_root_dir(), "data", "bdd100k", "images", "val")
-
         self.img_labels = json.load(open(annotations_file))
         self.img_dir = img_dir
         self.transform = transform
@@ -384,3 +383,165 @@ class NuImagesDataset(ImageDataset):
             "attributes": attributes,
             "timestamp": timestamp,
         }
+
+
+class Bdd10kDataset(ImageDataset):
+    """
+    BDD10K Dataset for Instance Segmentation
+    The structure of how BDD10k labels are stored.
+    Mapping =
+        {
+            "name": "file_name",
+            "labels": [
+                {
+                    "id": "id",
+                    "category": "catagory",
+                    "attributes": {"occluded": true or false, "truncated": true or false},
+                    "poly2d": [
+                        {
+                            "vertices": [[x1, y1], [x2, y2], ...],
+                            "types": "type",
+                            "closed": true or false
+                        }
+                    ]
+                },
+                ...
+            ],
+            "attributes": {"weather": "weather", "timeofday": "timeofday", "scene": "scene"}
+        }
+
+    Example:
+        {
+        "name": "example.jpg",
+        "labels": [
+            {
+                "id": "0",
+                "category": "car",
+                "attributes": {"occluded": false, "truncated": false},
+                "poly2d": [
+                    {
+                        "vertices": [[100, 200], [150, 250], [200, 300]],
+                        "types": "LLLL",
+                        "closed": true
+                    }
+                ]
+            }
+            ... for more labels
+        ],
+        "attributes": {"weather": "clear", "timeofday": "daytime", "scene": "highway"}
+        }
+    """
+    ## instanceSegmentation only has 8 classes
+    _CATEGORIES = {
+        "pedestrian": 0,
+        "person": 1,
+        "rider": 2,
+        "car": 3,
+        "truck": 4,
+        "bus": 5,
+        "train": 6,
+        "motorcycle": 7,
+        "bicycle": 8,
+    }
+
+    def category_to_cls(self, category: str) -> int:
+        """Map category to class ID."""
+        return self._CATEGORIES[category]
+
+    def __init__(
+        self, split: Union[Literal["train", "val", "test"]] = "train", **kwargs
+    ):
+        root_dir = project_root_dir() / "data" / "bdd10k"
+        img_dir = root_dir / "images" / split
+        annotations_file = root_dir / "labels" / f"bdd10k_labels_{split}.json"
+
+        def merge_transform(
+            image: Tensor,
+            labels: List[Dict[str, Any]],
+            attributes: Dict[str, Any],
+            timestamp: str,
+        ) -> Tuple[
+            Tensor,
+            List[Tuple[InstanceSegmentationResultI, Dict[str, Any], str]],
+            Dict[str, Any],
+            str,
+        ]:
+            """Transform image and labels for instance segmentation."""
+            results = []
+
+            for label in labels:
+                channels, height, width = image.shape
+                # polygons = []
+                rles = []
+                for poly in label.get("poly2d", []):
+                    # vertices = poly["vertices"]
+                    # polygons.append(vertices)
+                    rle = self.polygons_to_rle(poly["vertices"], height, width)
+                    rles.append(rle)
+
+                results.append(
+                    (
+                        InstanceSegmentationResultI(
+                            score=1.0,
+                            cls=self.category_to_cls(label["category"]),
+                            label=label["category"],
+                            # polygons=polygons,
+                            rles = rles,
+                            image_hw=(height, width),
+                            attributes=label.get("attributes", {}),
+                        ),
+                        label.get("attributes", {}),
+                        timestamp,
+                    )
+                )
+
+            return (image, results, attributes, timestamp)
+
+        super().__init__(
+            annotations_file, img_dir, merge_transform=merge_transform, **kwargs
+        )
+
+        def polygons_to_rle(self, vertices: List[List[float]], height: int, width: int) -> Dict[str, Any]:
+            """
+            Converts a single polygon annotation into a COCO-style RLE mask.
+
+            Args:
+                vertices: List of vertex coordinates defining the polygon.
+                height: Image height.
+                width: Image width.
+
+            Returns:
+                A dictionary representing the RLE mask.
+            """
+            mask = np.zeros((height, width), dtype=np.uint8)
+            polygon = np.array(vertices, dtype=np.int32)
+            cv2.fillPoly(mask, [polygon], 1)  # Fill the polygon with 1s
+
+            # Convert the binary mask to RLE format
+            rle = coco_mask.encode(np.asfortranarray(mask))
+            return rle
+
+        def polygons_to_mask(self, polygons: List[Dict[str, Any]], height: int, width: int) -> np.ndarray:
+            """
+            Converts polygon annotations to a bitmask.
+
+            Args:
+                polygons: List of polygon annotations, each containing "vertices" and other attributes.
+                height: Height of the image.
+                width: Width of the image.
+
+            Returns:
+                Bitmask of shape (H, W).
+
+            BDD10k Docs reference:
+            You can run the conversion from poly2d to masks/bitmasks by this command:
+
+            python3 -m bdd100k.label.to_mask -m sem_seg|drivable|lane_mark|ins_seg|pan_seg|seg_track \
+                -i ${in_path} -o ${out_path} [--nproc ${process_num}]
+            process_num: the number of processes used for the conversion. Default as 4.
+            """
+            mask = np.zeros((height, width), dtype=np.uint8)
+            for poly in polygons:
+                vertices = np.array(poly["vertices"], dtype=np.int32)
+                cv2.fillPoly(mask, [vertices], 1)  # Fill the polygon region with 1
+            return mask
