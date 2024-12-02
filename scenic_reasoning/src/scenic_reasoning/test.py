@@ -1,6 +1,8 @@
 import torch
 import cv2
 import os
+import subprocess
+import detectron2
 from detectron2.engine import DefaultPredictor
 from detectron2.config import get_cfg
 from detectron2.data import MetadataCatalog
@@ -8,10 +10,13 @@ from detectron2.data.datasets import register_coco_instances
 from detectron2.utils.visualizer import Visualizer
 from detectron2.structures import BitMasks, pairwise_iou
 from ultralytics import YOLO  # For YOLOv8 model inference
+import matplotlib.pyplot as plt
+import cv2
 
-# from InstanceSegmentationI import InstanceSegmentationResultI, Mask_Format
+
 from data import ImageLoader
 from interfaces import InstanceSegmentationI
+# from InstanceSegmentationI import InstanceSegmentationResultI, Mask_Format
 from models import Detectron
 from models.Detectron import Detectron2InstanceSegmentation
 
@@ -42,27 +47,35 @@ from models.Detectron import Detectron2InstanceSegmentation
 
 
 
-from scenic_reasoning.data.ImageLoader import Bdd100kDataset, NuImagesDataset
+from scenic_reasoning.data.ImageLoader import Bdd10kDataset, NuImagesDataset
 from torch.utils.data import DataLoader
 
-# take a sample image from Bdd100k and NuImages
-bdd_dataset = Bdd100kDataset(split="val")
-# nuimages_dataset = NuImagesDataset(split="train")
 
-dataloader = DataLoader(bdd_dataset, batch_size=1, shuffle=False)
-# testing if i can even access the bdd images and labels
-for batch in dataloader:
-        image = batch["image"][0]  # First image in the batch
-        ground_truth_labels = batch["labels"]  # Ground truth labels
-        print(ground_truth_labels, image)
-        break
-# stuck on config yaml file, how to generate/get it from 
-detectron2_segmenter = Detectron2InstanceSegmentation(model_path="/Users/owenlai/Documents/GitHub/scenic-reasoning/install/detectron2", config_file="config.yaml")
+# # take a sample image from Bdd100k and NuImages
+# bdd_dataset = Bdd10kDataset(split="val")
+# # nuimages_dataset = NuImagesDataset(split="train")
+
+# dataloader = DataLoader(bdd_dataset, batch_size=1, shuffle=False)
+# # testing if i can even access the bdd images and labels
+# for batch in dataloader:
+#         image = batch["image"][0]  # First image in the batch
+#         # ground_truth_labels = batch["labels"]  # Ground truth labels
+#         # print(ground_truth_labels, image)
+#         break
+
+
+detectron2_segmenter = Detectron2InstanceSegmentation()
+# detectron2_segmenter.visualize(image)
 #run_segmentation_pipeline(dataset, detectron2_segmenter)
-
 # yolov8_segmenter = # from UltralyticsYolo.py
 # #run_segmentation_pipeline(dataset, yolov8_segmenter)
 
+# testing for visualize method, would use code above for bdd10k but I'm not sure if you have the correct dataset for demoing
+url = "https://media.istockphoto.com/id/1145543931/video/nyc-manhattan-viii-synched-series-front-view-driving-studio-process-plate.jpg?s=480x480&k=20&c=2JgH-GCWt4Tsr-f7gdUKp0d5fMnnPsd1d4teJ9A-muE="
+filename = "input.jpg"
+subprocess.run(["wget", url, "-O", filename])
+im = cv2.imread("./input.jpg")
+detectron2_segmenter.visualize(im)
 
 def compare(segmenter, dataloader):
     results = []
@@ -95,15 +108,15 @@ def compare(segmenter, dataloader):
     return results
 
 
-# Perform the benchmarking on detectron2
-results = compare(detectron2_segmenter, dataloader)
+# # Perform the benchmarking on detectron2
+# results = compare(detectron2_segmenter, dataloader)
 
-# Summarize metrics
-mean_iou = sum(r["iou"] for r in results) / len(results)
-print(f"Mean IoU: {mean_iou:.2f}")
+# # Summarize metrics
+# mean_iou = sum(r["iou"] for r in results) / len(results)
+# print(f"Mean IoU: {mean_iou:.2f}")
 
-for idx, result in enumerate(results):
-    print(f"Sample {idx}:")
-    print(f"  Ground Truth: {result['gt_label']}")
-    print(f"  Prediction:  {result['pred_label']}")
-    print(f"  IoU:         {result['iou']:.2f}")
+# for idx, result in enumerate(results):
+#     print(f"Sample {idx}:")
+#     print(f"  Ground Truth: {result['gt_label']}")
+#     print(f"  Prediction:  {result['pred_label']}")
+#     print(f"  IoU:         {result['iou']:.2f}")
