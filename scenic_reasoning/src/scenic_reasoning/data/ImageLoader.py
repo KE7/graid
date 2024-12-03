@@ -350,28 +350,24 @@ class NuImagesDataset(ImageDataset):
         return filtered_list
 
     def __init__(
-        self, split: Union[Literal["train", "val", "test"]] = "train", **kwargs
+        self, 
+        dataset: Union[Literal["all", "mini"]] = "mini",
+        split: Union[Literal["train", "val", "test"]] = "train", 
+        **kwargs
     ):
         root_dir = project_root_dir() / "data" / "nuimages"
-        img_dir = root_dir / "nuimages-v1.0-all-samples"
-        obj_annotations_file = (
-            root_dir
-            / "nuimages-v1.0-all-metadata"
-            / f"v1.0-{split}"
-            / "object_ann.json"
-        )
-        categories_file = (
-            root_dir / "nuimages-v1.0-all-metadata" / f"v1.0-{split}" / "category.json"
-        )
-        sample_data_labels_file = (
-            root_dir
-            / "nuimages-v1.0-all-metadata"
-            / f"v1.0-{split}"
-            / "sample_data.json"
-        )
-        attributes_file = (
-            root_dir / "nuimages-v1.0-all-metadata" / f"v1.0-{split}" / "attribute.json"
-        )
+        
+        if dataset == "all":
+            img_dir = root_dir / "all"
+            metadata_dir = root_dir / "all" / f"v1.0-{split}"
+        else:
+            img_dir = root_dir / "mini"
+            metadata_dir = root_dir / "mini" / "v1.0-mini"
+        
+        obj_annotations_file = metadata_dir / "object_ann.json"
+        categories_file = metadata_dir / "category.json"
+        sample_data_labels_file = metadata_dir / "sample_data.json"
+        attributes_file = metadata_dir / "attribute.json"
 
         self.sample_data_labels = json.load(open(sample_data_labels_file))
         self.attribute_labels = json.load(open(attributes_file))
@@ -398,16 +394,25 @@ class NuImagesDataset(ImageDataset):
                     self.category_labels, "token", obj_label["category_token"]
                 )
                 object_category_name = ""
-                if len(object_category) == 0:
+                if len(object_category_obj) == 0:
                     object_category = "Unknown"
                 else:
                     object_category = object_category_obj[0][
                         "name"
                     ]  # Take the first object category
-                if len(attributes) > 0:
-                    obj_attributes = self.attributes_labels[
-                        attributes[0]
-                    ]  # Take the first attribute token
+                if len(obj_label["attribute_tokens"]) > 0:
+                    for attribute_token in obj_label["attribute_tokens"]:
+                        attribute_obj = self.filter_by_token(
+                            self.attribute_labels, "token", attribute_token
+                        )
+                        if len(attribute_obj) == 0:
+                            obj_attributes[attribute_token] = "Unknown"
+                        else:
+                            obj_attributes = dict(
+                                [
+                                    (str(i), attr_obj) for i, attr_obj in enumerate(attribute_obj)
+                                ]
+                            )
 
                 results.append(
                     (

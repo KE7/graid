@@ -29,6 +29,7 @@ clean_detectron2 = "scenic_reasoning.setup:clean_detectron2"
 clean_mmdetection = "scenic_reasoning.setup:clean_mmdetection"
 download_nuscenes = "scenic_reasoning.setup:download_nuscenes"
 download_bdd = "scenic_reasoning.setup:download_bdd"
+download_nuimages = "scenic_reasoning.setup:download_nuimages"
 
 
 [tool.poetry.group.dev.dependencies]
