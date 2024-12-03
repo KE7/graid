@@ -258,7 +258,9 @@ class ObjectDetectionUtils:
             pred_boxes.append(pred.as_xyxy())
             pred_scores.append(pred.score)  # score is a float or tensor
             pred_classes.append(pred.cls)
-
+        
+        if not pred_boxes:
+            raise ValueError("Pred_boxes is empty; no predictions were made for this image")
         pred_boxes = torch.cat(pred_boxes)
         pred_scores = (
             torch.tensor(pred_scores)
