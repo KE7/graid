@@ -441,17 +441,22 @@ def download_nuimages(split: Optional[str] = None) -> None:
 
         # download all in parallel
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            futures = [executor.submit(_download_file, location, location.split("/")[-1]) for location in locations]
+            futures = [
+                executor.submit(_download_file, location, location.split("/")[-1])
+                for location in locations
+            ]
             for future in concurrent.futures.as_completed(futures):
                 res = future.result()
                 if not res:
                     raise RuntimeError("Failed to download file.")
 
         subprocess.run(["mkdir", "-p", "data/nuimages/all"])
-        
-        # extract all 
+
+        # extract all
         for location in locations:
-            subprocess.run(["tar", "-xf", location.split("/")[-1], "-C", "data/nuimages/all"])
+            subprocess.run(
+                ["tar", "-xf", location.split("/")[-1], "-C", "data/nuimages/all"]
+            )
 
         # remove all downloaded files
         # for location in locations:
@@ -462,10 +467,12 @@ def download_nuimages(split: Optional[str] = None) -> None:
         if not os.path.exists("nuimages-v1.0-mini.tgz"):
             if not subprocess.run(["wget", location]).returncode == 0:
                 raise OSError("wget is not installed on your system.")
-        
+
         subprocess.run(["mkdir", "-p", "data/nuimages/mini"])
 
-        subprocess.run(["tar", "-xf", "nuimages-v1.0-mini.tgz", "-C", "data/nuimages/mini"])
+        subprocess.run(
+            ["tar", "-xf", "nuimages-v1.0-mini.tgz", "-C", "data/nuimages/mini"]
+        )
 
         # subprocess.run(["rm", "nuimages-v1.0-mini.tgz"])
 

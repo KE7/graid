@@ -350,20 +350,20 @@ class NuImagesDataset(ImageDataset):
         return filtered_list
 
     def __init__(
-        self, 
+        self,
         dataset: Union[Literal["all", "mini"]] = "mini",
-        split: Union[Literal["train", "val", "test"]] = "train", 
-        **kwargs
+        split: Union[Literal["train", "val", "test"]] = "train",
+        **kwargs,
     ):
         root_dir = project_root_dir() / "data" / "nuimages"
-        
+
         if dataset == "all":
             img_dir = root_dir / "all"
             metadata_dir = root_dir / "all" / f"v1.0-{split}"
         else:
             img_dir = root_dir / "mini"
             metadata_dir = root_dir / "mini" / "v1.0-mini"
-        
+
         obj_annotations_file = metadata_dir / "object_ann.json"
         categories_file = metadata_dir / "category.json"
         sample_data_labels_file = metadata_dir / "sample_data.json"
@@ -410,7 +410,8 @@ class NuImagesDataset(ImageDataset):
                         else:
                             obj_attributes = dict(
                                 [
-                                    (str(i), attr_obj) for i, attr_obj in enumerate(attribute_obj)
+                                    (str(i), attr_obj)
+                                    for i, attr_obj in enumerate(attribute_obj)
                                 ]
                             )
 
