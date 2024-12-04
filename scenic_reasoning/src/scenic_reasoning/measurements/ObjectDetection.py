@@ -1,5 +1,6 @@
 import tempfile
-from typing import Dict, Iterator, List, Tuple, Union
+from itertools import islice
+from typing import Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import torch
 from scenic_reasoning.data.ImageLoader import Bdd100kDataset, ImageDataset
@@ -32,7 +33,7 @@ class ObjectDetectionMeasurements:
         model: ObjectDetectionModelI,
         dataset: ImageDataset,
         batch_size: int = 1,
-        collate_fn: callable = None,
+        collate_fn: Optional[Callable] = None,
     ) -> None:
         """
         Initialize the ObjectDetectionMeasurements object.
@@ -50,7 +51,12 @@ class ObjectDetectionMeasurements:
         self.collate_fn = collate_fn
 
     def iter_measurements(
-        self, bbox_offset: int = 0, debug: bool = False, **kwargs
+        self, 
+        bbox_offset: int = 0, 
+        class_metrics: bool = False, 
+        extended_summary: bool = False,
+        debug: bool = False, 
+        **kwargs
     ) -> Iterator[Union[List[Dict], Tuple[List[Dict], List[Results]]]]:
         if self.collate_fn is not None:
             data_loader = DataLoader(
@@ -70,6 +76,9 @@ class ObjectDetectionMeasurements:
 
             x = x.to(device=get_default_device())
             if isinstance(self.model, Yolo):
+                # Convert RGB to BGR because Ultralytics YOLO expects BGR
+                # https://github.com/ultralytics/ultralytics/issues/9912
+                x = x[:, [2, 1, 0], ...]
                 prediction = self.model.identify_for_image(x, debug=debug, **kwargs)
             else:
                 self.model.to(device=get_default_device())
@@ -81,7 +90,12 @@ class ObjectDetectionMeasurements:
             for idx, (odrs, gt) in enumerate(
                 zip(prediction, y)
             ):  # odr = object detection result, gt = ground truth
-                measurements: dict = self._calculate_measurements(odrs, gt)
+                measurements: dict = self._calculate_measurements(
+                        odrs, 
+                        gt,
+                        class_metrics=class_metrics,
+                        extended_summary=extended_summary,
+                    )
                 results.append(measurements)
                 if debug:
                     im = self._show_debug_image(x[idx], gt, bbox_offset)
@@ -92,9 +106,6 @@ class ObjectDetectionMeasurements:
             else:
                 yield results
 
-        data_loader.close()
-        self.model.to(device="cpu")
-
     def _show_debug_image(
         self,
         image: torch.Tensor,
@@ -104,17 +115,20 @@ class ObjectDetectionMeasurements:
         names = {}
         boxes = []
         for ground_truth in gt:
-            cls = ground_truth[0].cls
-            label = ground_truth[0].label
+            cls = ground_truth.cls
+            label = ground_truth.label
             names[cls] = label
-            box = ground_truth[0].as_ultra_box.xyxy.tolist()[0]
+            box = ground_truth.as_ultra_box.xyxy.tolist()[0]
+            # box = ground_truth[0].as_ultra_box.xyxy.tolist()[
+            #     0
+            # ]  # TODO: fix this hack. BDD GT is a tuple of (ODR, attributes, timestamp) but we can preprocess and drop the attributes and timestamp
             box[1] += bbox_offset
             box[3] += bbox_offset
-            box += [ground_truth[0].scores, ground_truth[0].cls]
+            # box += [ground_truth[0].score, ground_truth[0].cls]
+            box += [ground_truth.score, ground_truth.cls]
             boxes.append(torch.tensor(box))
 
         boxes = torch.stack(boxes)
-        print("Boxes has shape: ", boxes.shape)
 
         im = Results(
             orig_img=image.unsqueeze(0),  # Add batch dimension
@@ -129,23 +143,24 @@ class ObjectDetectionMeasurements:
     def _calculate_measurements(
         self,
         odr: List[ObjectDetectionResultI],
-        gt: List[List[ObjectDetectionResultI]],
-        iou_threshold: float = 0.5,
-    ) -> List[Dict]:
-        return ObjectDetectionUtils.compute_metrics(
-            ground_truth=[
-                res[0] for res in gt
-            ],  # BDD GT is a tuple of (ODR, attributes, timestamp)
+        gt: List[ObjectDetectionResultI],
+        class_metrics: bool,
+        extended_summary: bool,
+    ) -> Dict:
+        return ObjectDetectionUtils.compute_metrics_for_single_img(
+            ground_truth=gt,
+            # ground_truth=[  # TODO: this should be done by the caller all the way up
+            #     res[0] for res in gt
+            # ],  # BDD GT is a tuple of (ODR, attributes, timestamp)
             predictions=odr,
-            iou_threshold=iou_threshold,
+            class_metrics=class_metrics,
+            extended_summary=extended_summary,
         )
-
 
 
 # TODO: delete this code and replace with metrics computed over the entire dataset
 
 # 768 - 720 = 48 so we need to shift bounding boxes by 48/2 = 24 pixels in the y direction
-
 # shape_transform = LetterBox(new_shape=(768, 1280))
 
 
@@ -165,18 +180,25 @@ class ObjectDetectionMeasurements:
 # bdd = Bdd100kDataset(
 #     split="val", transform=transform_image_for_yolo
 # )  # YOLO requires images to be 640x640 but BDD100K images are 720x1280
-# https://docs.ultralytics.com/models/yolov5/#performance-metrics
-# model = Yolo(model="yolov5x6u.pt") # v5 can handle 1280 while v8 can handle 640. makes no sense ><
-# measurements = ObjectDetectionMeasurements(model, bdd, batch_size=2, collate_fn=lambda x: x) # hacky way to avoid RuntimeError: each element in list of batch should be of equal size
+# # https://docs.ultralytics.com/models/yolov5/#performance-metrics
+# model = Yolo(
+#     model="yolov5x6u.pt"
+# )  # v5 can handle 1280 while v8 can handle 640. makes no sense ><
+# measurements = ObjectDetectionMeasurements(
+#     model, bdd, batch_size=1, collate_fn=lambda x: x
+# )  # hacky way to avoid RuntimeError: each element in list of batch should be of equal size
 
 # # WARNING ⚠️ imgsz=[720, 1280] must be multiple of max stride 64, updating to [768, 1280]
 # from pprint import pprint
-# for results in islice(measurements.iter_measurements(
+
+# for results in islice(
+#     measurements.iter_measurements(
 #         device=get_default_device(),
 #         imgsz=[768, 1280],
 #         bbox_offset=24,
 #         debug=True,
 #         conf=0.1,
-#         ),
-#     3):
+#     ),
+#     1,
+# ):
 #     pprint(results)

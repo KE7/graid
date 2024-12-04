@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
+from collections import defaultdict
 from enum import Enum
-from typing import Dict, Iterator, List, Tuple, Union
+from pathlib import Path
+from typing import Dict, Iterator, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -11,6 +13,7 @@ from detectron2.structures.boxes import (
     pairwise_point_box_distance,
 )
 from PIL import Image
+from torchmetrics.detection.mean_ap import MeanAveragePrecision
 from ultralytics.engine.results import Boxes as UltralyticsBoxes
 
 
@@ -34,7 +37,7 @@ class ObjectDetectionResultI:
         ],
         image_hw: Tuple[int, int],
         bbox_format: BBox_Format = BBox_Format.XYXY,
-        attributes: Dict = None,
+        attributes: Optional[Dict] = None,
     ):
         """
         Initialize ObjectDetectionResultI. If you are creating multiple
@@ -56,7 +59,7 @@ class ObjectDetectionResultI:
             bbox_format (BBox_Format, optional):
                 format of the bounding box. Defaults to BBox_Format.XYXY.
         """
-        self._scores = score
+        self._score = score
         self._class = cls
         self._label = label
         self._attributes = attributes
@@ -83,6 +86,9 @@ class ObjectDetectionResultI:
                     f"Tried to initialize DetectionResult with {bbox.shape[0]} many "
                     "bounding boxes but only a single score and class provided."
                 )
+            elif bbox.shape[1] == 6 or bbox.shape[1] == 7:
+                self._score = bbox[:, 4]
+                self._class = bbox[:, 5]
             elif bbox.shape[1] != 6 and bbox.shape[1] != 7:
                 raise ValueError(
                     f"{bbox.shape[1]} not supported for initializing DetectionResult"
@@ -126,20 +132,56 @@ class ObjectDetectionResultI:
     def as_xywhn(self) -> torch.Tensor:
         return self._ultra_boxes.xywhn
 
+    def _check_self_consistency(self):
+        # if the scores are a float, then the class and label should be too
+        # and the bbox should have shape (4,)
+        if isinstance(self._score, float):
+            assert isinstance(
+                self._class, int
+            ), "Single instance detection result does not have a single int class"
+            assert isinstance(
+                self._label, str
+            ), "Single instance detection result does not have a single string label"
+            assert self._ultra_boxes.shape == (
+                1,
+                6,
+            ), "Single instance detection result does not have a single bounding box"
+        elif isinstance(self._score, torch.Tensor):
+            assert isinstance(
+                self._class, torch.Tensor
+            ), "Tensor detection result does not have a tensor class"
+            assert isinstance(
+                self._label, torch.Tensor
+            ), "Tensor detection result does not have a tensor label"
+            assert self._ultra_boxes.xyxy.shape == (
+                self._score.shape[0],
+                6,
+            ), "Tensor detection result does not have a tensor bounding box in the correct Utralytics format"
+            assert (
+                self._class.shape == self._score.shape == self._label.shape
+            ), "Tensor detection result does not have matching sizes for scores, classes, and labels"
+            assert (
+                self._ultra_boxes.xyxy.shape[0] == self._score.shape[0]
+            ), "Tensor detection result does not have the same number of bounding boxes as scores, classes, and labels"
+
     @property
-    def scores(self) -> Union[float, torch.Tensor]:
-        return self._scores
+    def score(self) -> Union[float, torch.Tensor]:
+        self._check_self_consistency()
+        return self._score
 
     @property
     def label(self) -> Union[str, torch.Tensor]:
+        self._check_self_consistency()
         return self._label
 
     @property
     def cls(self) -> Union[int, torch.Tensor]:
+        self._check_self_consistency()
         return self._class
 
     @property
     def as_ultra_box(self) -> UltralyticsBoxes:
+        self._check_self_consistency()
         return self._ultra_boxes
 
     @property
@@ -157,8 +199,8 @@ class ObjectDetectionResultI:
     def get_center(self) -> torch.Tensor:
         return self._detectron2_boxes.get_centers()
 
-    def get_area(self) -> float:
-        return self._detectron2_boxes.area()[0]
+    def get_area(self) -> torch.Tensor:
+        return self._detectron2_boxes.area()
 
 
 class ObjectDetectionUtils:
@@ -181,121 +223,66 @@ class ObjectDetectionUtils:
         return pairwise_point_box_distance(points, boxes._detectron2_boxes)
 
     @staticmethod
-    def compute_metrics(
+    def compute_metrics_for_single_img(
         ground_truth: List[ObjectDetectionResultI],
         predictions: List[ObjectDetectionResultI],
-        iou_threshold: float = 0.5,
+        class_metrics: bool = False,
+        extended_summary: bool = False,
         debug: bool = False,
-        image: Image.Image = None,
+        image: Optional[Image.Image] = None,
     ) -> Dict[str, float]:
-        true_positives = 0
-        false_positives = 0
-        false_negatives = 0
+        boxes = []
+        scores = []
+        classes = []
+        for truth in ground_truth:
+            boxes.append(truth.as_xyxy())
+            scores.append(truth.score)  # score is a float or tensor
+            classes.append(truth.cls)
 
-        if len(ground_truth) == 0 or len(predictions) == 0:
-            return {
-                "true_positives": true_positives,
-                "false_positives": false_positives,
-                "false_negatives": false_negatives,
-                "precision": 0,
-                "recall": 0,
-                "f1": 0,
-            }
-
-        gt_boxes = Detectron2Boxes(
-            torch.stack(
-                [gt._detectron2_boxes.tensor for gt in ground_truth], dim=0
-            ).squeeze(1)
+        boxes = torch.cat(boxes)  # shape: (num_boxes, 4)
+        scores = (
+            torch.tensor(scores) if isinstance(scores[0], float) else torch.cat(scores)
         )
-        pred_boxes = Detectron2Boxes(
-            torch.stack(
-                [pred._detectron2_boxes.tensor for pred in predictions], dim=0
-            ).squeeze(1)
+        classes = (
+            torch.tensor(classes) if isinstance(classes[0], int) else torch.cat(classes)
         )
 
-        # Given two lists of boxes of size N and M, compute the IoU
-        # (intersection over union) between **all** N x M pairs of boxes.
-        ious = pairwise_iou(gt_boxes, pred_boxes)  # Shape: (N, M)
+        targets: List[Dict[str, torch.Tensor]] = [
+            dict(boxes=boxes.squeeze(1), labels=classes, scores=scores)
+        ]
 
-        # Find best matching predicted box for each ground truth box
-        max_ious_per_gt = torch.max(ious, axis=1)  # Shape: (N,)
+        pred_boxes = []
+        pred_scores = []
+        pred_classes = []
+        for pred in predictions:
+            pred_boxes.append(pred.as_xyxy())
+            pred_scores.append(pred.score)  # score is a float or tensor
+            pred_classes.append(pred.cls)
 
-        # Find best matching ground truth box for each predicted box
-        max_ious_per_pred = torch.max(ious, axis=0)  # Shape: (M,)
+        pred_boxes = torch.cat(pred_boxes)
+        pred_scores = (
+            torch.tensor(pred_scores)
+            if isinstance(pred_scores[0], float)
+            else torch.cat(pred_scores)
+        )
+        pred_classes = (
+            torch.tensor(pred_classes)
+            if isinstance(pred_classes[0], int)
+            else torch.cat(pred_classes)
+        )
 
-        # True positives: ground truth boxes matched with predictions above threshold
-        true_positives = torch.sum(max_ious_per_gt.values >= iou_threshold)
+        preds: List[Dict[str, torch.Tensor]] = [
+            dict(boxes=pred_boxes, labels=pred_classes, scores=pred_scores)
+        ]
 
-        # False positives are predicted boxes that were not matched
-        false_positives = torch.sum(max_ious_per_pred.values < iou_threshold)
+        metric = MeanAveragePrecision(
+            class_metrics=class_metrics,
+            extended_summary=extended_summary,
+        )
 
-        # False negatives are ground truth boxes that were not matched
-        false_negatives = torch.sum(max_ious_per_gt.values < iou_threshold)
+        metric.update(targets, preds)
 
-        # Calculate precision and recall
-        precision = true_positives / (true_positives + false_positives)
-        recall = true_positives / (true_positives + false_negatives)
-
-        # Calculate AP per class
-        ground_truth_classes = set([gt.label.lower() for gt in ground_truth])
-        predictions_classes = set([pred.label.lower() for pred in predictions])
-        classes = ground_truth_classes.union(predictions_classes)
-        ap_per_class = {}
-        for cls in classes:
-            cls_gt = [gt for gt in ground_truth if gt.label.lower() == cls]
-            cls_pred = [pred for pred in predictions if pred.label.lower() == cls]
-
-            if len(cls_gt) == 0 or len(cls_pred) == 0:
-                ap_per_class[cls] = 0
-                continue
-
-            cls_gt_boxes = Detectron2Boxes(
-                torch.stack(
-                    [gt._detectron2_boxes.tensor for gt in cls_gt], dim=0
-                ).squeeze(1)
-            )
-            cls_pred_boxes = Detectron2Boxes(
-                torch.stack(
-                    [pred._detectron2_boxes.tensor for pred in cls_pred], dim=0
-                ).squeeze(1)
-            )
-
-            ious = pairwise_iou(cls_gt_boxes, cls_pred_boxes)
-            max_ious_per_gt = torch.max(ious, axis=1)
-            max_ious_per_pred = torch.max(ious, axis=0)
-
-            true_positives = torch.sum(max_ious_per_gt.values >= iou_threshold).item()
-            false_positives = torch.sum(max_ious_per_pred.values < iou_threshold).item()
-            false_negatives = torch.sum(max_ious_per_gt.values < iou_threshold).item()
-
-            precision = true_positives / (true_positives + false_positives)
-            recall = true_positives / (true_positives + false_negatives)
-
-            denominator = precision + recall
-            if denominator == 0:
-                ap_per_class[cls] = 0
-            else:
-                ap_per_class[cls] = 2 * (precision * recall) / denominator
-
-        # Calculate mAP
-        mAP = np.mean(list(ap_per_class.values()))
-
-        f1_denominator = precision + recall
-        if f1_denominator == 0:
-            f1 = 0
-        else:
-            f1 = 2 * (precision * recall) / f1_denominator
-
-        return {
-            "true_positives": true_positives,
-            "false_positives": false_positives,
-            "false_negatives": false_negatives,
-            "precision": precision,
-            "recall": recall,
-            "f1": f1,
-            "ap_per_class": ap_per_class,
-            "mAP": mAP,
-        }
+        return metric.compute()
 
 
 class ObjectDetectionModelI(ABC):
@@ -305,8 +292,23 @@ class ObjectDetectionModelI(ABC):
 
     @abstractmethod
     def identify_for_image(
-        self, image: Union[Image.Image, torch.Tensor, List[torch.Tensor]]
-    ) -> List[ObjectDetectionResultI]:
+        self,
+        image: Union[
+            str, Path, int, Image.Image, list, tuple, np.ndarray, torch.Tensor
+        ],
+        debug: bool = False,
+    ) -> List[List[Optional[ObjectDetectionResultI]]]:
+        pass
+
+    @abstractmethod
+    def identify_for_image_as_tensor(
+        self,
+        image: Union[
+            str, Path, int, Image.Image, list, tuple, np.ndarray, torch.Tensor
+        ],
+        debug: bool = False,
+        **kwargs,
+    ) -> List[Optional[ObjectDetectionResultI]]:
         pass
 
     @abstractmethod
@@ -314,5 +316,9 @@ class ObjectDetectionModelI(ABC):
         self,
         video: Union[Iterator[Image.Image], List[Image.Image]],
         batch_size: int = 1,
-    ) -> Iterator[List[ObjectDetectionResultI]]:
+    ) -> Iterator[List[Optional[ObjectDetectionResultI]]]:
+        pass
+
+    @abstractmethod
+    def to(self, device: Union[str, torch.device]):
         pass
