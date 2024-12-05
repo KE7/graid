@@ -538,9 +538,10 @@ class WaymoDataset(ImageDataset):
     def __init__(
         self,
         split: Union[Literal["training", "validation", "testing"]] = "training",
+        waymo_subdir: str = "waymo",
         **kwargs,
     ):
-        root_dir = project_root_dir() / "data" / "waymo"
+        root_dir = project_root_dir() / "data" / waymo_subdir
         camera_img_dir = root_dir / f"{split}" / "camera_image"
         camera_box_dir = root_dir / f"{split}" / "camera_box"
         camera_image_files = [
