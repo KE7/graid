@@ -51,11 +51,11 @@ class ObjectDetectionMeasurements:
         self.collate_fn = collate_fn
 
     def iter_measurements(
-        self, 
-        bbox_offset: int = 0, 
-        class_metrics: bool = False, 
+        self,
+        bbox_offset: int = 0,
+        class_metrics: bool = False,
         extended_summary: bool = False,
-        debug: bool = False, 
+        debug: bool = False,
         **kwargs
     ) -> Iterator[Union[List[Dict], Tuple[List[Dict], List[Results]]]]:
         if self.collate_fn is not None:
@@ -91,11 +91,11 @@ class ObjectDetectionMeasurements:
                 zip(prediction, y)
             ):  # odr = object detection result, gt = ground truth
                 measurements: dict = self._calculate_measurements(
-                        odrs, 
-                        gt,
-                        class_metrics=class_metrics,
-                        extended_summary=extended_summary,
-                    )
+                    odrs,
+                    gt,
+                    class_metrics=class_metrics,
+                    extended_summary=extended_summary,
+                )
                 results.append(measurements)
                 if debug:
                     im = self._show_debug_image(x[idx], gt, bbox_offset)
