@@ -2,6 +2,9 @@
 /data/
 !src/scenic_reasoning/data/
 
+# dependencies
+/install/*
+
 # MAC
 .DS_Store
 

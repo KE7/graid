@@ -29,6 +29,7 @@ clean_detectron2 = "scenic_reasoning.setup:clean_detectron2"
 clean_mmdetection = "scenic_reasoning.setup:clean_mmdetection"
 download_nuscenes = "scenic_reasoning.setup:download_nuscenes"
 download_bdd = "scenic_reasoning.setup:download_bdd"
+download_nuimages = "scenic_reasoning.setup:download_nuimages"
 
 
 [tool.poetry.group.dev.dependencies]
@@ -37,6 +38,7 @@ black = "^24.10.0"
 flake8-bugbear = "^24.10.31"
 flake8-annotations = "^3.1.1"
 nbconvert = "^7.16.4"
+pyarrow = "^18.1.0"
 
 
 [tool.poetry.group.mmdetection.dependencies]
