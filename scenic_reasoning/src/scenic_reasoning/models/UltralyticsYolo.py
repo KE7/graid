@@ -14,6 +14,9 @@ from scenic_reasoning.utilities.common import get_default_device
 from ultralytics import YOLO
 
 
+# TODO: Need class for InstanceSegmentation here
+
+
 class Yolo(ObjectDetectionModelI):
     def __init__(self, model: Union[str, Path], **kwargs) -> None:
         self._model = YOLO(model, **kwargs)

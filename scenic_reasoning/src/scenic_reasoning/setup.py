@@ -382,14 +382,15 @@ def download_bdd(task: Optional[str] = None, split: Optional[str] = None) -> Non
     print("Download and extraction complete.")
 
 
-def download_nuscenes() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--size", type=str, default="mini", help="mini or full", required=True
-    )
+def download_nuscenes(split: Optional[str] = None) -> None:
+    if split is None:
+        parser = argparse.ArgumentParser()
+        parser.add_argument(
+            "--split", type=str, default="mini", help="mini or full", required=True
+        )
 
-    args = parser.parse_args()
-    size = args.size
+        args = parser.parse_args()
+        split = args.split
 
     root_dir = PROJECT_DIR
 
@@ -397,22 +398,86 @@ def download_nuscenes() -> None:
 
     subprocess.run(["mkdir", "-p", "data/nuscenes"])
 
-    if size == "mini":
-        # Download the nuScenes mini split.
-        # !wget https://www.nuscenes.org/data/v1.0-mini.tgz
-
-        # Uncompress the nuScenes mini split.
-        # !tar -xf v1.0-mini.tgz -C /data/sets/nuscenes
-
-        # !pip install nuscenes-devkit &> /dev/null  # Install nuScenes.
+    if split == "mini":
         location = "https://www.nuscenes.org/data/v1.0-mini.tgz"
         if not subprocess.run(["wget", location]).returncode == 0:
             raise OSError("wget is not installed on your system.")
 
         subprocess.run(["tar", "-xf", "v1.0-mini.tgz", "-C", "data/nuscenes"])
 
-    elif size == "full":
-        raise NotImplementedError
+        subprocess.run(["rm", "v1.0-mini.tgz"])
+
+
+def download_nuimages(split: Optional[str] = None) -> None:
+    if split is None:
+        parser = argparse.ArgumentParser()
+        parser.add_argument(
+            "--split", type=str, default="full", help="mini or all", required=True
+        )
+
+        args = parser.parse_args()
+        split = args.split
+
+    root_dir = PROJECT_DIR
+
+    os.chdir(root_dir)
+
+    subprocess.run(["mkdir", "-p", "data/nuimages"])
+    # hostname from https://registry.opendata.aws/motional-nuscenes/
+
+    if split == "all":
+        hostname = "https://motional-nuscenes.s3.amazonaws.com/"
+        dir = "public/nuimages-v1.0/"
+        locations = [
+            hostname + dir + "nuimages-v1.0-all-metadata.tgz",
+            hostname + dir + "nuimages-v1.0-all-samples.tgz",
+            hostname + dir + "nuimages-v1.0-all-sweeps-cam-back-left.tgz",
+            hostname + dir + "nuimages-v1.0-all-sweeps-cam-back-right.tgz",
+            hostname + dir + "nuimages-v1.0-all-sweeps-cam-back.tgz",
+            hostname + dir + "nuimages-v1.0-all-sweeps-cam-front-left.tgz",
+            hostname + dir + "nuimages-v1.0-all-sweeps-cam-front-right.tgz",
+            hostname + dir + "nuimages-v1.0-all-sweeps-cam-front.tgz",
+        ]
+
+        # download all in parallel
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = [
+                executor.submit(_download_file, location, location.split("/")[-1])
+                for location in locations
+            ]
+            for future in concurrent.futures.as_completed(futures):
+                res = future.result()
+                if not res:
+                    raise RuntimeError("Failed to download file.")
+
+        subprocess.run(["mkdir", "-p", "data/nuimages/all"])
+
+        # extract all
+        for location in locations:
+            subprocess.run(
+                ["tar", "-xf", location.split("/")[-1], "-C", "data/nuimages/all"]
+            )
+
+        # remove all downloaded files
+        # for location in locations:
+        #     subprocess.run(["rm", location.split("/")[-1]])
+
+    elif split == "mini":
+        location = "https://d36yt3mvayqw5m.cloudfront.net/public/nuimages-v1.0/nuimages-v1.0-mini.tgz"
+        if not os.path.exists("nuimages-v1.0-mini.tgz"):
+            if not subprocess.run(["wget", location]).returncode == 0:
+                raise OSError("wget is not installed on your system.")
+
+        subprocess.run(["mkdir", "-p", "data/nuimages/mini"])
+
+        subprocess.run(
+            ["tar", "-xf", "nuimages-v1.0-mini.tgz", "-C", "data/nuimages/mini"]
+        )
+
+        # subprocess.run(["rm", "nuimages-v1.0-mini.tgz"])
+
+    else:
+        raise ValueError(f"Unknown split {split}")
 
     subprocess.run(["pip", "install", "nuscenes-devkit"])
 
@@ -458,7 +523,20 @@ def main() -> None:
     )
     # Add arguments specific to download_nuscenes if needed
     parser_nuscenes.add_argument(
-        "--size",
+        "--split",
+        "-s",
+        type=str,
+        choices=["mini", "full"],
+        help="Which data split to download",
+    )
+
+    # Subcommand for download_nuimages
+    parser_nuimages = subparsers.add_parser(
+        "download_nuimages", help="Download NuImages dataset"
+    )
+    # Add arguments specific to download_nuimages if needed
+    parser_nuimages.add_argument(
+        "--split",
         "-s",
         type=str,
         choices=["mini", "full"],
@@ -471,6 +549,10 @@ def main() -> None:
         download_bdd(args.task, args.split)
     elif args.command == "download_nuscenes":
         download_nuscenes()
+    elif args.command == "download_nuscenes":
+        download_nuscenes(args.split)
+    elif args.command == "download_nuimages":
+        download_nuimages(args.split)
     else:
         parser.print_help()
 
