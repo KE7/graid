@@ -15,7 +15,7 @@
 
 |                       | BDD         | Waymo     | nuScenes    |
 |-----------------------|-------------|-----------|-------------|
-| Object Detection      | ✅           | ✅        | ❌          |
+| Object Detection      | ✅           | ✅        | ✅          |
 | Instance Segmentation | 🧑‍💻           | ❌        | ❌          |
 
 
