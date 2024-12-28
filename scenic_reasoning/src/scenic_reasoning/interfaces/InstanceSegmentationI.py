@@ -1,11 +1,13 @@
+from abc import ABC
 from enum import Enum
-from typing import List, Tuple, Union
+from typing import List, Tuple, Union, Iterator
 
 import torch
 from detectron2.structures import BitMasks
 from detectron2.structures.boxes import pairwise_intersection, pairwise_iou
 from detectron2.structures.masks import polygons_to_bitmask
 
+from PIL import Image
 
 class Mask_Format(Enum):
     BITMASK = 0
@@ -174,3 +176,15 @@ class InstanceSegmentationUtils:
             for j, inst2 in enumerate(instances2):
                 union_matrix[i, j] = inst1.union(inst2)
         return union_matrix
+
+class InstanceSegmentationModelI(ABC):
+    def __init__(self):
+        pass
+    def identify_for_image(self, image : Union[Image.Image, torch.Tensor, List[torch.Tensor]]) -> List[InstanceSegmentationResultI]:
+        pass
+    def identify_for_video(
+        self,
+        video: Union[Iterator[Image.Image], List[Image.Image]],
+        batch_size: int = 1,
+    ) -> Iterator[List[InstanceSegmentationResultI]]:
+        pass
