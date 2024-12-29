@@ -1,7 +1,8 @@
-from abc import ABC
+from abc import ABC, abstractmethod
 from enum import Enum
-from typing import List, Tuple, Union, Iterator
-
+from typing import List, Tuple, Union, Iterator, Optional
+from pathlib import Path
+import numpy as np
 import torch
 from detectron2.structures import BitMasks
 from detectron2.structures.boxes import pairwise_intersection, pairwise_iou
@@ -93,7 +94,7 @@ class InstanceSegmentationResultI:
         """
         return pairwise_intersection(self._bitmask, other.bitmask)
     
-    def union(self, other: 'InstanceSegmentationResultI') -> torch.Tensor
+    def union(self, other: 'InstanceSegmentationResultI') -> torch.Tensor:
         """
         Calculates the union area between this mask and another mask.
         Args:
@@ -178,13 +179,39 @@ class InstanceSegmentationUtils:
         return union_matrix
 
 class InstanceSegmentationModelI(ABC):
+    @abstractmethod
     def __init__(self):
         pass
-    def identify_for_image(self, image : Union[Image.Image, torch.Tensor, List[torch.Tensor]]) -> List[InstanceSegmentationResultI]:
+
+    @abstractmethod
+    def identify_for_image(
+        self,
+        image: Union[
+            str, Path, int, Image.Image, list, tuple, np.ndarray, torch.Tensor
+        ],
+        debug: bool = False,
+    ) -> List[List[Optional[InstanceSegmentationResultI]]]:
         pass
+
+    @abstractmethod
+    def identify_for_image_as_tensor(
+        self,
+        image: Union[
+            str, Path, int, Image.Image, list, tuple, np.ndarray, torch.Tensor
+        ],
+        debug: bool = False,
+        **kwargs,
+    ) -> List[Optional[InstanceSegmentationResultI]]:
+        pass
+
+    @abstractmethod
     def identify_for_video(
         self,
         video: Union[Iterator[Image.Image], List[Image.Image]],
         batch_size: int = 1,
-    ) -> Iterator[List[InstanceSegmentationResultI]]:
+    ) -> Iterator[List[Optional[InstanceSegmentationResultI]]]:
+        pass
+
+    @abstractmethod
+    def to(self, device: Union[str, torch.device]):
         pass
