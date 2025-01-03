@@ -6,6 +6,14 @@ from detectron2.structures import BitMasks
 from detectron2.structures.boxes import pairwise_intersection, pairwise_iou
 from detectron2.structures.masks import polygons_to_bitmask
 
+from abc import ABC, abstractmethod
+from collections import defaultdict
+from enum import Enum
+from pathlib import Path
+from typing import Dict, Iterator, List, Optional, Tuple, Union
+from PIL import Image
+from torchmetrics.detection.mean_ap import MeanAveragePrecision
+from ultralytics.engine.results import Boxes as UltralyticsBoxes
 
 class Mask_Format(Enum):
     BITMASK = 0
@@ -91,7 +99,7 @@ class InstanceSegmentationResultI:
         """
         return pairwise_intersection(self._bitmask, other.bitmask)
     
-    def union(self, other: 'InstanceSegmentationResultI') -> torch.Tensor
+    def union(self, other: 'InstanceSegmentationResultI') -> torch.Tensor:
         """
         Calculates the union area between this mask and another mask.
         Args:
@@ -174,3 +182,40 @@ class InstanceSegmentationUtils:
             for j, inst2 in enumerate(instances2):
                 union_matrix[i, j] = inst1.union(inst2)
         return union_matrix
+
+class InstanceSegmentationModelI(ABC):
+    def __init__(self):
+        pass
+
+    @abstractmethod
+    def identify_for_image(
+        self,
+        image: Union[
+            str, Path, int, Image.Image, list, tuple, np.ndarray, torch.Tensor
+        ],
+        debug: bool = False,
+    ) -> List[List[Optional[InstanceSegmentationResultI]]]:
+        pass
+
+    @abstractmethod
+    def identify_for_image_as_tensor(
+        self,
+        image: Union[
+            str, Path, int, Image.Image, list, tuple, np.ndarray, torch.Tensor
+        ],
+        debug: bool = False,
+        **kwargs,
+    ) -> List[Optional[InstanceSegmentationResultI]]:
+        pass
+
+    @abstractmethod
+    def identify_for_video(
+        self,
+        video: Union[Iterator[Image.Image], List[Image.Image]],
+        batch_size: int = 1,
+    ) -> Iterator[List[Optional[InstanceSegmentationResultI]]]:
+        pass
+
+    @abstractmethod
+    def to(self, device: Union[str, torch.device]):
+        pass

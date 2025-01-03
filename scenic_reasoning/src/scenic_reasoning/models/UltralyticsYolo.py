@@ -10,6 +10,11 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
     ObjectDetectionModelI,
     ObjectDetectionResultI,
 )
+
+from scenic_reasoning.interfaces.InstanceSegmentationI import (
+    InstanceSegmentationModelI,
+    InstanceSegmentationResultI
+)
 from scenic_reasoning.utilities.common import get_default_device
 from ultralytics import YOLO
 
@@ -189,3 +194,74 @@ class Yolo(ObjectDetectionModelI):
                     boxes_across_frames.append(per_frame_results)
 
             yield boxes_across_frames
+
+class Yolo_seg(InstanceSegmentationModelI):
+    def __init__(self, model: Union[str, Path], **kwargs) -> None:
+        super().__init__()
+        if model is None:
+            model = "yolo11n-seg.pt"
+        
+        self._model = YOLO(model, **kwargs)
+    
+    def identify_for_image(
+        self,
+        image: Union[
+            str, Path, int, Image.Image, list, tuple, np.ndarray, torch.Tensor
+        ],
+        debug: bool = False,
+        **kwargs
+    ) -> List[List[Optional[InstanceSegmentationResultI]]]:
+        """
+        Run instance segmentation on an image or a batch of images.
+
+        Args:
+            image: either a PIL image or a tensor of shape (B, C, H, W)
+                where B is the batch size, C is the channel size, H is the
+                height, and W is the width.
+
+        Returns:
+            A list of list of InstanceSegmentationResultI, where the outer list
+            represents the batch of images, and the inner list represents the
+            detections in a particular image.
+        """
+        results = self._model.predict(image)
+        all_instances = []
+
+        if results.masks is None:
+            return [[None]]
+
+        masks = results.masks.data
+        boxes = results.boxes
+        names = results.names
+
+        for img_idx in range(len(masks)):  # Process each image in the batch
+            instances = []
+            image_masks = masks[img_idx]
+            image_boxes = boxes[img_idx]
+
+            if debug:
+                results.show(img_idx)
+
+            for mask, box in zip(image_masks, image_boxes):
+                class_id = int(box.cls.item())
+                if class_id not in self._instance_count:
+                    self._instance_count[class_id] = 0
+                self._instance_count[class_id] += 1
+
+                mask_tensor = mask.bool().cpu()
+                if len(mask_tensor.shape) == 2:
+                    mask_tensor = mask_tensor.unsqueeze(0)
+
+                instance = InstanceSegmentationResultI(
+                    score=box.conf.item(),
+                    cls=class_id,
+                    label=names[class_id],
+                    instance_id=self._instance_count[class_id],
+                    mask=mask_tensor,
+                    image_hw=results.orig_shape,
+                    mask_format=Mask_Format.BITMASK
+                )
+                instances.append(instance)
+            all_instances.append(instances)
+
+        return all_instances
