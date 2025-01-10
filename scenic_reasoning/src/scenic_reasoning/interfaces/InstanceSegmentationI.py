@@ -14,6 +14,7 @@ from typing import Dict, Iterator, List, Optional, Tuple, Union
 from PIL import Image
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
 from ultralytics.engine.results import Boxes as UltralyticsBoxes
+import numpy as np
 
 class Mask_Format(Enum):
     BITMASK = 0
@@ -28,8 +29,8 @@ class InstanceSegmentationResultI:
         cls: int,
         label: str,
         instance_id: int,
-        mask: Union[torch.Tensor, BitMasks],
         image_hw: Tuple[int, int],
+        mask: Union[torch.Tensor, BitMasks],
         mask_format: Mask_Format = Mask_Format.BITMASK,
     ):
         """
@@ -53,7 +54,7 @@ class InstanceSegmentationResultI:
         else:
             # Initialize mask based on format
             if mask_format == Mask_Format.BITMASK:
-                self._bitmask = BitMasks(mask.unsqueeze(0))
+                self._bitmask = BitMasks(mask)
             elif mask_format == Mask_Format.POLYGON:
                 self._bitmask = BitMasks(
                     polygons_to_bitmask(mask, image_hw[0], image_hw[1])
@@ -182,6 +183,72 @@ class InstanceSegmentationUtils:
             for j, inst2 in enumerate(instances2):
                 union_matrix[i, j] = inst1.union(inst2)
         return union_matrix
+    
+    @staticmethod
+    def compute_metrics_for_single_img(
+        ground_truth: List[InstanceSegmentationResultI],
+        predictions: List[InstanceSegmentationResultI],
+        class_metrics: bool = False,
+        extended_summary: bool = False,
+        debug: bool = False,
+        image: Optional[Image.Image] = None,
+    ) -> Dict[str, float]:
+        
+        import pdb
+        pdb.set_trace()
+        
+        boxes = []
+        scores = []
+        classes = []
+        for truth in ground_truth:
+            boxes.append(truth.as_xyxy())
+            scores.append(truth.score)  # score is a float or tensor
+            classes.append(truth.cls)
+
+        boxes = torch.cat(boxes)  # shape: (num_boxes, 4)
+        scores = (
+            torch.tensor(scores) if isinstance(scores[0], float) else torch.cat(scores)
+        )
+        classes = (
+            torch.tensor(classes) if isinstance(classes[0], int) else torch.cat(classes)
+        )
+
+        targets: List[Dict[str, torch.Tensor]] = [
+            dict(boxes=boxes.squeeze(1), labels=classes, scores=scores)
+        ]
+
+        pred_boxes = []
+        pred_scores = []
+        pred_classes = []
+        for pred in predictions:
+            pred_boxes.append(pred.as_xyxy())
+            pred_scores.append(pred.score)  # score is a float or tensor
+            pred_classes.append(pred.cls)
+
+        pred_boxes = torch.cat(pred_boxes)
+        pred_scores = (
+            torch.tensor(pred_scores)
+            if isinstance(pred_scores[0], float)
+            else torch.cat(pred_scores)
+        )
+        pred_classes = (
+            torch.tensor(pred_classes)
+            if isinstance(pred_classes[0], int)
+            else torch.cat(pred_classes)
+        )
+
+        preds: List[Dict[str, torch.Tensor]] = [
+            dict(boxes=pred_boxes, labels=pred_classes, scores=pred_scores)
+        ]
+
+        metric = MeanAveragePrecision(
+            class_metrics=class_metrics,
+            extended_summary=extended_summary,
+        )
+
+        metric.update(targets, preds)
+
+        return metric.compute()
 
 class InstanceSegmentationModelI(ABC):
     def __init__(self):

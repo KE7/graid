@@ -195,14 +195,16 @@ class Yolo(ObjectDetectionModelI):
                     boxes_across_frames.append(per_frame_results)
 
             yield boxes_across_frames
+    
+    def to(self, device: Union[str, torch.device]):
+        pass
+
 
 class Yolo_seg(InstanceSegmentationModelI):
     def __init__(self, model: Union[str, Path], **kwargs) -> None:
         super().__init__()
-        if model is None:
-            model = "yolo11n-seg.pt"
-        
         self._model = YOLO(model, **kwargs)
+        self._instance_count = {}
     
     def identify_for_image(
         self,
@@ -226,24 +228,28 @@ class Yolo_seg(InstanceSegmentationModelI):
             detections in a particular image.
         """
         results = self._model.predict(source=image)
+        import pdb
+        pdb.set_trace()
         all_instances = []
 
-        if results.masks is None:
-            return [[None]]
+        for result in results:
+            if result.masks is None:
+                all_instances.append([])
+                continue
 
-        masks = results.masks.data
-        boxes = results.boxes
-        names = results.names
+            masks = result.masks.data
+            boxes = result.boxes
+            names = result.names
 
-        for img_idx in range(len(masks)):  # Process each image in the batch
+
             instances = []
-            image_masks = masks[img_idx]
-            image_boxes = boxes[img_idx]
+            for instance_idx in range(len(masks)):  # Process each image in the batch
+                
+                mask = masks[instance_idx]
+                box = boxes[instance_idx]
 
-            if debug:
-                results.show(img_idx)
-
-            for mask, box in zip(image_masks, image_boxes):
+                # if debug:
+                #     results.show(instance_idx)
                 class_id = int(box.cls.item())
                 if class_id not in self._instance_count:
                     self._instance_count[class_id] = 0
@@ -259,11 +265,12 @@ class Yolo_seg(InstanceSegmentationModelI):
                     label=names[class_id],
                     instance_id=self._instance_count[class_id],
                     mask=mask_tensor,
-                    image_hw=results.orig_shape,
+                    image_hw=result.orig_shape,
                     mask_format=Mask_Format.BITMASK
                 )
                 instances.append(instance)
             all_instances.append(instances)
+
 
         return all_instances
 

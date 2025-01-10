@@ -9,6 +9,9 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
     BBox_Format,
     ObjectDetectionResultI,
 )
+from scenic_reasoning.interfaces.InstanceSegmentationI import (
+    InstanceSegmentationResultI
+)
 from scenic_reasoning.utilities.common import project_root_dir
 from torch import Tensor
 from torch.utils.data import Dataset
@@ -46,6 +49,8 @@ class ImageDataset(Dataset):
         return len(self.img_labels)
 
     def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
+        import pdb
+        pdb.set_trace()
         img_path = os.path.join(self.img_dir, self.img_labels[idx]["name"])
         image = decode_image(img_path)
 
@@ -171,6 +176,7 @@ class Bdd100kDataset(ImageDataset):
     def __init__(
         self,
         split: Literal["train", "val", "test"] = "train",
+        result_type: Literal["obj", "seg"] = "obj",
         use_original_categories: bool = True,
         use_extended_annotations: bool = True,
         **kwargs,
@@ -179,6 +185,9 @@ class Bdd100kDataset(ImageDataset):
         root_dir = project_root_dir() / "data" / "bdd100k"
         img_dir = root_dir / "images" / "100k" / split
         annotations_file = root_dir / "labels" / "det_20" / f"det_{split}.json"
+        masks_file = root_dir / "labels" / "ins_seg" / "bitmasks" / split
+
+        # result_type = ObjectDetectionResultI if type == "obj" else InstanceSegmentationResultI
 
         def merge_transform(
             image: Tensor,
@@ -186,16 +195,18 @@ class Bdd100kDataset(ImageDataset):
             attributes: Dict[str, Any],
             timestamp: str,
         ) -> Union[
-            Tuple[Tensor, List[ObjectDetectionResultI]],
+            Tuple[Tensor, List[Union[ObjectDetectionResultI, InstanceSegmentationResultI]]],
             Tuple[
                 Tensor,
-                List[Tuple[ObjectDetectionResultI, Dict[str, Any], str]],
+                List[Tuple[Union[ObjectDetectionResultI, InstanceSegmentationResultI], Dict[str, Any], str]],
                 Dict[str, Any],
                 str,
             ],
         ]:
             results = []
 
+            import pdb
+            pdb.set_trace()
             for label in labels:
                 channels, height, width = image.shape
                 if use_original_categories:
@@ -206,31 +217,43 @@ class Bdd100kDataset(ImageDataset):
                     # handle the case where exact category is not in COCO aka different names for people
                     res_label = label["category"] if cls != 0 else "person"
 
-                odr = ObjectDetectionResultI(
-                    score=1.0,
-                    cls=cls,
-                    label=res_label,
-                    bbox=[
-                        label["box2d"]["x1"],
-                        label["box2d"]["y1"],
-                        label["box2d"]["x2"],
-                        label["box2d"]["y2"],
-                    ],
-                    image_hw=(height, width),
-                    bbox_format=BBox_Format.XYXY,
-                    attributes=label["attributes"],
-                )
+                if result_type == "obj":
+                    result = ObjectDetectionResultI(
+                        score=1.0,
+                        cls=cls,
+                        label=res_label,
+                        bbox=[
+                            label["box2d"]["x1"],
+                            label["box2d"]["y1"],
+                            label["box2d"]["x2"],
+                            label["box2d"]["y2"],
+                        ],
+                        image_hw=(height, width),
+                        bbox_format=BBox_Format.XYXY,
+                        attributes=label["attributes"],
+                    )
+                else:
+                    result = InstanceSegmentationResultI(
+                        score=1.0,
+                        cls=cls,
+                        label=res_label,
+                        instance_id=label["id"],
+                        image_hw=(height, width),
+
+
+                    )
+
 
                 if use_extended_annotations:
                     results.append(
                         (
-                            odr,
+                            result,
                             label["attributes"],
                             timestamp,
                         )
                     )
                 else:
-                    results.append(odr)
+                    results.append(result)
 
             if use_extended_annotations:
                 return (image, results, attributes, timestamp)
