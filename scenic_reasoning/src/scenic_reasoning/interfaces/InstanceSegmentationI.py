@@ -91,7 +91,7 @@ class InstanceSegmentationResultI:
         """
         return pairwise_intersection(self._bitmask, other.bitmask)
     
-    def union(self, other: 'InstanceSegmentationResultI') -> torch.Tensor
+    def union(self, other: 'InstanceSegmentationResultI') -> torch.Tensor:
         """
         Calculates the union area between this mask and another mask.
         Args:
