@@ -1,9 +1,13 @@
+import logging
+import math
 from abc import ABC, abstractmethod
 from typing import Any, Callable, List, Optional, Tuple
 
 import torch
 from PIL import Image
 from scenic_reasoning.interfaces.ObjectDetectionI import ObjectDetectionResultI
+
+logger = logging.getLogger(__name__)
 
 
 class Question(ABC):
@@ -88,8 +92,8 @@ class ObjectDetectionPredicates:
 class IsObjectCentered(Question):
     def __init__(self) -> None:
         super().__init__(
-            question="Is the <object_1> centered in the image, or is it off to the left or right?",
-            variables=["<object_1>"],
+            question="Is the {object_1} centered in the image, or is it off to the left or right?",
+            variables=["object_1"],
             predicates=[
                 ObjectDetectionPredicates.at_least_one_single_detection,
             ],
@@ -147,7 +151,7 @@ class IsObjectCentered(Question):
 
         question_answer_pairs = []
         for class_name, x_min, x_max in object_positions:
-            question = f"Is the {class_name} centered in the image, or is it off to the left or right?"
+            question = self.question.format(object_1=class_name)
 
             # TODO: verify this design decision manually
             # edge case: if the object is big enough to cover more than 1/3rd
@@ -169,8 +173,8 @@ class IsObjectCentered(Question):
 class WidthVsHeight(Question):
     def __init__(self) -> None:
         super().__init__(
-            question="Is the width of the <object_1> larger than the height?",
-            variables=["<object_1>"],
+            question="Is the width of the {object_1} larger than the height?",
+            variables=["object_1"],
             predicates=[
                 ObjectDetectionPredicates.at_least_one_single_detection,
             ],
@@ -181,9 +185,10 @@ class WidthVsHeight(Question):
     ) -> Optional[Tuple[str, str]]:
         width = detection.as_xyxy()[0][2] - detection.as_xyxy()[0][0]
         height = detection.as_xyxy()[0][3] - detection.as_xyxy()[0][1]
-        question = f"Is the width of the {class_name} larger than the height?"
+        question = self.question.format(object_1=class_name)
         # TODO: verify this design decision manually
         # if the image is roughly square (within 10% of each other), return None
+        # TODO: should we check for a minimum width or height?
         if abs(width - height) / width < 0.1:
             return None
         answer = "yes" if width > height else "no"
@@ -228,6 +233,106 @@ class WidthVsHeight(Question):
             else:
                 if class_name in single_detections:
                     question_answer_pair = self._question_answer(class_name, detection)
+                    if question_answer_pair is not None:
+                        question_answer_pairs.append(question_answer_pair)
+
+        return question_answer_pairs
+
+
+class Quadrants(Question):
+    def __init__(self, N: int, M: int) -> None:
+        if N <= 0 or M <= 0:
+            raise ValueError("N and M must be positive integers")
+        # TODO: verify this design decision manually
+        # we will support at most a 3x3 grid
+        if N * M > 9:
+            raise ValueError("N * M must be less than or equal to 9")
+        self.rows = N
+        self.cols = M
+        super().__init__(
+            question="Divide the image into a {N} x {M} grid. Number the quadrants from left to right, top to bottom, starting with 1. In what quadrant(s) does {object_1} appear?",
+            variables=["object_1", "N", "M"],
+            predicates=[
+                ObjectDetectionPredicates.at_least_one_single_detection,
+            ],
+        )
+
+        self.question = self.question.format(N=N, M=M)
+
+    def _question_answer(
+        self, image: Image.Image, class_name: str, detection: ObjectDetectionResultI
+    ) -> Optional[Tuple[str, str]]:
+        x_min, y_min, x_max, y_max = detection.as_xyxy()[0]
+        detection_width = x_max - x_min
+        detection_height = y_max - y_min
+
+        image_width, image_height = image.size
+
+        quadrant_width = image_width / self.cols
+        quadrant_height = image_height / self.rows
+
+        if not (
+            detection_width < quadrant_width and detection_height < quadrant_height
+        ):
+            return None
+
+        # calculate the quadrant the object is in
+        # if it is in multiple quadrants, ignore that object
+        row = math.floor(y_min / quadrant_height)
+        if row != math.floor(y_max / quadrant_height):
+            logger.debug("Object spans multiple rows")
+            return None
+        col = math.floor(x_min / quadrant_width)
+        if col != math.floor(x_max / quadrant_width):
+            logger.debug("Object spans multiple columns")
+            return None
+        quadrant = row * self.cols + col + 1
+
+        question = self.question.format(object_1=class_name)
+        answer = str(quadrant)
+        return (question, answer)
+
+    def apply(
+        self,
+        image: Image.Image,
+        detections: List[ObjectDetectionResultI],
+    ) -> List[Tuple[str, str]]:
+        # @precondition: at_least_one_single_detection(image, detections) == True
+
+        # get all the classes that have only one detection
+        detection_counts = {}
+        for detection in detections:
+            class_name = detection.label
+            if type(class_name) == torch.Tensor:  # shape == (# of boxes,)
+                # need to iterate over the tensor to get the class names
+                for class_name in class_name:
+                    detection_counts[class_name] = (
+                        detection_counts.get(class_name, 0) + 1
+                    )
+            else:
+                detection_counts[class_name] = detection_counts.get(class_name, 0) + 1
+
+        single_detections = [
+            class_name for class_name, count in detection_counts.items() if count == 1
+        ]
+
+        question_answer_pairs = []
+        for detection in detections:
+            class_name = detection.label
+            if type(class_name) == torch.Tensor:  # shape == (# of boxes,)
+                # need to iterate over the tensor to get the class names
+                for class_name in class_name:
+                    if class_name in single_detections:
+                        question_answer_pair = self._question_answer(
+                            image, class_name, detection
+                        )
+                        if question_answer_pair is not None:
+                            question_answer_pairs.append(question_answer_pair)
+            else:
+                if class_name in single_detections:
+                    question_answer_pair = self._question_answer(
+                        image, class_name, detection
+                    )
                     if question_answer_pair is not None:
                         question_answer_pairs.append(question_answer_pair)
 
