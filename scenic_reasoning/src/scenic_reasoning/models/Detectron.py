@@ -87,10 +87,7 @@ class Detectron_obj(ObjectDetectionModelI):
     def _process_single_image(self, image: np.ndarray) -> List[ObjectDetectionResultI]:
         print(f"Image to predict: {image.shape}")
 
-        
         predictions = self._predictor(image)
-        import pdb
-        pdb.set_trace()
         
         print(f"Predictions: {predictions}")
 
