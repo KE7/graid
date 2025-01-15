@@ -67,9 +67,9 @@ checkpoint_file = "/Users/harry/Desktop/Nothing/sky/scenic-reasoning/install/mmd
 # inferencer = DetInferencer('rtmdet_tiny_8xb32-300e_coco')
 
 model = MMDetection_obj(config_file, checkpoint_file, device=torch.device("cpu"))
-print(model.identify_for_image(sample_img))
+# print(model.identify_for_image(sample_img))
 
-exit()
+# exit()
 measurements = ObjectDetectionMeasurements(model, bdd, batch_size=BATCH_SIZE, collate_fn=lambda x: x) # hacky way to avoid RuntimeError: each element in list of batch should be of equal size
 
 # WARNING ⚠️ imgsz=[720, 1280] must be multiple of max stride 64, updating to [768, 1280]
