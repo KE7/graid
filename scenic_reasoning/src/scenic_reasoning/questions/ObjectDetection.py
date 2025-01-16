@@ -87,6 +87,21 @@ class ObjectDetectionPredicates:
                 counts[class_name] = counts.get(class_name, 0) + 1
 
         return any(count == 1 for count in counts.values())
+    
+
+    @staticmethod
+    def at_least_x_many_class_detections(image, detections, x: int) -> bool:
+        counts = {}
+        for detection in detections:
+            class_name = detection.label
+            if type(class_name) == torch.Tensor:  # shape == (# of boxes,)
+                # need to iterate over the tensor to get the class names
+                for class_name in class_name:
+                    counts[class_name] = counts.get(class_name, 0) + 1
+            else:
+                counts[class_name] = counts.get(class_name, 0) + 1
+
+        return len(counts) >= x
 
 
 class IsObjectCentered(Question):
@@ -250,7 +265,7 @@ class Quadrants(Question):
         self.rows = N
         self.cols = M
         super().__init__(
-            question="Divide the image into a {N} x {M} grid. Number the quadrants from left to right, top to bottom, starting with 1. In what quadrant(s) does {object_1} appear?",
+            question="Divide the image into a {N} x {M} grid. Number the quadrants from left to right, top to bottom, starting with 1. In what quadrant does the {object_1} appear?",
             variables=["object_1", "N", "M"],
             predicates=[
                 ObjectDetectionPredicates.at_least_one_single_detection,
@@ -337,3 +352,37 @@ class Quadrants(Question):
                         question_answer_pairs.append(question_answer_pair)
 
         return question_answer_pairs
+
+
+class LargestAppearance(Question):
+    def __init__(self) -> None:
+        super().__init__(
+            question="Which object appears the largest in the image?",
+            variables=[],
+            predicates=[
+                lambda image, detections: ObjectDetectionPredicates.at_least_x_many_class_detections(image, detections, 2),
+            ],
+        )
+
+        self.question = self.question
+
+    def apply(
+        self,
+        image: Image.Image,
+        detections: List[ObjectDetectionResultI],
+    ) -> List[Tuple[str, str]]:
+        # @precondition: at_least_x_many_class_detections(image, detections, 2) == True
+
+        if len(detections) == 0:
+            logger.debug("No detections given to LargestAppearance question")
+            return []
+
+        # TODO: verify if this works
+        # the same logic should apply here regardless of detections being a tensor or not
+        areas = [detection.get_area() for detection in detections]
+        largest_detection = detections[torch.argmax(torch.stack(areas))]
+            
+
+        question = self.question
+        answer = "The " + str(largest_detection.label)
+        return [(question, answer)]
