@@ -12,7 +12,7 @@ from scenic_reasoning.models.Detectron import Detectron2InstanceSegmentation
 from scenic_reasoning.data.ImageLoader import Bdd100kDataset, NuImagesDataset
 from torch.utils.data import DataLoader
 from typing import Callable, Dict, Iterator, List, Optional, Tuple, Union
-from scenic_reasoning.models.UltralyticsYolo import Yolo
+from scenic_reasoning.models.UltralyticsYolo import Yolo, Yolo_seg
 from scenic_reasoning.utilities.common import get_default_device
 from torch.utils.data import DataLoader
 from ultralytics.engine.results import Results
@@ -56,7 +56,6 @@ class InstanceSegmentationMeasurements:
 
     def iter_measurements(
         self,
-        bbox_offset: int = 0,
         class_metrics: bool = False,
         extended_summary: bool = False,
         debug: bool = False,
@@ -84,17 +83,17 @@ class InstanceSegmentationMeasurements:
                 # https://github.com/ultralytics/ultralytics/issues/9912
                 x = x[:, [2, 1, 0], ...]
                 prediction = self.model.identify_for_image(x, debug=debug, **kwargs)
-            else:
+            elif isinstance(self.model, Yolo_seg):
                 self.model.to(device=get_default_device())
-                prediction = self.model.identify_for_image(x)
+                prediction = self.model.identify_for_image(x, debug=debug)
                 self.model.to(device="cpu")
+
 
             results = []
             ims = []
             for idx, (isrs, gt) in enumerate(
                 zip(prediction, y)
-            ):  # odr = object detection result, gt = ground truth
-                
+            ):  # isr = instance segmentation result, gt = ground truth
                 
                 measurements: dict = self._calculate_measurements(
                     isrs,
@@ -104,7 +103,7 @@ class InstanceSegmentationMeasurements:
                 )
                 results.append(measurements)
                 if debug:
-                    im = self._show_debug_image(x[idx], gt, bbox_offset)
+                    im = self._show_debug_image(x[idx], gt)
                     ims.append(im)
 
             if debug:
@@ -115,34 +114,29 @@ class InstanceSegmentationMeasurements:
     def _show_debug_image(
         self,
         image: torch.Tensor,
-        gt: List[InstanceSegmentationResultI],
-        bbox_offset: int = 0,
+        gt: List[InstanceSegmentationResultI]
     ) -> Results:
+        
+        
         names = {}
-        boxes = []
-        for ground_truth in gt:
-            cls = ground_truth.cls
-            label = ground_truth.label
-            names[cls] = label
-            box = ground_truth.as_ultra_box.xyxy.tolist()[0]
-            # box = ground_truth[0].as_ultra_box.xyxy.tolist()[
-            #     0
-            # ]  # TODO: fix this hack. BDD GT is a tuple of (ODR, attributes, timestamp) but we can preprocess and drop the attributes and timestamp
-            box[1] += bbox_offset
-            box[3] += bbox_offset
-            # box += [ground_truth[0].score, ground_truth[0].cls]
-            box += [ground_truth.score, ground_truth.cls]
-            boxes.append(torch.tensor(box))
+        masks = []
 
-        boxes = torch.stack(boxes)
+        for ground_truth in gt:
+            cls = ground_truth._class
+            label = ground_truth._label
+            names[cls] = label
+            mask = ground_truth._bitmask
+            masks.append(mask.tensor)
+        
+        masks = torch.cat(masks)
 
         im = Results(
             orig_img=image.unsqueeze(0),  # Add batch dimension
             path=tempfile.mktemp(suffix=".jpg"),
             names=names,
-            boxes=boxes,
+            masks=masks
         )
-        im.show()
+        # im.show(boxes=False)
 
         return im
 

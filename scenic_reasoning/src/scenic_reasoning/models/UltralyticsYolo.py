@@ -228,49 +228,43 @@ class Yolo_seg(InstanceSegmentationModelI):
             detections in a particular image.
         """
         results = self._model.predict(source=image)
-        import pdb
-        pdb.set_trace()
+
         all_instances = []
 
         for result in results:
+
+            if debug:
+                result.show()
+                
+            instances = []
             if result.masks is None:
                 all_instances.append([])
                 continue
 
             masks = result.masks.data
-            boxes = result.boxes
-            names = result.names
-
-
-            instances = []
-            for instance_idx in range(len(masks)):  # Process each image in the batch
-                
-                mask = masks[instance_idx]
-                box = boxes[instance_idx]
-
-                # if debug:
-                #     results.show(instance_idx)
-                class_id = int(box.cls.item())
-                if class_id not in self._instance_count:
-                    self._instance_count[class_id] = 0
-                self._instance_count[class_id] += 1
-
-                mask_tensor = mask.bool().cpu()
-                if len(mask_tensor.shape) == 2:
-                    mask_tensor = mask_tensor.unsqueeze(0)
+            cls_ids = result.boxes.cls
+            scores = result.boxes.conf
+            name_map = result.names
+            num_instances = masks.shape[0]
+            
+            for i in range(num_instances):
+                mask = masks[i]
+                cls_id = cls_ids[i].item()
+                cls_label = name_map[cls_id]
+                score = scores[i]
 
                 instance = InstanceSegmentationResultI(
-                    score=box.conf.item(),
-                    cls=class_id,
-                    label=names[class_id],
-                    instance_id=self._instance_count[class_id],
-                    mask=mask_tensor,
+                    score=score,
+                    cls=cls_id,
+                    label=cls_label,
+                    instance_id=1, #TODO: find the true instance id
+                    mask=mask.unsqueeze(0),
                     image_hw=result.orig_shape,
                     mask_format=Mask_Format.BITMASK
                 )
+                
                 instances.append(instance)
             all_instances.append(instances)
-
 
         return all_instances
 

@@ -49,6 +49,7 @@ class InstanceSegmentationResultI:
         self._label = label
         self._instance_id = instance_id
         self._image_hw = image_hw
+    
         if isinstance(mask, BitMasks):
             self._bitmask = mask
         else:
@@ -194,59 +195,59 @@ class InstanceSegmentationUtils:
         image: Optional[Image.Image] = None,
     ) -> Dict[str, float]:
         
-        import pdb
-        pdb.set_trace()
         
-        boxes = []
+        masks = []
         scores = []
-        classes = []
+        class_ids = []
+        instance_ids = []
+        
         for truth in ground_truth:
-            boxes.append(truth.as_xyxy())
-            scores.append(truth.score)  # score is a float or tensor
-            classes.append(truth.cls)
+            masks.append(truth._bitmask.tensor)
+            scores.append(truth._score)  # score is a float or tensor
+            class_ids.append(truth._class)
+            instance_ids.append(truth._instance_id)
 
-        boxes = torch.cat(boxes)  # shape: (num_boxes, 4)
         scores = (
             torch.tensor(scores) if isinstance(scores[0], float) else torch.cat(scores)
         )
-        classes = (
-            torch.tensor(classes) if isinstance(classes[0], int) else torch.cat(classes)
+        class_ids = (
+            torch.tensor(class_ids) if isinstance(class_ids[0], int) else torch.cat(class_ids)
         )
 
-        targets: List[Dict[str, torch.Tensor]] = [
-            dict(boxes=boxes.squeeze(1), labels=classes, scores=scores)
+        masks = torch.cat(masks)
+
+        targets = [
+            dict(masks=masks, scores=scores, labels=class_ids)
         ]
 
-        pred_boxes = []
+        pred_masks = []
         pred_scores = []
-        pred_classes = []
+        pred_class_ids = []
+        pred_instance_ids = []
+        
         for pred in predictions:
-            pred_boxes.append(pred.as_xyxy())
-            pred_scores.append(pred.score)  # score is a float or tensor
-            pred_classes.append(pred.cls)
+            pred_masks.append(pred._bitmask.tensor)
+            pred_scores.append(pred._score)  # score is a float or tensor
+            pred_class_ids.append(int(torch.tensor(pred._class)))
+            pred_instance_ids.append(pred._instance_id)
 
-        pred_boxes = torch.cat(pred_boxes)
-        pred_scores = (
-            torch.tensor(pred_scores)
-            if isinstance(pred_scores[0], float)
-            else torch.cat(pred_scores)
-        )
-        pred_classes = (
-            torch.tensor(pred_classes)
-            if isinstance(pred_classes[0], int)
-            else torch.cat(pred_classes)
-        )
+        pred_scores = torch.tensor(pred_scores)
+        pred_class_ids = torch.tensor(pred_class_ids)
 
-        preds: List[Dict[str, torch.Tensor]] = [
-            dict(boxes=pred_boxes, labels=pred_classes, scores=pred_scores)
+        pred_masks = torch.cat(pred_masks)
+
+        preds = [
+            dict(masks=pred_masks, scores=pred_scores, labels=pred_class_ids)
         ]
 
         metric = MeanAveragePrecision(
+            iou_type="segm",
             class_metrics=class_metrics,
             extended_summary=extended_summary,
         )
 
-        metric.update(targets, preds)
+
+        metric.update(preds, targets)
 
         return metric.compute()
 
