@@ -119,7 +119,7 @@ class InstanceSegmentationMeasurements:
         
         names = {}
         masks = []
-        boxes = []
+        fake_boxes = []
 
         for ground_truth in gt:
             cls = ground_truth._class
@@ -127,17 +127,17 @@ class InstanceSegmentationMeasurements:
             names[cls] = label
             mask = ground_truth._bitmask
             masks.append(mask.tensor)
-            boxes.append(torch.tensor([0, 0, 0, 0, 0.0, -1]))
+            fake_boxes.append(torch.tensor([0, 0, 0, 0, 0.0, -1]))   
         
         masks = torch.cat(masks)
-        boxes = torch.stack(boxes)
+        fake_boxes = torch.stack(fake_boxes)
 
         im = Results(
             orig_img=image.unsqueeze(0),  # Add batch dimension
             path=tempfile.mktemp(suffix=".jpg"),
             names=names,
             masks=masks,
-            boxes=boxes
+            boxes=fake_boxes
         )
 
         im.show()
