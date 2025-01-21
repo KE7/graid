@@ -229,13 +229,15 @@ class Yolo_seg(InstanceSegmentationModelI):
         """
         results = self._model.predict(source=image)
 
+        # results = self._model.track(source=image, persist=True)
+
         all_instances = []
 
         for result in results:
 
             if debug:
                 result.show()
-                
+
             instances = []
             if result.masks is None:
                 all_instances.append([])
@@ -257,7 +259,7 @@ class Yolo_seg(InstanceSegmentationModelI):
                     score=score,
                     cls=cls_id,
                     label=cls_label,
-                    instance_id=1, #TODO: find the true instance id
+                    instance_id=i,
                     mask=mask.unsqueeze(0),
                     image_hw=result.orig_shape,
                     mask_format=Mask_Format.BITMASK

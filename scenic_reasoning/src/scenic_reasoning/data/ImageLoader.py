@@ -20,6 +20,8 @@ from torchvision import transforms
 from torchvision.io import decode_image
 import torch
 
+import matplotlib.pyplot as plt
+
 
 
 class ImageDataset(Dataset):
@@ -104,11 +106,13 @@ class ImageDataset(Dataset):
 
             image = decode_image(img_path)
             mask = cv2.imread(mask_path, cv2.IMREAD_UNCHANGED)
-            image, labels = self.merge_transform(image, mask)
+            # mask = Image.open(mask_path).convert("RGBA").load()
+            image, labels, attributes = self.merge_transform(image, mask)
 
             return {
                 "image": image,
-                "labels": labels
+                "labels": labels,
+                "attributes": attributes
             }
 
 
@@ -185,19 +189,49 @@ class Bdd10kDataset(ImageDataset):
     }
 
     _CATEGORIES = {
-        "pedestrian": 0,
-        "person": 1,
-        "rider": 2,
-        "car": 3,
-        "truck": 4,
-        "bus": 5,
-        "train": 6,
-        "motorcycle": 7,
-        "bicycle": 8,
-        "traffic light": 9,
-        "traffic sign": 10,
-        "sidewalk": 11,
+        0: "unlabeled",
+        1: "dynamic",
+        2: "ego vehicle",
+        3: "ground",
+        4: "static",
+        5: "parking",
+        6: "rail track",
+        7: "road",
+        8: "sidewalk",
+        9: "bridge",
+        10: "building",
+        11: "fence",
+        12: "garage",
+        13: "guard rail",
+        14: "tunnel",
+        15: "wall",
+        16: "banner",
+        17: "billboard",
+        18: "lane divider",
+        19: "parking sign",
+        20: "pole",
+        21: "polegroup",
+        22: "street light",
+        23: "traffic cone",
+        24: "traffic device",
+        25: "traffic light",
+        26: "traffic sign",
+        27: "traffic sign frame",
+        28: "terrain",
+        29: "vegetation",
+        30: "sky",
+        31: "person",
+        32: "rider",
+        33: "bicycle",
+        34: "bus",
+        35: "car",
+        36: "caravan",
+        37: "motorcycle",
+        38: "trailer",
+        39: "train",
+        40: "truck"
     }
+
 
     def category_to_cls(self, category: str) -> int:
         return self._CATEGORIES[category]
@@ -222,20 +256,21 @@ class Bdd10kDataset(ImageDataset):
 
 
         def merge_transform(image, mask, stride=32):   # WARNING ⚠️ torch.Tensor inputs should be BCHW i.e. shape(1, 3, 640, 640) divisible by stride 32
-
+            
             C, H, W = image.shape
 
             new_H = (H + stride - 1) // stride * stride
             new_W = (W + stride - 1) // stride * stride
 
             image = image.permute(1, 2, 0).cpu().numpy()
+
             resized_image = cv2.resize(image, (new_W, new_H), interpolation=cv2.INTER_LINEAR)  #TODO: should I use this package to do resizing?
             resized_image = torch.from_numpy(resized_image).permute(2, 0, 1).float()
 
             results = []
 
-            R, G, B, A = mask[..., 0], mask[..., 1], mask[..., 2], mask[..., 3]
-    
+            B, G, R, A = mask[..., 0], mask[..., 1], mask[..., 2], mask[..., 3]
+
             class_id_map = R
 
             truncated = (G & 0b1000) >> 3
@@ -252,29 +287,29 @@ class Bdd10kDataset(ImageDataset):
 
             instance_id_map = (B << 8) + A
 
-            image_hw = (resized_image.shape[0], resized_image.shape[1])  # (height, width)
+            image_hw = (resized_image.shape[0], resized_image.shape[1])
             unique_instance_ids = np.unique(instance_id_map)
+
             results = []
+
             for instance_id in unique_instance_ids:
-                if instance_id == 0:  # Ignore background (assuming ID 0 is background)
-                    continue
             
                 instance_mask = (instance_id_map == instance_id).astype(np.uint8)
                 class_mask = class_id_map * instance_mask
                 unique_classes, counts = np.unique(class_mask[class_mask > 0], return_counts=True)
                 class_id = unique_classes[np.argmax(counts)] if len(unique_classes) > 0 else -1
+                class_label = self._CATEGORIES[class_id] if class_id in self._CATEGORIES else "invalid"
 
                 result = InstanceSegmentationResultI(
                     score=1.0, 
                     cls=int(class_id), 
-                    label=f"tmp",  # TODO: change this to the actual lable using a reverse map.
+                    label=class_label,
                     instance_id=int(instance_id),
                     image_hw=image_hw,
                     mask=torch.from_numpy(instance_mask).unsqueeze(0),
                 )
                 results.append(result)
-            
-            return (resized_image, results)
+            return (resized_image, results, attributes)
 
 
         super().__init__(

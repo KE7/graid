@@ -26,7 +26,7 @@ bdd = Bdd10kDataset(
 model = Yolo_seg(model="yolo11n-seg.pt") # v5 can handle 1280 while v8 can handle 640. makes no sense ><
 measurements = InstanceSegmentationMeasurements(model, bdd, batch_size=BATCH_SIZE, collate_fn=lambda x: x) # hacky way to avoid RuntimeError: each element in list of batch should be of equal size
 model.identify_for_image(['../demo/demo.jpg', '../demo/demo2.jpg'])
-
+# model.identify_for_image('../demo/demo.jpg')
 # WARNING ⚠️ imgsz=[720, 1280] must be multiple of max stride 64, updating to [768, 1280]
 from pprint import pprint
 for (results, ims) in islice(measurements.iter_measurements(
@@ -38,5 +38,6 @@ for (results, ims) in islice(measurements.iter_measurements(
         extended_summary=True,
         ), 
     NUM_EXAMPLES_TO_SHOW):
-    pprint(results)
+    print("")
+    # pprint(results)
     # [im.show() for im in ims]  #TODO: need to write a custom function to display the ground truth instance segmentation result.

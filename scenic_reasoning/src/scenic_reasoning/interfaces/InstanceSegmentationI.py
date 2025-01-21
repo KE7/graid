@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import Dict, Iterator, List, Optional, Tuple, Union
 from PIL import Image
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
-from ultralytics.engine.results import Boxes as UltralyticsBoxes
 import numpy as np
 
 class Mask_Format(Enum):

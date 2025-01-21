@@ -16,6 +16,7 @@ from scenic_reasoning.models.UltralyticsYolo import Yolo, Yolo_seg
 from scenic_reasoning.utilities.common import get_default_device
 from torch.utils.data import DataLoader
 from ultralytics.engine.results import Results
+from ultralytics.engine.results import Boxes as UltralyticsBoxes
 
 # TODO: torch metrics and validate comparison methods
 #       implement onto YOLO and other datasets
@@ -88,7 +89,6 @@ class InstanceSegmentationMeasurements:
                 prediction = self.model.identify_for_image(x, debug=debug)
                 self.model.to(device="cpu")
 
-
             results = []
             ims = []
             for idx, (isrs, gt) in enumerate(
@@ -117,9 +117,9 @@ class InstanceSegmentationMeasurements:
         gt: List[InstanceSegmentationResultI]
     ) -> Results:
         
-        
         names = {}
         masks = []
+        boxes = []
 
         for ground_truth in gt:
             cls = ground_truth._class
@@ -127,16 +127,20 @@ class InstanceSegmentationMeasurements:
             names[cls] = label
             mask = ground_truth._bitmask
             masks.append(mask.tensor)
+            boxes.append(torch.tensor([0, 0, 0, 0, 0.0, -1]))
         
         masks = torch.cat(masks)
+        boxes = torch.stack(boxes)
 
         im = Results(
             orig_img=image.unsqueeze(0),  # Add batch dimension
             path=tempfile.mktemp(suffix=".jpg"),
             names=names,
-            masks=masks
+            masks=masks,
+            boxes=boxes
         )
-        # im.show(boxes=False)
+
+        im.show()
 
         return im
 
