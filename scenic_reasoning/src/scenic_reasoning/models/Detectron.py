@@ -21,6 +21,7 @@ from scenic_reasoning.interfaces.InstanceSegmentationI import (
     InstanceSegmentationResultI,
     Mask_Format,
 )
+from PIL import Image
 from scenic_reasoning.interfaces.ObjectDetectionI import (
     BBox_Format,
     ObjectDetectionModelI,
