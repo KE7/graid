@@ -20,8 +20,6 @@ from torchvision import transforms
 from torchvision.io import decode_image
 import torch
 
-import matplotlib.pyplot as plt
-
 
 
 class ImageDataset(Dataset):

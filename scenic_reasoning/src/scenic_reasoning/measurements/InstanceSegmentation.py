@@ -1,5 +1,4 @@
 import torch
-import tempfile
 from detectron2.structures import BitMasks, pairwise_iou
 import matplotlib.pyplot as plt
 from scenic_reasoning.interfaces.InstanceSegmentationI import (
@@ -117,6 +116,8 @@ class InstanceSegmentationMeasurements:
         gt: List[InstanceSegmentationResultI]
     ) -> Results:
         
+        import tempfile
+        
         names = {}
         masks = []
         fake_boxes = []
@@ -151,8 +152,6 @@ class InstanceSegmentationMeasurements:
         class_metrics: bool,
         extended_summary: bool,
     ) -> Dict:
-        # import pdb
-        # pdb.set_trace()
         return InstanceSegmentationUtils.compute_metrics_for_single_img(
             ground_truth=gt,
             # ground_truth=[  # TODO: this should be done by the caller all the way up
@@ -162,53 +161,3 @@ class InstanceSegmentationMeasurements:
             class_metrics=class_metrics,
             extended_summary=extended_summary,
         )
-
-
-
-# bdd_dataset = Bdd100kDataset(split="val")
-
-# dataloader = DataLoader(bdd_dataset, batch_size=1, shuffle=False)
-# detectron2_segmenter = Detectron2InstanceSegmentation()
-
-# def compare(segmenter, dataloader):
-#     results = []
-
-#     for batch in dataloader:
-#         image = batch["image"][0]  # First image in the batch
-#         ground_truth_labels = batch["labels"]  # Ground truth labels
-
-#         # Get predictions
-#         predictions = segmenter.predict(image)
-
-#         # Compare ground truth and predictions
-#         for gt in ground_truth_labels:
-#             gt_bbox = gt["bbox"]  # Assuming ground truth includes bounding boxes
-#             best_iou, best_pred = 0, None
-
-#             for pred in predictions:
-#                 pred_bbox = pred["bbox"]
-#                 iou = pairwise_iou(gt_bbox, pred_bbox)
-
-#                 if iou > best_iou:
-#                     best_iou, best_pred = iou, pred
-
-#             results.append({
-#                 "gt_label": gt["label"],
-#                 "pred_label": best_pred["cls"] if best_pred else None,
-#                 "iou": best_iou,
-#             })
-
-#     return results
-
-# # Perform the benchmarking on detectron2
-# results = compare(detectron2_segmenter, dataloader)
-
-# # Summarize metrics
-# mean_iou = sum(r["iou"] for r in results) / len(results)
-# print(f"Mean IoU: {mean_iou:.2f}")
-
-# for idx, result in enumerate(results):
-#     print(f"Sample {idx}:")
-#     print(f"  Ground Truth: {result['gt_label']}")
-#     print(f"  Prediction:  {result['pred_label']}")
-#     print(f"  IoU:         {result['iou']:.2f}")

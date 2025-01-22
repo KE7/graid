@@ -32,7 +32,7 @@ bdd = Bdd100kDataset(
 )
 # https://docs.ultralytics.com/models/yolov5/#performance-metrics
 # model = Yolo(model="yolov5x6u.pt") # v5 can handle 1280 while v8 can handle 640. makes no sense ><
-model = Yolo(model="yolo11n-seg.pt")
+model = Yolo(model="yolov5x6u.pt")
 measurements = ObjectDetectionMeasurements(model, bdd, batch_size=BATCH_SIZE, collate_fn=lambda x: x) # hacky way to avoid RuntimeError: each element in list of batch should be of equal size
 
 # WARNING ⚠️ imgsz=[720, 1280] must be multiple of max stride 64, updating to [768, 1280]
