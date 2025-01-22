@@ -59,6 +59,7 @@ class InstanceSegmentationResultI:
                 self._bitmask = BitMasks(
                     polygons_to_bitmask(mask, image_hw[0], image_hw[1])
                 )
+                # TODO: add Mask_Format.RLE
             else:
                 raise NotImplementedError(
                     f"{mask_format} not supported for initializing InstanceSegmentationResultI"
