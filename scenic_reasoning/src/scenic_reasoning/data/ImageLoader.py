@@ -445,8 +445,6 @@ class Bdd100kDataset(ImageDataset):
         ]:
             results = []
 
-            import pdb
-            pdb.set_trace()
             for label in labels:
                 channels, height, width = image.shape
                 if use_original_categories:
@@ -501,8 +499,8 @@ class Bdd100kDataset(ImageDataset):
                 return (image, results)
 
         super().__init__(
-            str(annotations_file),
-            str(img_dir),
+            annotations_file=str(annotations_file),
+            img_dir=str(img_dir),
             merge_transform=merge_transform,
             use_extended_annotations=use_extended_annotations,
             **kwargs,
