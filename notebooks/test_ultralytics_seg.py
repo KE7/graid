@@ -1,4 +1,4 @@
-from scenic_reasoning.data.ImageLoader import Bdd10kDataset, Bdd100kDataset
+from scenic_reasoning.data.ImageLoader import Bdd10kDataset, Bdd100kDataset, WaymoDataset, NuImagesDataset, NuImagesDataset_seg
 from scenic_reasoning.models.UltralyticsYolo import Yolo_seg
 from scenic_reasoning.measurements.InstanceSegmentation import InstanceSegmentationMeasurements
 
@@ -21,10 +21,15 @@ bdd = Bdd10kDataset(
     use_extended_annotations=False,
 )
 
+nuscene = NuImagesDataset_seg(
+    split="test"
+)
+
 
 # https://docs.ultralytics.com/models/yolov5/#performance-metrics
 model = Yolo_seg(model="yolo11n-seg.pt") # v5 can handle 1280 while v8 can handle 640. makes no sense ><
-measurements = InstanceSegmentationMeasurements(model, bdd, batch_size=BATCH_SIZE, collate_fn=lambda x: x) # hacky way to avoid RuntimeError: each element in list of batch should be of equal size
+# measurements = InstanceSegmentationMeasurements(model, bdd, batch_size=BATCH_SIZE, collate_fn=lambda x: x) # hacky way to avoid RuntimeError: each element in list of batch should be of equal size
+measurements = InstanceSegmentationMeasurements(model, nuscene, batch_size=BATCH_SIZE, collate_fn=lambda x: x)
 model.identify_for_image(['../demo/demo.jpg', '../demo/demo2.jpg'])
 # model.identify_for_image('../demo/demo.jpg')
 # WARNING ⚠️ imgsz=[720, 1280] must be multiple of max stride 64, updating to [768, 1280]

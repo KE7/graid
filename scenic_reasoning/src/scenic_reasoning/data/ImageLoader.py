@@ -11,6 +11,7 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
     ObjectDetectionResultI,
 )
 from scenic_reasoning.interfaces.InstanceSegmentationI import (
+    Mask_Format,
     InstanceSegmentationResultI
 )
 from scenic_reasoning.utilities.common import project_root_dir
@@ -618,9 +619,9 @@ class NuImagesDataset(ImageDataset):
         return filtered_list
 
     def __init__(
-        self, split: Union[Literal["train", "val", "test"]] = "train", **kwargs
+        self, split: Union[Literal["train", "val", "test"]] = "train", size: Union[Literal["all", "mini"]] = "all", **kwargs
     ):
-        root_dir = project_root_dir() / "data" / "nuimages"
+        root_dir = project_root_dir() / "data" / "nuimages" / size
         img_dir = root_dir / "nuimages-v1.0-all-samples"
         obj_annotations_file = (
             root_dir
@@ -696,7 +697,7 @@ class NuImagesDataset(ImageDataset):
             return (image, results, attributes, timestamp)
 
         super().__init__(
-            sample_data_labels_file, img_dir, merge_transform=merge_transform, **kwargs
+            annotations_file=sample_data_labels_file, img_dir=img_dir, merge_transform=merge_transform, **kwargs
         )
 
     def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
@@ -710,9 +711,11 @@ class NuImagesDataset(ImageDataset):
         obj_labels = self.filter_by_token(
             self.obj_annotations, "sample_data_token", img_token
         )
+
         obj_attribute_tokens = []
         for obj_label in obj_labels:
             obj_attribute_tokens.append(obj_label["attribute_tokens"])
+
 
         if self.transform:
             image = self.transform(image)
@@ -729,6 +732,224 @@ class NuImagesDataset(ImageDataset):
             "attributes": attributes,
             "timestamp": timestamp,
         }
+    
+class NuImagesDataset_seg(ImageDataset):
+    """
+    The structure of how NuImages labels are stored
+    nuim.table_names:
+        'attribute',
+        'calibrated_sensor',
+        'category',
+        'ego_pose',
+        'log',
+        'object_ann',
+        'sample',
+        'sample_data',
+        'sensor',
+        'surface_ann'
+
+    <v1.0-{split}/sample_data.json>, sample data label
+    sample_data = {
+        "token": "003bf191da774ac3b7c47e44075d9cf9",
+        "sample_token": "d626e96768f44c2890c2a5693dd11ec4",
+        "ego_pose_token": "2c731fd2f92b4956b15cbeed160417c1",
+        "calibrated_sensor_token": "d9480acc4135525dbcffb2a0db6d7c11",
+        "filename": "samples/CAM_BACK_LEFT/n013-2018-08-03-14-44-49+0800__CAM_BACK_LEFT__1533278795447155.jpg",
+        "fileformat": "jpg",
+        "width": 1600,
+        "height": 900,
+        "timestamp": 1533278795447155,
+        "is_key_frame": true,
+        "prev": "20974c9684ae4b5d812604e099d433e2",
+        "next": "ca3edcbb46d041a4a2662d91ab68b59d"
+    }
+
+    <v1.0-{split}/object_ann.json>, sample object
+    object_ann =
+    {
+        "token": "251cb138f0134f038b37e272a3ff88e6",
+        "category_token": "85abebdccd4d46c7be428af5a6173947",
+        "bbox": [
+            101,
+            503,
+            174,
+            594
+        ],
+        "mask": {
+        "size": [
+            900,
+            1600
+        ],
+        "counts": "Z15oMjFTbDAyTjFPMk4yTjFPMDAwMDAwMDAwMDAwMDAwMDAwMU8wTTNKNks1SjZLNUo2SzVKNks1SjdKNUo2TTMwMEhlTWdWT1syVmkwaE1qVk9YMlZpMGhNalZPWDJWaTBoTWpWT1gyVmkwaE1qVk9YMlZpMGhNalZPWTJVaTBnTWtWT1gyVmkwaE1qVk9YMlZpMGhNalZPWDJWaTBoTWpWT1gyVmkwaE1qVk9YMlVpMGpNalZPVjJhaTAxM0w1TDVLNUs0TDVLNUs0TDVKNks0TDVLNUs0TDNNME8xMDAwMDAxTzAwMDAwMDBPMk8wMDAwMDAwMDRMbWdUVzE="
+        },
+        "attribute_tokens": [],
+        "sample_data_token": "003bf191da774ac3b7c47e44075d9cf9"
+    }
+
+    <v1.0-{split}/attribute.json>, sample attribute
+    {
+        "token": "271f6773e4d2496cbb9942c204c8a4c1",
+        "name": "cycle.with_rider",
+        "description": "There is a rider on the bicycle or motorcycle."
+    }
+
+    <v1.0-{split}/category.json, sample category
+    {
+        "token": "63a94dfa99bb47529567cd90d3b58384",
+        "name": "animal",
+        "description": "All animals, e.g. cats, rats, dogs, deer, birds."
+    },
+    """
+
+    _CATEGORIES = {
+        "animal": 0,
+        "flat.driveable_surface": 1,
+        "human.pedestrian.adult": 2,
+        "human.pedestrian.child": 3,
+        "human.pedestrian.construction_worker": 4,
+        "human.pedestrian.personal_mobility": 5,
+        "human.pedestrian.police_officer": 6,
+        "human.pedestrian.stroller": 7,
+        "human.pedestrian.wheelchair": 8,
+        "movable_object.barrier": 9,
+        "movable_object.debris": 10,
+        "movable_object.pushable_pullable": 11,
+        "movable_object.trafficcone": 12,
+        "static_object.bicycle_rack": 13,
+        "vehicle.bicycle": 14,
+        "vehicle.bus.bendy": 15,
+        "vehicle.bus.rigid": 16,
+        "vehicle.car": 17,
+        "vehicle.construction": 18,
+        "vehicle.ego": 19,
+        "vehicle.emergency.ambulance": 20,
+        "vehicle.emergency.police": 21,
+        "vehicle.motorcycle": 22,
+        "vehicle.trailer": 23,
+        "vehicle.truck": 24,
+    }
+
+    def category_to_cls(self, category: str) -> int:
+        return self._CATEGORIES[category]
+
+    def filter_by_token(
+        self, data: List[Dict[str, Any]], field: str, match_value: str
+    ) -> List[Dict[str, Any]]:
+        filtered_list = []
+        for item in data:
+            if item.get(field) == match_value:
+                filtered_list.append(item)
+        return filtered_list
+
+    def __init__(
+        self, split: Union[Literal["train", "val", "test"]] = "train", **kwargs
+    ):
+        root_dir = project_root_dir() / "data" / "nuimages" / "mini"
+        img_dir = root_dir
+        mask_annotations_file = (root_dir / "v1.0-mini" / "object_ann.json")
+        categories_file = (root_dir / "v1.0-mini" / "category.json")
+        sample_data_labels_file = (root_dir / "v1.0-mini" / "sample_data.json")
+        attributes_file = (root_dir / "v1.0-mini" / "attribute.json")
+
+        self.sample_data_labels = json.load(open(sample_data_labels_file))
+        self.attribute_labels = json.load(open(attributes_file))
+        self.category_labels = json.load(open(categories_file))
+        self.mask_annotations = json.load(open(mask_annotations_file))
+
+        def merge_transform(
+            image: Tensor,
+            labels: List[Dict[str, Any]],
+            timestamp: str,
+        ) -> Tuple[
+            Tensor,
+            List[Tuple[InstanceSegmentationResultI, Dict[str, Any], str]],
+            Dict[str, Any],
+            str,
+        ]:
+            results = []
+            obj_attributes = {}
+
+            for instance_id, label in enumerate(labels):
+                _, height, width = image.shape
+                mask = label['mask']['counts']
+                category_list = self.filter_by_token(
+                    self.category_labels, "token", label["category_token"]
+                )
+                object_category_name = ""
+                if len(category_list) == 0:
+                    object_category_name = "Unknown"
+                else:
+                    object_category_name = category_list[0][
+                        "name"
+                    ]  # Take the first object category
+                
+                attribute_tokens = label["attribute_tokens"]
+
+                if len(attribute_tokens) > 0:
+                    obj_attributes = self.attributes_labels[
+                        attribute_tokens[0]
+                    ]  # Take the first attribute token
+
+                results.append(
+                    (
+                        # ObjectDetectionResultI(
+                        #     score=1.0,
+                        #     cls=self.category_to_cls(object_category),
+                        #     label=object_category,
+                        #     bbox=obj_label["bbox"],
+                        #     image_hw=(height, width),
+                        #     bbox_format=BBox_Format.XYXY,
+                        #     attributes=obj_attributes,
+                        # ),
+                        InstanceSegmentationResultI(
+                            score=1.0,
+                            cls=self.category_to_cls(object_category_name),
+                            label=object_category_name,
+                            instance_id=instance_id,
+                            image_hw=(height, width),
+                            mask=mask,
+                            mask_format=Mask_Format.RLE
+                        ),
+                        obj_attributes,
+                        timestamp,
+                    )
+                )
+
+            return (image, results, attributes, timestamp)
+
+        super().__init__(
+            annotations_file=sample_data_labels_file, img_dir=img_dir, merge_transform=merge_transform, **kwargs
+        )
+
+    def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
+        print(f"__getitem__ entered, {len(self.img_labels)}")
+        img_filename = self.img_labels[idx]["filename"]
+        img_token = self.img_labels[idx]["token"]
+        timestamp = self.img_labels[idx]["timestamp"]
+        img_path = os.path.join(self.img_dir, img_filename)
+        image = decode_image(img_path)
+
+        obj_labels = self.filter_by_token(
+            self.mask_annotations, "sample_data_token", img_token
+        )
+
+        if self.transform:
+            image = self.transform(image)
+        if self.target_transform:
+            labels = self.target_transform(labels)
+        if self.merge_transform:
+            image, labels, attributes, timestamp = self.merge_transform(
+                image, obj_labels, timestamp
+            )
+
+        return {
+            "image": image,
+            "labels": labels,
+            "attributes": attributes,
+            "timestamp": timestamp,
+        }
+    
+
 class WaymoDataset(ImageDataset):
     """
 -    camera_image/{segment_context_name}.parquet
