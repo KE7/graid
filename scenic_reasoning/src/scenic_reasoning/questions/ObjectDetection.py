@@ -514,8 +514,6 @@ class LargestAppearance(Question):
             ],
         )
 
-        self.question = self.question
-
     def apply(
         self,
         image: Image.Image,
@@ -548,8 +546,6 @@ class MostAppearance(Question):
                 ),
             ],
         )
-
-        self.question = self.question
 
     def apply(
         self,
@@ -601,8 +597,6 @@ class LeastAppearance(Question):
             ],
         )
 
-        self.question = self.question
-
     def apply(
         self, image: Image.Image, detections: List[ObjectDetectionResultI]
     ) -> List[Tuple[str, str]]:
@@ -650,8 +644,6 @@ class LeftOf(Question):
                 ObjectDetectionPredicates.exists_non_overlapping_detections,
             ],
         )
-
-        self.question = self.question
 
     def apply(
         self,
@@ -714,8 +706,6 @@ class RightOf(Question):
             ],
         )
 
-        self.question = self.question
-
     def apply(
         self,
         image: Image.Image,
@@ -763,14 +753,16 @@ class RightOf(Question):
 
         return question_answer_pairs
 
+
 # One can image an AboveOf and BelowOf question as well
 # However, these are actually not a good idea
-# When you look at an image, what appears as a higher or lower 
+# When you look at an image, what appears as a higher or lower
 # y-coordinate may not necessarily translate to a higher or lower object
 # This is especially true of perspective images (i.e. images taken from a distance)
-# An object that is further away from the camera may appear at a higher 
-# y-coordinate than an object that is closer to the camera but they are 
+# An object that is further away from the camera may appear at a higher
+# y-coordinate than an object that is closer to the camera but they are
 # in fact on the same plane
+
 
 class LeftMost(Question):
     def __init__(self) -> None:
@@ -783,8 +775,6 @@ class LeftMost(Question):
                 ),
             ],
         )
-
-        self.question = self.question
 
     def apply(
         self,
@@ -803,11 +793,14 @@ class LeftMost(Question):
 
         if len(detections) == 0:
             return []
-        
+
         if len(detections) == 1:
             image_width, _ = image.size
             # logic to check if the bbox is actually on the left side of the image
-            if detections[0].as_xyxy()[0][0] < image_width / 2 and detections[0].as_xyxy()[0][2] < image_width / 2:
+            if (
+                detections[0].as_xyxy()[0][0] < image_width / 2
+                and detections[0].as_xyxy()[0][2] < image_width / 2
+            ):
                 return [(self.question, detections[0].label)]
             else:
                 return []
@@ -844,10 +837,15 @@ class LeftMost(Question):
 
         image_width, _ = image.size
         # logic to check if the bbox is actually on the left side of the image
-        if not (leftmost_detection[1][0] < image_width / 2 and leftmost_detection[1][2] < image_width / 2):
-            logger.debug("LeftMost question not ask-able due to not being on the left side of the image")
+        if not (
+            leftmost_detection[1][0] < image_width / 2
+            and leftmost_detection[1][2] < image_width / 2
+        ):
+            logger.debug(
+                "LeftMost question not ask-able due to not being on the left side of the image"
+            )
             return []
-            
+
         return [(self.question, leftmost_detection[0])]
 
 
@@ -862,8 +860,6 @@ class RightMost(Question):
                 ),
             ],
         )
-
-        self.question = self.question
 
     def apply(
         self,
@@ -882,11 +878,14 @@ class RightMost(Question):
 
         if len(detections) == 0:
             return []
-        
+
         if len(detections) == 1:
             image_width, _ = image.size
             # logic to check if the bbox is actually on the right side of the image
-            if detections[0].as_xyxy()[0][0] > image_width / 2 and detections[0].as_xyxy()[0][2] > image_width / 2:
+            if (
+                detections[0].as_xyxy()[0][0] > image_width / 2
+                and detections[0].as_xyxy()[0][2] > image_width / 2
+            ):
                 return [(self.question, detections[0].label)]
             else:
                 return []
@@ -918,13 +917,76 @@ class RightMost(Question):
         inter_area = inter_width * inter_height
 
         if inter_area > 0:  # overlapping
-            logger.debug("RightMost question not ask-able due to overlapping detections")
+            logger.debug(
+                "RightMost question not ask-able due to overlapping detections"
+            )
             return []
 
         image_width, _ = image.size
         # logic to check if the bbox is actually on the right side of the image
-        if not (rightmost_detection[1][0] > image_width / 2 and rightmost_detection[1][2] > image_width / 2):
-            logger.debug("RightMost question not ask-able due to not being on the right side of the image")
+        if not (
+            rightmost_detection[1][0] > image_width / 2
+            and rightmost_detection[1][2] > image_width / 2
+        ):
+            logger.debug(
+                "RightMost question not ask-able due to not being on the right side of the image"
+            )
             return []
-            
+
         return [(self.question, rightmost_detection[0])]
+
+
+class HowMany(Question):
+    # TODO: Create a version of this question that is multiple choice
+    def __init__(self) -> None:
+        super().__init__(
+            question="How many {object_1}(s) are there in this image?",
+            variables=["object_1"],
+            predicates=[
+                lambda image, detections: ObjectDetectionPredicates.at_least_x_many_class_detections(
+                    image, detections, 1
+                ),
+            ],
+        )
+
+    def apply(
+        self,
+        image: Image.Image,
+        detections: List[ObjectDetectionResultI],
+    ) -> List[Tuple[str, str]]:
+        # @precondition: at_least_x_many_class_detections(image, detections, 1) == True
+
+        detection_counts = {}
+        for detection in detections:
+            class_name = detection.label
+            if type(class_name) == torch.Tensor:  # shape == (# of boxes,)
+                # need to iterate over the tensor to get the class names
+                for class_name in class_name:
+                    detection_counts[class_name] = (
+                        detection_counts.get(class_name, 0) + 1
+                    )
+            else:
+                detection_counts[class_name] = detection_counts.get(class_name, 0) + 1
+
+        question_answer_pairs = []
+        for class_name, count in detection_counts.items():
+            question_answer_pairs.append(
+                (self.question.format(object_1=class_name), str(count))
+            )
+
+        return question_answer_pairs
+
+
+ALL_QUESTIONS = [
+    IsObjectCentered,
+    WidthVsHeight,
+    Quadrants,
+    LargestAppearance,
+    MostAppearance,
+    LeastAppearance,
+    LeftOf,
+    RightOf,
+    LeftMost,
+    RightMost,
+    HowMany,   
+]
