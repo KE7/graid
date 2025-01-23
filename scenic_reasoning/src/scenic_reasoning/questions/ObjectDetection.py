@@ -763,6 +763,14 @@ class RightOf(Question):
 
         return question_answer_pairs
 
+# One can image an AboveOf and BelowOf question as well
+# However, these are actually not a good idea
+# When you look at an image, what appears as a higher or lower 
+# y-coordinate may not necessarily translate to a higher or lower object
+# This is especially true of perspective images (i.e. images taken from a distance)
+# An object that is further away from the camera may appear at a higher 
+# y-coordinate than an object that is closer to the camera but they are 
+# in fact on the same plane
 
 class LeftMost(Question):
     def __init__(self) -> None:
@@ -793,7 +801,54 @@ class LeftMost(Question):
         # One way to address this, would be to implement set-of-mark prompting (highlight what we can
         # detect via bounding boxes) and then ask the model to answer the question based on that.
 
-        raise NotImplementedError("LeftMost question not implemented yet")
+        if len(detections) == 0:
+            return []
+        
+        if len(detections) == 1:
+            image_width, _ = image.size
+            # logic to check if the bbox is actually on the left side of the image
+            if detections[0].as_xyxy()[0][0] < image_width / 2 and detections[0].as_xyxy()[0][2] < image_width / 2:
+                return [(self.question, detections[0].label)]
+            else:
+                return []
+
+        flattened_detections = []
+        for detection in detections:
+            curr_bbox = detection.as_xyxy()
+            if type(detection.label) == torch.Tensor:
+                for i in range(detection.label.shape[0]):
+                    label = detection.label[i]
+                    curr_bbox = curr_bbox[i]
+                    flattened_detections.append((label, curr_bbox))
+            else:
+                flattened_detections.append((detection.label, curr_bbox))
+
+        sorted_detections = sorted(
+            flattened_detections, key=lambda x: x[1][0]
+        )  # sort by x1 coordinate
+        leftmost_detection = sorted_detections[0]
+        second_leftmost_detection = sorted_detections[1]
+
+        x1_inter = max(leftmost_detection[1][0], second_leftmost_detection[1][0])
+        x2_inter = min(leftmost_detection[1][2], second_leftmost_detection[1][2])
+        y1_inter = max(leftmost_detection[1][1], second_leftmost_detection[1][1])
+        y2_inter = min(leftmost_detection[1][3], second_leftmost_detection[1][3])
+
+        inter_width = max(0, x2_inter - x1_inter + 1)
+        inter_height = max(0, y2_inter - y1_inter + 1)
+        inter_area = inter_width * inter_height
+
+        if inter_area > 0:  # overlapping
+            logger.debug("LeftMost question not ask-able due to overlapping detections")
+            return []
+
+        image_width, _ = image.size
+        # logic to check if the bbox is actually on the left side of the image
+        if not (leftmost_detection[1][0] < image_width / 2 and leftmost_detection[1][2] < image_width / 2):
+            logger.debug("LeftMost question not ask-able due to not being on the left side of the image")
+            return []
+            
+        return [(self.question, leftmost_detection[0])]
 
 
 class RightMost(Question):
@@ -825,4 +880,51 @@ class RightMost(Question):
         # One way to address this, would be to implement set-of-mark prompting (highlight what we can
         # detect via bounding boxes) and then ask the model to answer the question based on that.
 
-        raise NotImplementedError("RightMost question not implemented yet")
+        if len(detections) == 0:
+            return []
+        
+        if len(detections) == 1:
+            image_width, _ = image.size
+            # logic to check if the bbox is actually on the right side of the image
+            if detections[0].as_xyxy()[0][0] > image_width / 2 and detections[0].as_xyxy()[0][2] > image_width / 2:
+                return [(self.question, detections[0].label)]
+            else:
+                return []
+
+        flattened_detections = []
+        for detection in detections:
+            curr_bbox = detection.as_xyxy()
+            if type(detection.label) == torch.Tensor:
+                for i in range(detection.label.shape[0]):
+                    label = detection.label[i]
+                    curr_bbox = curr_bbox[i]
+                    flattened_detections.append((label, curr_bbox))
+            else:
+                flattened_detections.append((detection.label, curr_bbox))
+
+        sorted_detections = sorted(
+            flattened_detections, key=lambda x: x[1][2], reverse=True
+        )  # sort by x2 coordinate
+        rightmost_detection = sorted_detections[0]
+        second_rightmost_detection = sorted_detections[1]
+
+        x1_inter = max(rightmost_detection[1][0], second_rightmost_detection[1][0])
+        x2_inter = min(rightmost_detection[1][2], second_rightmost_detection[1][2])
+        y1_inter = max(rightmost_detection[1][1], second_rightmost_detection[1][1])
+        y2_inter = min(rightmost_detection[1][3], second_rightmost_detection[1][3])
+
+        inter_width = max(0, x2_inter - x1_inter + 1)
+        inter_height = max(0, y2_inter - y1_inter + 1)
+        inter_area = inter_width * inter_height
+
+        if inter_area > 0:  # overlapping
+            logger.debug("RightMost question not ask-able due to overlapping detections")
+            return []
+
+        image_width, _ = image.size
+        # logic to check if the bbox is actually on the right side of the image
+        if not (rightmost_detection[1][0] > image_width / 2 and rightmost_detection[1][2] > image_width / 2):
+            logger.debug("RightMost question not ask-able due to not being on the right side of the image")
+            return []
+            
+        return [(self.question, rightmost_detection[0])]
