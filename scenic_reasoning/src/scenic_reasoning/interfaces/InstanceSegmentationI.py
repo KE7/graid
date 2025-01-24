@@ -14,39 +14,11 @@ from typing import Dict, Iterator, List, Optional, Tuple, Union
 from PIL import Image
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
 import numpy as np
-import base64
-import zlib
 
 class Mask_Format(Enum):
     BITMASK = 0
     POLYGON = 1
     RLE = 2
-
-def rleToMask(rleString,height,width):
-  rows,cols = height,width
-  rleNumbers = [int(numstring) for numstring in rleString.split(' ')]
-  rlePairs = np.array(rleNumbers).reshape(-1,2)
-  img = np.zeros(rows*cols,dtype=np.uint8)
-  for index,length in rlePairs:
-    index -= 1
-    img[index:index+length] = 255
-  img = img.reshape(cols,rows)
-  img = img.T
-  return img
-
-def decode_rle(rle_string):
-    output = []
-    i = 0
-    while i < len(rle_string):
-        char = rle_string[i]
-        i += 1
-        num = ''
-        while i < len(rle_string) and rle_string[i].isdigit():
-            num += rle_string[i]
-            i += 1
-        if num.isdigit():  # Ensure num is valid
-            output.extend([char] * int(num))
-    return ''.join(output)
 
 class InstanceSegmentationResultI:
     def __init__(
@@ -88,26 +60,8 @@ class InstanceSegmentationResultI:
                 )
             elif mask_format == Mask_Format.RLE:
                 height, width = self._image_hw
+                # TODO: implement this if needed. NuImage doens't need this yet.
 
-                string_mask = mask.encode('utf-8')
-                # decompressed_data = zlib.decompress(string_mask, wbits=-zlib.MAX_WBITS)
-                # # decoded_data = 
-
-
-
-                decoded_string = base64.b64decode(mask)
-                # decoded_string = decoded_string.decode('utf-8')
-                uncompressedStr = zlib.decompress(decoded_string, wbits=zlib.MAX_WBITS)   
-                detection ={
-                    'size': [width, height],
-                    'counts': uncompressedStr
-                }
-                detlist = []
-                detlist.append(detection)
-                mask = mask_util.decode(detlist)
-                binaryMask = mask.astype('bool') 
-                
-                return mask.reshape((height, width))
             else:
                 raise NotImplementedError(
                     f"{mask_format} not supported for initializing InstanceSegmentationResultI"

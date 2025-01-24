@@ -844,12 +844,19 @@ class NuImagesDataset_seg(ImageDataset):
     def __init__(
         self, split: Union[Literal["train", "val", "test"]] = "train", **kwargs
     ):
+        
+        from nuimages import NuImages
+        import base64
+        from pycocotools import mask as cocomask
+
         root_dir = project_root_dir() / "data" / "nuimages" / "mini"
         img_dir = root_dir
         mask_annotations_file = (root_dir / "v1.0-mini" / "object_ann.json")
         categories_file = (root_dir / "v1.0-mini" / "category.json")
         sample_data_labels_file = (root_dir / "v1.0-mini" / "sample_data.json")
         attributes_file = (root_dir / "v1.0-mini" / "attribute.json")
+
+        self.nuim = NuImages(dataroot=img_dir, version='v1.0-mini', verbose=True, lazy=True)
 
         self.sample_data_labels = json.load(open(sample_data_labels_file))
         self.attribute_labels = json.load(open(attributes_file))
@@ -860,18 +867,28 @@ class NuImagesDataset_seg(ImageDataset):
             image: Tensor,
             labels: List[Dict[str, Any]],
             timestamp: str,
+            stride=32,
         ) -> Tuple[
             Tensor,
             List[Tuple[InstanceSegmentationResultI, Dict[str, Any], str]],
             Dict[str, Any],
             str,
         ]:
+            C, H, W = image.shape
+            new_H = (H + stride - 1) // stride * stride
+            new_W = (W + stride - 1) // stride * stride
+            image = image.permute(1, 2, 0).cpu().numpy()
+            resized_image = cv2.resize(image, (new_W, new_H), interpolation=cv2.INTER_LINEAR)  #TODO: should I use this package to do resizing?
+            resized_image = torch.from_numpy(resized_image).permute(2, 0, 1).float()
+
             results = []
             obj_attributes = {}
 
             for instance_id, label in enumerate(labels):
                 _, height, width = image.shape
-                mask = label['mask']['counts']
+                new_mask = label['mask'].copy()
+                new_mask['counts'] = base64.b64decode(new_mask['counts'])
+                mask = cocomask.decode(new_mask)
                 category_list = self.filter_by_token(
                     self.category_labels, "token", label["category_token"]
                 )
@@ -886,36 +903,25 @@ class NuImagesDataset_seg(ImageDataset):
                 attribute_tokens = label["attribute_tokens"]
 
                 if len(attribute_tokens) > 0:
-                    obj_attributes = self.attributes_labels[
-                        attribute_tokens[0]
-                    ]  # Take the first attribute token
+                    obj_attributes = self.nuim.get("attribute", attribute_tokens[0]) # Take the first attribute token
 
                 results.append(
                     (
-                        # ObjectDetectionResultI(
-                        #     score=1.0,
-                        #     cls=self.category_to_cls(object_category),
-                        #     label=object_category,
-                        #     bbox=obj_label["bbox"],
-                        #     image_hw=(height, width),
-                        #     bbox_format=BBox_Format.XYXY,
-                        #     attributes=obj_attributes,
-                        # ),
                         InstanceSegmentationResultI(
                             score=1.0,
                             cls=self.category_to_cls(object_category_name),
                             label=object_category_name,
                             instance_id=instance_id,
                             image_hw=(height, width),
-                            mask=mask,
-                            mask_format=Mask_Format.RLE
+                            mask=torch.from_numpy(mask).unsqueeze(0),
+                            mask_format=Mask_Format.BITMASK
                         ),
                         obj_attributes,
                         timestamp,
                     )
                 )
 
-            return (image, results, attributes, timestamp)
+            return (resized_image, results, obj_attributes, timestamp)
 
         super().__init__(
             annotations_file=sample_data_labels_file, img_dir=img_dir, merge_transform=merge_transform, **kwargs
@@ -1146,3 +1152,4 @@ class WaymoDataset(ImageDataset):
             "attributes": attributes,
             "timestamp": timestamp,
         }
+    

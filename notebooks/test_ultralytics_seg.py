@@ -1,4 +1,4 @@
-from scenic_reasoning.data.ImageLoader import Bdd10kDataset, Bdd100kDataset, WaymoDataset, NuImagesDataset, NuImagesDataset_seg
+from scenic_reasoning.data.ImageLoader import Bdd10kDataset, NuImagesDataset_seg
 from scenic_reasoning.models.UltralyticsYolo import Yolo_seg
 from scenic_reasoning.measurements.InstanceSegmentation import InstanceSegmentationMeasurements
 
@@ -26,23 +26,25 @@ nuscene = NuImagesDataset_seg(
 )
 
 
-# https://docs.ultralytics.com/models/yolov5/#performance-metrics
-model = Yolo_seg(model="yolo11n-seg.pt") # v5 can handle 1280 while v8 can handle 640. makes no sense ><
-# measurements = InstanceSegmentationMeasurements(model, bdd, batch_size=BATCH_SIZE, collate_fn=lambda x: x) # hacky way to avoid RuntimeError: each element in list of batch should be of equal size
-measurements = InstanceSegmentationMeasurements(model, nuscene, batch_size=BATCH_SIZE, collate_fn=lambda x: x)
-model.identify_for_image(['../demo/demo.jpg', '../demo/demo2.jpg'])
-# model.identify_for_image('../demo/demo.jpg')
-# WARNING ⚠️ imgsz=[720, 1280] must be multiple of max stride 64, updating to [768, 1280]
-from pprint import pprint
-for (results, ims) in islice(measurements.iter_measurements(
-        device=get_default_device(), 
-        imgsz=[768, 1280],
-        debug=True,  
-        conf=0.1,
-        class_metrics=True,
-        extended_summary=True,
-        ), 
-    NUM_EXAMPLES_TO_SHOW):
-    print("")
-    # pprint(results)
-    # [im.show() for im in ims]  #TODO: need to write a custom function to display the ground truth instance segmentation result.
+for d in [bdd, nuscene]:
+
+    # https://docs.ultralytics.com/models/yolov5/#performance-metrics
+    model = Yolo_seg(model="yolo11n-seg.pt") # v5 can handle 1280 while v8 can handle 640. makes no sense ><
+    # measurements = InstanceSegmentationMeasurements(model, bdd, batch_size=BATCH_SIZE, collate_fn=lambda x: x) # hacky way to avoid RuntimeError: each element in list of batch should be of equal size
+    measurements = InstanceSegmentationMeasurements(model, d, batch_size=BATCH_SIZE, collate_fn=lambda x: x)
+    model.identify_for_image(['../demo/demo.jpg', '../demo/demo2.jpg'])
+    # model.identify_for_image('../demo/demo.jpg')
+    # WARNING ⚠️ imgsz=[720, 1280] must be multiple of max stride 64, updating to [768, 1280]
+    from pprint import pprint
+    for (results, ims) in islice(measurements.iter_measurements(
+            device=get_default_device(), 
+            imgsz=[768, 1280],
+            debug=True,  
+            conf=0.1,
+            class_metrics=True,
+            extended_summary=True,
+            ), 
+        NUM_EXAMPLES_TO_SHOW):
+        print("")
+        # pprint(results)
+        # [im.show() for im in ims]  #TODO: need to write a custom function to display the ground truth instance segmentation result.
