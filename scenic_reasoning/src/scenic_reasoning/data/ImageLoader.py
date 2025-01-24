@@ -882,7 +882,7 @@ class NuImagesDataset_seg(ImageDataset):
             resized_image = torch.from_numpy(resized_image).permute(2, 0, 1).float()
 
             results = []
-            obj_attributes = {}
+            
 
             for instance_id, label in enumerate(labels):
                 _, height, width = image.shape
@@ -902,6 +902,7 @@ class NuImagesDataset_seg(ImageDataset):
                 
                 attribute_tokens = label["attribute_tokens"]
 
+                obj_attributes = {}
                 if len(attribute_tokens) > 0:
                     obj_attributes = self.nuim.get("attribute", attribute_tokens[0]) # Take the first attribute token
 
@@ -921,7 +922,7 @@ class NuImagesDataset_seg(ImageDataset):
                     )
                 )
 
-            return (resized_image, results, obj_attributes, timestamp)
+            return (resized_image, [r[0] for r in results], [r[1] for r in results], [r[2] for r in results])
 
         super().__init__(
             annotations_file=sample_data_labels_file, img_dir=img_dir, merge_transform=merge_transform, **kwargs
