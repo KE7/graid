@@ -618,43 +618,42 @@ class NuImagesDataset(ImageDataset):
     def __init__(
         self, split: Union[Literal["train", "val", "test"]] = "train", **kwargs
     ):
-        root_dir = project_root_dir() / "data" / "nuimages"
-        img_dir = root_dir / "nuimages-v1.0-all-samples"
-        obj_annotations_file = (
-            root_dir
-            / "nuimages-v1.0-all-metadata"
-            / f"v1.0-{split}"
-            / "object_ann.json"
-        )
-        categories_file = (
-            root_dir / "nuimages-v1.0-all-metadata" / f"v1.0-{split}" / "category.json"
-        )
-        sample_data_labels_file = (
-            root_dir
-            / "nuimages-v1.0-all-metadata"
-            / f"v1.0-{split}"
-            / "sample_data.json"
-        )
-        attributes_file = (
-            root_dir / "nuimages-v1.0-all-metadata" / f"v1.0-{split}" / "attribute.json"
-        )
+        from nuimages import NuImages
+
+        root_dir = project_root_dir() / "data" / "nuimages" / "mini"
+        img_dir = root_dir
+        obj_annotations_file = (root_dir / "v1.0-mini" / "object_ann.json")
+        categories_file = (root_dir / "v1.0-mini" / "category.json")
+        sample_data_labels_file = (root_dir / "v1.0-mini" / "sample_data.json")
+        attributes_file = (root_dir / "v1.0-mini" / "attribute.json")
 
         self.sample_data_labels = json.load(open(sample_data_labels_file))
         self.attribute_labels = json.load(open(attributes_file))
         self.category_labels = json.load(open(categories_file))
         self.obj_annotations = json.load(open(obj_annotations_file))
 
+        self.nuim = NuImages(dataroot=img_dir, version='v1.0-mini', verbose=True, lazy=True)
+
         def merge_transform(
             image: Tensor,
             labels: List[Dict[str, Any]],
             attributes: Dict[str, Any],
             timestamp: str,
+            stride=32
         ) -> Tuple[
             Tensor,
             List[Tuple[ObjectDetectionResultI, Dict[str, Any], str]],
             Dict[str, Any],
             str,
         ]:
+            
+            C, H, W = image.shape
+            new_H = (H + stride - 1) // stride * stride
+            new_W = (W + stride - 1) // stride * stride
+            image = image.permute(1, 2, 0).cpu().numpy()
+            resized_image = cv2.resize(image, (new_W, new_H), interpolation=cv2.INTER_LINEAR)  #TODO: should I use this package to do resizing?
+            resized_image = torch.from_numpy(resized_image).permute(2, 0, 1).float()
+
             results = []
             obj_attributes = {}
 
@@ -663,17 +662,21 @@ class NuImagesDataset(ImageDataset):
                 object_category_obj = self.filter_by_token(
                     self.category_labels, "token", obj_label["category_token"]
                 )
-                object_category_name = ""
-                if len(object_category) == 0:
+                object_category = ""
+                if len(object_category_obj) == 0:
                     object_category = "Unknown"
                 else:
                     object_category = object_category_obj[0][
                         "name"
                     ]  # Take the first object category
-                if len(attributes) > 0:
-                    obj_attributes = self.attributes_labels[
-                        attributes[0]
-                    ]  # Take the first attribute token
+                # if len(attributes) > 0:
+                #     obj_attributes = self.attribute_labels[
+                #         attributes[0]
+                #     ]  # Take the first attribute token
+
+                attribute_tokens = obj_label["attribute_tokens"]
+                if len(attribute_tokens) > 0:
+                    obj_attributes = self.nuim.get("attribute", attribute_tokens[0]) # Take the first attribute token
 
                 results.append(
                     (
@@ -691,10 +694,10 @@ class NuImagesDataset(ImageDataset):
                     )
                 )
 
-            return (image, results, attributes, timestamp)
+            return (resized_image, [r[0] for r in results], [r[1] for r in results], [r[2] for r in results])
 
         super().__init__(
-            sample_data_labels_file, img_dir, merge_transform=merge_transform, **kwargs
+            annotations_file=sample_data_labels_file, img_dir=img_dir, merge_transform=merge_transform, **kwargs
         )
 
     def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
