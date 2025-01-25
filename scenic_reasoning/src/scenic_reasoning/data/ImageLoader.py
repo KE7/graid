@@ -730,6 +730,8 @@ class NuImagesDataset(ImageDataset):
             "attributes": attributes,
             "timestamp": timestamp,
         }
+    
+
 class WaymoDataset(ImageDataset):
     """
 -    camera_image/{segment_context_name}.parquet
@@ -793,7 +795,7 @@ class WaymoDataset(ImageDataset):
         y1 = center_y - height / 2
         x2 = center_x + width / 2
         y2 = center_y + height / 2
-        return x1, y1, x2, y2
+        return [x1, y1, x2, y2]
     
     def __init__(self, split: Union[Literal["training", "validation", "testing"]] = "training", **kwargs):
         root_dir = project_root_dir() / "data" / "waymo"
@@ -811,6 +813,8 @@ class WaymoDataset(ImageDataset):
         camera_image_files = [
             f for f in os.listdir(self.camera_img_dir) if f.endswith(".parquet")
         ]
+
+        camera_image_files = camera_image_files[:10]    # TODO: doing this because using the entire validation gives us memory issue. Need to change later.
 
         # Check if image files are found
         if not camera_image_files:
@@ -832,12 +836,6 @@ class WaymoDataset(ImageDataset):
             box_df = pd.read_parquet(box_path)
 
             unique_images_df = box_df.groupby(['key.segment_context_name', 'key.frame_timestamp_micros', 'key.camera_name'])
-            # Count the number of unique groups
-            print("Number of unique identifiers:", unique_images_df.ngroups) 
-
-            # Debug: Print DataFrame shapes
-            print(f"Image DataFrame: {image_df.shape}, Box DataFrame: {box_df.shape}")
-            print(f"Image Columns: {image_df.columns}, Box Columns: {box_df.columns}")
             # Merge image and box data
             merged_df = pd.merge(
                 image_df,
@@ -885,10 +883,28 @@ class WaymoDataset(ImageDataset):
         if not self.img_labels:
             raise ValueError(f"No valid data found in {self.camera_img_dir} and {self.camera_box_dir}")
         
-        print("Size of img_labels:", len(self.img_labels))
-        print(type(self.img_labels))
+        def merge_transform(image, labels, attributes, timestamp):
+            results = []
+
+            for label in labels:
+                    
+                cls = label['type']
+                bbox = label['bbox']
+
+                result = ObjectDetectionResultI(
+                    score=1.0,
+                    cls=cls,
+                    label=self.cls_to_category(cls),
+                    bbox=bbox,
+                    image_hw=image.shape,
+                    attributes=attributes
+                )
+                results.append(result)
+
+            return (image, results, attributes, timestamp)
+        
         # Call the parent class constructor (no annotations_file argument)
-        super().__init__(annotations_file=None, img_dir=str(self.camera_img_dir), img_labels=self.img_labels, **kwargs)
+        super().__init__(annotations_file=None, img_dir=str(self.camera_img_dir), img_labels=self.img_labels, merge_transform=merge_transform,  **kwargs)
 
     def __len__(self) -> int:
         return len(self.img_labels)
@@ -913,12 +929,9 @@ class WaymoDataset(ImageDataset):
         if self.target_transform:
             labels = self.target_transform(labels)
         if self.merge_transform:
-            if self.use_extended_annotations:
                 image, labels, attributes, timestamp = self.merge_transform(
                     image, labels, attributes, timestamp
                 )
-            else:
-                image, labels = self.merge_transform(image, labels, attributes, timestamp)
 
         return {
             "image": image,
@@ -926,3 +939,4 @@ class WaymoDataset(ImageDataset):
             "attributes": attributes,
             "timestamp": timestamp,
         }
+    
