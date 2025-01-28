@@ -1050,12 +1050,10 @@ class WaymoDataset_seg(ImageDataset):
 
                 labels = []
                 for _, row in group_data.iterrows():
-                    import pdb
-                    pdb.set_trace()
 
                     labels.append({
                         "masks": row['[CameraSegmentationLabelComponent].panoptic_label'],
-                        # "masks": row['[CameraSegmentationLabelComponent].num_cameras_covered'],
+                        "global_id": row['[CameraSegmentationLabelComponent].instance_id_to_global_id_mapping.global_instance_ids'],
                         "instance_id": row['[CameraSegmentationLabelComponent].instance_id_to_global_id_mapping.local_instance_ids'],
                         "divisor": row['[CameraSegmentationLabelComponent].panoptic_label_divisor']
                     })
@@ -1077,12 +1075,17 @@ class WaymoDataset_seg(ImageDataset):
         def merge_transform(image, labels, attributes, timestamp):
             masks_bytes = labels[0]['masks']
             divisor = labels[0]['divisor']
+            instance_id = labels[0]['instance_id']
+            global_id = labels[0]['global_id']
             masks = transforms.ToTensor()(Image.open(io.BytesIO(masks_bytes)))
-            masks = masks / divisor
-            import matplotlib.pyplot as plt
-            from waymo_open_dataset.utils import camera_segmentation_utils
             
 
+            # masks = masks / divisor
+            instance_masks = masks % divisor
+            semantic_masks = masks // divisor
+            # mask1 = torch.isin(masks, torch.tensor(instance_id))
+            mask1 = (semantic_masks == 14)
+            import matplotlib.pyplot as plt
             
 
             # Display the image
@@ -1094,9 +1097,11 @@ class WaymoDataset_seg(ImageDataset):
 
             # Display the masks
             plt.subplot(1, 2, 2)
-            plt.imshow(masks.permute(1, 2, 0).cpu().numpy(), cmap='gray')
+            plt.imshow(mask1.permute(1, 2, 0).cpu().numpy(), cmap='gray')
             plt.title('Masks')
             plt.axis('off')
+
+
             plt.show()
 
             import pdb
