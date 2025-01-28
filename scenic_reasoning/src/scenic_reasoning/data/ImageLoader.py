@@ -981,26 +981,9 @@ class WaymoDataset_seg(ImageDataset):
         return self._CLS_TO_CATEGORIES[str(cls)]
 
     def get_semantic_class(self, instance_map, semantic_map, instance_id):
-        """
-        Get the semantic class for a given instance ID.
-        
-        Parameters:
-            instance_map (numpy.ndarray): The map where each pixel value represents a unique instance ID.
-            semantic_map (numpy.ndarray): The map where each pixel value represents a semantic class.
-            instance_id (int): The instance ID to look for.
-        
-        Returns:
-            list: Unique semantic classes associated with the instance ID.
-        """
-        # Create a mask for the given instance ID
         mask = (instance_map == instance_id)
-        
-        # Use the mask to get the corresponding semantic classes
         semantic_classes = semantic_map[mask]
-        
-        # Get unique semantic classes
         unique_semantic_classes = np.unique(semantic_classes)
-        
         return unique_semantic_classes.tolist()
     
     @staticmethod
@@ -1145,15 +1128,9 @@ class WaymoDataset_seg(ImageDataset):
         if self.target_transform:
             labels = self.target_transform(labels)
         if self.merge_transform:
-                image, labels, attributes, timestamp = self.merge_transform(
-                    image, labels, attributes, timestamp
-                )
-            # if self.use_extended_annotations:
-            #     image, labels, attributes, timestamp = self.merge_transform(
-            #         image, labels, attributes, timestamp
-            #     )
-            # else:
-            #     image, labels = self.merge_transform(image, labels, attributes, timestamp)
+            image, labels, attributes, timestamp = self.merge_transform(
+                image, labels, attributes, timestamp
+            )
 
         return {
             "image": image,
