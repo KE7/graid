@@ -9,7 +9,7 @@ from ultralytics.data.augment import LetterBox
 
 shape_transform = LetterBox(new_shape=(768, 1280))
 
-NUM_EXAMPLES_TO_SHOW = 1
+NUM_EXAMPLES_TO_SHOW = 3
 BATCH_SIZE = 1
 
 bdd = Bdd10kDataset(
