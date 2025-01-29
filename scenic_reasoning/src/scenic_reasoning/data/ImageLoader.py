@@ -1094,7 +1094,7 @@ class WaymoDataset_seg(ImageDataset):
             results = []
             for i in instance_id:
                 semantic_id = self.get_semantic_class(instance_masks, semantic_masks, i)
-                class_id = semantic_id[0]    # see: https://github.com/waymo-research/waymo-open-dataset/issues/570
+                class_id = semantic_id[0]    # see: https://github.com/waymo-research/waymo-open-dataset/issues/570 and page 6 of the original waymo paper: https://www.ecva.net/papers/eccv_2022/papers_ECCV/papers/136890052.pdf
                 instance_mask = instance_masks == i
                 print(class_id)
 
