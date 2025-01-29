@@ -959,20 +959,42 @@ class WaymoDataset_seg(ImageDataset):
 -    """
 
     _CATEGORIES = {
-        "TYPE_UNKNOWN": 0,
-        "TYPE_VEHICLE": 1,
-        "TYPE_PEDESTRIAN": 2,
-        "TYPE_SIGN": 3,
-        "TYPE_CYCLIST": 4,
-    }
+    "TYPE_UNDEFINED": 0,
+    "TYPE_EGO_VEHICLE": 1,
+    "TYPE_CAR": 2,
+    "TYPE_TRUCK": 3,
+    "TYPE_BUS": 4,
+    "TYPE_OTHER_LARGE_VEHICLE": 5,
+    "TYPE_BICYCLE": 6,
+    "TYPE_MOTORCYCLE": 7,
+    "TYPE_TRAILER": 8,
+    "TYPE_PEDESTRIAN": 9,
+    "TYPE_CYCLIST": 10,
+    "TYPE_MOTORCYCLIST": 11,
+    "TYPE_BIRD": 12,
+    "TYPE_GROUND_ANIMAL": 13,
+    "TYPE_CONSTRUCTION_CONE_POLE": 14,
+    "TYPE_POLE": 15,
+    "TYPE_PEDESTRIAN_OBJECT": 16,
+    "TYPE_SIGN": 17,
+    "TYPE_TRAFFIC_LIGHT": 18,
+    "TYPE_BUILDING": 19,
+    "TYPE_ROAD": 20,
+    "TYPE_LANE_MARKER": 21,
+    "TYPE_ROAD_MARKER": 22,
+    "TYPE_SIDEWALK": 23,
+    "TYPE_VEGETATION": 24,
+    "TYPE_SKY": 25,
+    "TYPE_GROUND": 26,
+    "TYPE_DYNAMIC": 27,
+    "TYPE_STATIC": 28
+}
 
-    _CLS_TO_CATEGORIES = {
-        "0": "TYPE_UNKNOWN",
-        "1": "TYPE VEHICLE",
-        "2": "TYPE_PEDESTRIAN",
-        "3": "TYPE_SIGN",
-        "4": "TYPE_CYCLIST",
-    }
+
+    _CLS_TO_CATEGORIES = {str(v): k for k, v in _CATEGORIES.items()}
+
+
+    # See: https://github.com/waymo-research/waymo-open-dataset/blob/master/src/waymo_open_dataset/protos/camera_segmentation.proto
 
     def category_to_cls(self, category: str) -> int:
         return self._CATEGORIES[category]
@@ -1088,9 +1110,11 @@ class WaymoDataset_seg(ImageDataset):
 
             results = []
             for i in instance_id:
-                semantic_id = self.get_semantic_class(instance_masks, semantic_masks, 2)
-                class_id = semantic_id[0]
+                semantic_id = self.get_semantic_class(instance_masks, semantic_masks, i)
+                class_id = semantic_id[0]    # see: https://github.com/waymo-research/waymo-open-dataset/issues/570
                 instance_mask = instance_masks == i
+                print(class_id)
+
                 result = InstanceSegmentationResultI(
                     score=1.0, 
                     cls=int(class_id), 

@@ -141,7 +141,7 @@ class InstanceSegmentationMeasurements:
             boxes=fake_boxes
         )
 
-        im.show()
+        im.show(boxes=False)
 
         return im
 
