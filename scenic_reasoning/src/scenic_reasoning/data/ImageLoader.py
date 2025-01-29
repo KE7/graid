@@ -19,7 +19,7 @@ from torch.utils.data import Dataset
 from torchvision import transforms
 from torchvision.io import decode_image
 import torch
-
+from scenic_reasoning.utilities.common import convert_to_xyxy
 
 
 class ImageDataset(Dataset):
@@ -783,15 +783,6 @@ class WaymoDataset(ImageDataset):
     def cls_to_category(self, cls: int) -> str:
         return self._CLS_TO_CATEGORIES[str(cls)]
     
-    @staticmethod
-    def convert_to_xyxy(center_x: int, center_y: int, width: int, height: int):
-        """Converts bounding box from center-width-height format to XYXY format."""
-        x1 = center_x - width / 2
-        y1 = center_y - height / 2
-        x2 = center_x + width / 2
-        y2 = center_y + height / 2
-        return x1, y1, x2, y2
-    
     def __init__(self, split: Union[Literal["training", "validation", "testing"]] = "training", **kwargs):
         root_dir = project_root_dir() / "data" / "waymo"
         self.camera_img_dir = root_dir / f"{split}" / "camera_image"
@@ -863,7 +854,7 @@ class WaymoDataset(ImageDataset):
                 for _, row in group_data.iterrows():
                     labels.append({
                         "type": row["[CameraBoxComponent].type"],
-                        "bbox": self.convert_to_xyxy(
+                        "bbox": convert_to_xyxy(
                             row["[CameraBoxComponent].box.center.x"],
                             row["[CameraBoxComponent].box.center.y"],
                             row["[CameraBoxComponent].box.size.x"],
@@ -923,3 +914,236 @@ class WaymoDataset(ImageDataset):
             "attributes": attributes,
             "timestamp": timestamp,
         }
+
+class WaymoDataset_seg(ImageDataset):
+    """
+-    camera_image/{segment_context_name}.parquet
+-    15 columns
+-    Index(['key.segment_context_name', 'key.frame_timestamp_micros',
+-       'key.camera_name', '[CameraImageComponent].image',
+-       '[CameraImageComponent].pose.transform',
+-       '[CameraImageComponent].velocity.linear_velocity.x',
+-       '[CameraImageComponent].velocity.linear_velocity.y',
+-       '[CameraImageComponent].velocity.linear_velocity.z',
+-       '[CameraImageComponent].velocity.angular_velocity.x',
+-       '[CameraImageComponent].velocity.angular_velocity.y',
+-       '[CameraImageComponent].velocity.angular_velocity.z',
+-       '[CameraImageComponent].pose_timestamp',
+-       '[CameraImageComponent].rolling_shutter_params.shutter',
+-       '[CameraImageComponent].rolling_shutter_params.camera_trigger_time',
+-       '[CameraImageComponent].rolling_shutter_params.camera_readout_done_time'],
+-      dtype='object')
+-    (variable_size_rows, 15)
+-
+-    camera_box/{segment_context_name}.parquet
+-    11 columns
+-    Index(['key.segment_context_name', 'key.frame_timestamp_micros',
+-       'key.camera_name', 'key.camera_object_id',
+-       '[CameraBoxComponent].box.center.x',
+-       '[CameraBoxComponent].box.center.y', '[CameraBoxComponent].box.size.x',
+-       '[CameraBoxComponent].box.size.y', '[CameraBoxComponent].type',
+-       '[CameraBoxComponent].difficulty_level.detection',
+-       '[CameraBoxComponent].difficulty_level.tracking'],
+-      dtype='object')
+-    (variable_size_rows, 11)
+-
+-    """
+
+    _CATEGORIES = {
+        "TYPE_UNDEFINED": 0,
+        "TYPE_EGO_VEHICLE": 1,
+        "TYPE_CAR": 2,
+        "TYPE_TRUCK": 3,
+        "TYPE_BUS": 4,
+        "TYPE_OTHER_LARGE_VEHICLE": 5,
+        "TYPE_BICYCLE": 6,
+        "TYPE_MOTORCYCLE": 7,
+        "TYPE_TRAILER": 8,
+        "TYPE_PEDESTRIAN": 9,
+        "TYPE_CYCLIST": 10,
+        "TYPE_MOTORCYCLIST": 11,
+        "TYPE_BIRD": 12,
+        "TYPE_GROUND_ANIMAL": 13,
+        "TYPE_CONSTRUCTION_CONE_POLE": 14,
+        "TYPE_POLE": 15,
+        "TYPE_PEDESTRIAN_OBJECT": 16,
+        "TYPE_SIGN": 17,
+        "TYPE_TRAFFIC_LIGHT": 18,
+        "TYPE_BUILDING": 19,
+        "TYPE_ROAD": 20,
+        "TYPE_LANE_MARKER": 21,
+        "TYPE_ROAD_MARKER": 22,
+        "TYPE_SIDEWALK": 23,
+        "TYPE_VEGETATION": 24,
+        "TYPE_SKY": 25,
+        "TYPE_GROUND": 26,
+        "TYPE_DYNAMIC": 27,
+        "TYPE_STATIC": 28
+    }
+
+
+    _CLS_TO_CATEGORIES = {str(v): k for k, v in _CATEGORIES.items()}
+
+
+    # See: https://github.com/waymo-research/waymo-open-dataset/blob/master/src/waymo_open_dataset/protos/camera_segmentation.proto
+
+    def category_to_cls(self, category: str) -> int:
+        return self._CATEGORIES[category]
+
+    def cls_to_category(self, cls: int) -> str:
+        return self._CLS_TO_CATEGORIES[str(cls)]
+
+    def get_semantic_class(self, instance_map, semantic_map, instance_id):
+        mask = (instance_map == instance_id)
+        semantic_classes = semantic_map[mask]
+        unique_semantic_classes = np.unique(semantic_classes)
+        return unique_semantic_classes.tolist()
+    
+    
+    def __init__(self, split: Union[Literal["training", "validation", "testing"]] = "training", **kwargs):
+        root_dir = project_root_dir() / "data" / "waymo"
+        self.camera_img_dir = root_dir / f"{split}" / "camera_image"
+        self.camera_box_dir = root_dir / f"{split}" / "camera_box"
+
+        # Check if directories exist
+        if not os.path.exists(self.camera_img_dir) or not os.path.exists(self.camera_box_dir):
+            raise FileNotFoundError(f"Directories not found: {self.camera_img_dir}, {self.camera_box_dir}")
+
+        # Initialize img_labels
+        self.img_labels = []
+
+        # Get the camera image files in the directory
+        camera_image_files = [
+            str(self.camera_img_dir / f) for f in os.listdir(self.camera_img_dir) if f.endswith(".parquet")
+        ]
+
+        # Check if image files are found
+        if not camera_image_files:
+            raise FileNotFoundError(f"No parquet image files found in {self.camera_img_dir}")
+        
+        merged_dfs = []
+        num_empty = 0
+        for image_file in camera_image_files:
+            seg_file = image_file.replace("camera_image", "camera_segmentation")
+            image_path = self.camera_img_dir / image_file
+            seg_path = self.camera_box_dir / seg_file
+
+            seg_df = pd.read_parquet(seg_path)
+            if seg_df.empty:
+                num_empty += 1
+                continue
+
+            image_df = pd.read_parquet(image_path)
+
+            merged_df = pd.merge(
+                image_df,
+                seg_df,
+                on=["key.segment_context_name", "key.frame_timestamp_micros", "key.camera_name"],
+                how="inner",
+            )
+
+            if merged_df.empty:
+                print(f"No matches found for {image_file} and {seg_file}.")
+            else:
+                print(f"Merged DataFrame for {image_file}: {merged_df.shape}\n")
+                merged_dfs.append(merged_df)
+        
+        print(f"{num_empty}/{len(camera_image_files)} are empty")
+        
+        # Group dataframes by unique identifiers and process them
+        for merged_df in merged_dfs:
+            grouped_df = merged_df.groupby(['key.segment_context_name', 'key.frame_timestamp_micros', 'key.camera_name'])
+
+            for group_name, group_data in grouped_df:
+                image_data = group_data.iloc[0]
+                img_bytes = image_data["[CameraImageComponent].image"]
+                frame_timestamp_micros = image_data["key.frame_timestamp_micros"]
+
+                labels = []
+                for _, row in group_data.iterrows():
+
+                    labels.append({
+                        "masks": row['[CameraSegmentationLabelComponent].panoptic_label'],
+                        "global_id": row['[CameraSegmentationLabelComponent].instance_id_to_global_id_mapping.global_instance_ids'],
+                        "instance_id": row['[CameraSegmentationLabelComponent].instance_id_to_global_id_mapping.local_instance_ids'],
+                        "divisor": row['[CameraSegmentationLabelComponent].panoptic_label_divisor']
+                    })
+
+                self.img_labels.append({
+                    "name": group_name,
+                    "image": img_bytes,
+                    "labels": labels,
+                    "attributes": {},  # empty for now, can adjust later to add more Waymo related attributes info
+                    "timestamp": str(frame_timestamp_micros)
+                })
+
+        if not self.img_labels:
+            raise ValueError(f"No valid data found in {self.camera_img_dir} and {self.camera_box_dir}")
+        
+        print("Size of img_labels:", len(self.img_labels))
+        print(type(self.img_labels))
+
+        def merge_transform(image, labels, attributes, timestamp):
+            masks_bytes = labels[0]['masks']
+            divisor = labels[0]['divisor']
+            instance_id = labels[0]['instance_id']
+            masks = transforms.ToTensor()(Image.open(io.BytesIO(masks_bytes)))            
+            instance_masks = masks % divisor
+            semantic_masks = masks // divisor
+
+            results = []
+            for i in instance_id:
+                semantic_id = self.get_semantic_class(instance_masks, semantic_masks, i)
+                class_id = semantic_id[0]    # see: https://github.com/waymo-research/waymo-open-dataset/issues/570 and page 6 of the original waymo paper: https://www.ecva.net/papers/eccv_2022/papers_ECCV/papers/136890052.pdf
+                instance_mask = instance_masks == i
+                print(class_id)
+
+                result = InstanceSegmentationResultI(
+                    score=1.0, 
+                    cls=int(class_id), 
+                    label=self.cls_to_category(class_id),
+                    instance_id=i,
+                    image_hw=image.shape,
+                    mask=instance_mask,
+                )
+                results.append(result)
+
+            return image, results, attributes, timestamp
+        # Call the parent class constructor (no annotations_file argument)
+        super().__init__(annotations_file=None, img_dir=str(self.camera_img_dir), img_labels=self.img_labels, merge_transform=merge_transform, **kwargs)
+
+    def __len__(self) -> int:
+        return len(self.img_labels)
+
+    def __getitem__(self, idx: int) -> Dict:
+        """Retrieve an image and its annotations."""
+        if idx >= len(self.img_labels):
+            raise IndexError(f"Index {idx} out of range for dataset with {len(self.img_labels)} samples.")
+
+        img_data = self.img_labels[idx]
+        img_bytes = img_data["image"]
+        labels = img_data["labels"]
+        timestamp = img_data["timestamp"]
+        attributes = img_data["attributes"]
+
+        # Decode the image
+        image = transforms.ToTensor()(Image.open(io.BytesIO(img_bytes)))
+
+        # Apply transformations if any
+        if self.transform:
+            image = self.transform(image)
+        if self.target_transform:
+            labels = self.target_transform(labels)
+        if self.merge_transform:
+            image, labels, attributes, timestamp = self.merge_transform(
+                image, labels, attributes, timestamp
+            )
+
+        return {
+            "image": image,
+            "labels": labels,
+            "attributes": attributes,
+            "timestamp": timestamp,
+        }
+
+
