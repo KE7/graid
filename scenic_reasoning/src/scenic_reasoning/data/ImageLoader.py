@@ -19,7 +19,7 @@ from torch.utils.data import Dataset
 from torchvision import transforms
 from torchvision.io import decode_image
 import torch
-
+from scenic_reasoning.utilities.common import convert_to_xyxy
 
 
 class ImageDataset(Dataset):
@@ -783,15 +783,6 @@ class WaymoDataset(ImageDataset):
     def cls_to_category(self, cls: int) -> str:
         return self._CLS_TO_CATEGORIES[str(cls)]
     
-    @staticmethod
-    def convert_to_xyxy(center_x: int, center_y: int, width: int, height: int):
-        """Converts bounding box from center-width-height format to XYXY format."""
-        x1 = center_x - width / 2
-        y1 = center_y - height / 2
-        x2 = center_x + width / 2
-        y2 = center_y + height / 2
-        return x1, y1, x2, y2
-    
     def __init__(self, split: Union[Literal["training", "validation", "testing"]] = "training", **kwargs):
         root_dir = project_root_dir() / "data" / "waymo"
         self.camera_img_dir = root_dir / f"{split}" / "camera_image"
@@ -863,7 +854,7 @@ class WaymoDataset(ImageDataset):
                 for _, row in group_data.iterrows():
                     labels.append({
                         "type": row["[CameraBoxComponent].type"],
-                        "bbox": self.convert_to_xyxy(
+                        "bbox": convert_to_xyxy(
                             row["[CameraBoxComponent].box.center.x"],
                             row["[CameraBoxComponent].box.center.y"],
                             row["[CameraBoxComponent].box.size.x"],
@@ -959,36 +950,36 @@ class WaymoDataset_seg(ImageDataset):
 -    """
 
     _CATEGORIES = {
-    "TYPE_UNDEFINED": 0,
-    "TYPE_EGO_VEHICLE": 1,
-    "TYPE_CAR": 2,
-    "TYPE_TRUCK": 3,
-    "TYPE_BUS": 4,
-    "TYPE_OTHER_LARGE_VEHICLE": 5,
-    "TYPE_BICYCLE": 6,
-    "TYPE_MOTORCYCLE": 7,
-    "TYPE_TRAILER": 8,
-    "TYPE_PEDESTRIAN": 9,
-    "TYPE_CYCLIST": 10,
-    "TYPE_MOTORCYCLIST": 11,
-    "TYPE_BIRD": 12,
-    "TYPE_GROUND_ANIMAL": 13,
-    "TYPE_CONSTRUCTION_CONE_POLE": 14,
-    "TYPE_POLE": 15,
-    "TYPE_PEDESTRIAN_OBJECT": 16,
-    "TYPE_SIGN": 17,
-    "TYPE_TRAFFIC_LIGHT": 18,
-    "TYPE_BUILDING": 19,
-    "TYPE_ROAD": 20,
-    "TYPE_LANE_MARKER": 21,
-    "TYPE_ROAD_MARKER": 22,
-    "TYPE_SIDEWALK": 23,
-    "TYPE_VEGETATION": 24,
-    "TYPE_SKY": 25,
-    "TYPE_GROUND": 26,
-    "TYPE_DYNAMIC": 27,
-    "TYPE_STATIC": 28
-}
+        "TYPE_UNDEFINED": 0,
+        "TYPE_EGO_VEHICLE": 1,
+        "TYPE_CAR": 2,
+        "TYPE_TRUCK": 3,
+        "TYPE_BUS": 4,
+        "TYPE_OTHER_LARGE_VEHICLE": 5,
+        "TYPE_BICYCLE": 6,
+        "TYPE_MOTORCYCLE": 7,
+        "TYPE_TRAILER": 8,
+        "TYPE_PEDESTRIAN": 9,
+        "TYPE_CYCLIST": 10,
+        "TYPE_MOTORCYCLIST": 11,
+        "TYPE_BIRD": 12,
+        "TYPE_GROUND_ANIMAL": 13,
+        "TYPE_CONSTRUCTION_CONE_POLE": 14,
+        "TYPE_POLE": 15,
+        "TYPE_PEDESTRIAN_OBJECT": 16,
+        "TYPE_SIGN": 17,
+        "TYPE_TRAFFIC_LIGHT": 18,
+        "TYPE_BUILDING": 19,
+        "TYPE_ROAD": 20,
+        "TYPE_LANE_MARKER": 21,
+        "TYPE_ROAD_MARKER": 22,
+        "TYPE_SIDEWALK": 23,
+        "TYPE_VEGETATION": 24,
+        "TYPE_SKY": 25,
+        "TYPE_GROUND": 26,
+        "TYPE_DYNAMIC": 27,
+        "TYPE_STATIC": 28
+    }
 
 
     _CLS_TO_CATEGORIES = {str(v): k for k, v in _CATEGORIES.items()}
@@ -1008,14 +999,6 @@ class WaymoDataset_seg(ImageDataset):
         unique_semantic_classes = np.unique(semantic_classes)
         return unique_semantic_classes.tolist()
     
-    @staticmethod
-    def convert_to_xyxy(center_x: int, center_y: int, width: int, height: int):
-        """Converts bounding box from center-width-height format to XYXY format."""
-        x1 = center_x - width / 2
-        y1 = center_y - height / 2
-        x2 = center_x + width / 2
-        y2 = center_y + height / 2
-        return x1, y1, x2, y2
     
     def __init__(self, split: Union[Literal["training", "validation", "testing"]] = "training", **kwargs):
         root_dir = project_root_dir() / "data" / "waymo"
