@@ -637,7 +637,7 @@ class NuImagesDataset(ImageDataset):
             # see: https://www.nuscenes.org/tutorials/nuimages_tutorial.html
             sample = self.nuim.sample[i]
             sample_token = sample['token']
-            key_camer_token = sample['key_camera_token']
+            key_camera_token = sample['key_camera_token']
             object_tokens, surface_tokens = self.nuim.list_anns(sample_token)
 
             object_data = []
@@ -655,7 +655,7 @@ class NuImagesDataset(ImageDataset):
                 obj['attributes'] = attributes
                 object_data.append(obj)
 
-            sample_data = self.nuim.get("sample_data", key_camer_token)
+            sample_data = self.nuim.get("sample_data", key_camera_token)
             img_filename = sample_data['filename']
             timestamp = sample_data['timestamp']
             img_labels.append({
@@ -663,6 +663,8 @@ class NuImagesDataset(ImageDataset):
                 "labels": object_data,
                 'timestamp': timestamp
                 })
+            
+            # TODO: add error catching logic in case of empty token or token mismatch.
             
 
         def merge_transform(
@@ -685,31 +687,26 @@ class NuImagesDataset(ImageDataset):
             resized_image = torch.from_numpy(resized_image).permute(2, 0, 1).float()
 
             results = []
-            obj_attributes = {}
+            attributes = []
 
             for obj_label in labels:
                 _, height, width = image.shape
                 obj_category = obj_label['category']
                 obj_attributes = obj_label['attributes']
                 results.append(
-                    (
-                        ObjectDetectionResultI(
-                            score=1.0,
-                            cls=self.category_to_cls(obj_category),
-                            label=obj_category,
-                            bbox=obj_label["bbox"],
-                            image_hw=(height, width),
-                            bbox_format=BBox_Format.XYXY,
-                            attributes=obj_attributes,
-                        ),
-                        obj_attributes,
-                        timestamp,
+                    ObjectDetectionResultI(
+                        score=1.0,
+                        cls=self.category_to_cls(obj_category),
+                        label=obj_category,
+                        bbox=obj_label["bbox"],
+                        image_hw=(height, width),
+                        bbox_format=BBox_Format.XYXY,
+                        attributes=obj_attributes,
                     )
                 )
-            
-            results, attributes, timestamp = zip(*results)
+                attributes.append(obj_attributes)
 
-            return (resized_image, list(results), list(attributes), list(timestamp))
+            return (resized_image, results, attributes, timestamp)
 
         super().__init__(
             img_labels=img_labels, img_dir=img_dir, merge_transform=merge_transform, **kwargs
