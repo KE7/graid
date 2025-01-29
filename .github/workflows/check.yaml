@@ -15,12 +15,6 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set Execute Permissions
-        run: |
-          ls -la $GITHUB_WORKSPACE
-          ls -la ../$GITHUB_WORKSPACE
-          chmod +x $GITHUB_WORKSPACE/check.ch
-
       - name: Install Poetry
         run: |
           curl -sSL https://install.python-poetry.org | python3 -
@@ -34,6 +28,7 @@ jobs:
           cd $GITHUB_WORKSPACE
           if [ -f check.ch ]; then
             chmod +x check.ch
+            ./check.ch
           else
             echo "File check.ch does not exist. Listing files in the directory:"
             ls -la
