@@ -16,7 +16,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set Execute Permissions
-        run: chmod +x $GITHUB_WORKSPACE/check.ch
+        run: |
+          ls -la $GITHUB_WORKSPACE
+          ls -la ../$GITHUB_WORKSPACE
+          chmod +x $GITHUB_WORKSPACE/check.ch
 
       - name: Install Poetry
         run: |
