@@ -675,7 +675,7 @@ class NuImagesDataset(ImageDataset):
         ) -> Tuple[
             Tensor,
             List[Tuple[ObjectDetectionResultI, Dict[str, Any], str]],
-            Dict[str, Any],
+            List[Dict[str, Any]],
             str,
         ]:
             
