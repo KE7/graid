@@ -202,7 +202,7 @@ class InstanceSegmentationUtils:
         scores = []
         class_ids = []
         instance_ids = []
-        
+
         for truth in ground_truth:
             masks.append(truth._bitmask.tensor)
             scores.append(truth._score)  # score is a float or tensor
@@ -211,12 +211,12 @@ class InstanceSegmentationUtils:
 
         scores = (
             torch.tensor(scores) if isinstance(scores[0], float) else torch.cat(scores)
-        )
+        ) if scores else torch.tensor([])
         class_ids = (
             torch.tensor(class_ids) if isinstance(class_ids[0], int) else torch.cat(class_ids)
-        )
+        ) if class_ids else torch.tensor([])
 
-        masks = torch.cat(masks)
+        masks = torch.cat(masks) if masks else torch.tensor([])
 
         targets = [
             dict(masks=masks, scores=scores, labels=class_ids)
@@ -236,7 +236,7 @@ class InstanceSegmentationUtils:
         pred_scores = torch.tensor(pred_scores)
         pred_class_ids = torch.tensor(pred_class_ids)
 
-        pred_masks = torch.cat(pred_masks)
+        pred_masks = torch.cat(pred_masks) if pred_masks else torch.tensor([])
 
         preds = [
             dict(masks=pred_masks, scores=pred_scores, labels=pred_class_ids)

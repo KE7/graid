@@ -30,7 +30,7 @@ nuscene = NuImagesDataset_seg(
 )
 
 
-for d in [bdd, nuscene]:
+for d in [bdd, waymo, nuscene]:
 
     # https://docs.ultralytics.com/models/yolov5/#performance-metrics
     model = Yolo_seg(model="yolo11n-seg.pt") # v5 can handle 1280 while v8 can handle 640. makes no sense ><

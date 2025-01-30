@@ -845,26 +845,59 @@ class NuImagesDataset_seg(ImageDataset):
         return filtered_list
 
     def __init__(
-        self, split: Union[Literal["train", "val", "test"]] = "train", **kwargs
+        self, split: Union[Literal["train", "val", "test"]] = "train", size: Union[Literal["mini", "full"]] = "mini", **kwargs
     ):
         
         from nuimages import NuImages
         import base64
         from pycocotools import mask as cocomask
 
-        root_dir = project_root_dir() / "data" / "nuimages" / "mini"
+        root_dir = project_root_dir() / "data" / "nuimages" / size
         img_dir = root_dir
-        mask_annotations_file = (root_dir / "v1.0-mini" / "object_ann.json")
-        categories_file = (root_dir / "v1.0-mini" / "category.json")
-        sample_data_labels_file = (root_dir / "v1.0-mini" / "sample_data.json")
-        attributes_file = (root_dir / "v1.0-mini" / "attribute.json")
+        mask_annotations_file = (root_dir / f"v1.0-{size}" / "object_ann.json")
+        categories_file = (root_dir / f"v1.0-{size}" / "category.json")
+        sample_data_labels_file = (root_dir / f"v1.0-{size}" / "sample_data.json")
+        attributes_file = (root_dir / f"v1.0-{size}" / "attribute.json")
 
-        self.nuim = NuImages(dataroot=img_dir, version='v1.0-mini', verbose=True, lazy=True)
+        self.nuim = NuImages(dataroot=img_dir, version=f"v1.0-{size}", verbose=True, lazy=True)
 
         self.sample_data_labels = json.load(open(sample_data_labels_file))
         self.attribute_labels = json.load(open(attributes_file))
         self.category_labels = json.load(open(categories_file))
         self.mask_annotations = json.load(open(mask_annotations_file))
+
+        img_labels = []
+        for i in range(len(self.nuim.sample)):
+            # see: https://www.nuscenes.org/tutorials/nuimages_tutorial.html
+            sample = self.nuim.sample[i]
+            sample_token = sample['token']
+            key_camera_token = sample['key_camera_token']
+            object_tokens, surface_tokens = self.nuim.list_anns(sample_token)
+
+            object_data = []
+            for object_token in object_tokens:
+                obj = self.nuim.get("object_ann", object_token)
+                category_token = obj['category_token']
+                attribute_tokens = obj['attribute_tokens']
+                attributes = []
+                for attribute_token in attribute_tokens:
+                    attribute = self.nuim.get("attribute", attribute_token)
+                    attributes.append(attribute)
+
+                category = self.nuim.get('category', category_token)['name']
+                obj['category'] = category
+                obj['attributes'] = attributes
+                object_data.append(obj)
+
+            sample_data = self.nuim.get("sample_data", key_camera_token)
+            img_filename = sample_data['filename']
+            timestamp = sample_data['timestamp']
+            img_labels.append({
+                'filename': img_filename,
+                "labels": object_data,
+                'timestamp': timestamp
+                })
+            
 
         def merge_transform(
             image: Tensor,
@@ -885,63 +918,42 @@ class NuImagesDataset_seg(ImageDataset):
             resized_image = torch.from_numpy(resized_image).permute(2, 0, 1).float()
 
             results = []
-            
+            attributes = []
 
-            for instance_id, label in enumerate(labels):
+            for instance_id, obj_label in enumerate(labels):
                 _, height, width = image.shape
-                new_mask = label['mask'].copy()
+                obj_category = obj_label['category']
+                obj_attributes = obj_label['attributes']
+                new_mask = obj_label['mask'].copy()
                 new_mask['counts'] = base64.b64decode(new_mask['counts'])
                 mask = cocomask.decode(new_mask)
-                category_list = self.filter_by_token(
-                    self.category_labels, "token", label["category_token"]
-                )
-                object_category_name = ""
-                if len(category_list) == 0:
-                    object_category_name = "Unknown"
-                else:
-                    object_category_name = category_list[0][
-                        "name"
-                    ]  # Take the first object category
-                
-                attribute_tokens = label["attribute_tokens"]
-
-                obj_attributes = {}
-                if len(attribute_tokens) > 0:
-                    obj_attributes = self.nuim.get("attribute", attribute_tokens[0]) # Take the first attribute token
 
                 results.append(
-                    (
-                        InstanceSegmentationResultI(
-                            score=1.0,
-                            cls=self.category_to_cls(object_category_name),
-                            label=object_category_name,
-                            instance_id=instance_id,
-                            image_hw=(height, width),
-                            mask=torch.from_numpy(mask).unsqueeze(0),
-                            mask_format=Mask_Format.BITMASK
-                        ),
-                        obj_attributes,
-                        timestamp,
+                    InstanceSegmentationResultI(
+                        score=1.0,
+                        cls=self.category_to_cls(obj_category),
+                        label=obj_category,
+                        instance_id=instance_id,
+                        image_hw=(height, width),
+                        mask=torch.from_numpy(mask).unsqueeze(0),
+                        mask_format=Mask_Format.BITMASK
                     )
                 )
+                attributes.append(obj_attributes)
 
-            return (resized_image, [r[0] for r in results], [r[1] for r in results], [r[2] for r in results])
+            return (resized_image, results, attributes, timestamp)
 
         super().__init__(
-            annotations_file=sample_data_labels_file, img_dir=img_dir, merge_transform=merge_transform, **kwargs
+            img_labels=img_labels, img_dir=img_dir, merge_transform=merge_transform, **kwargs
         )
 
     def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
         print(f"__getitem__ entered, {len(self.img_labels)}")
         img_filename = self.img_labels[idx]["filename"]
-        img_token = self.img_labels[idx]["token"]
+        labels = self.img_labels[idx]["labels"]
         timestamp = self.img_labels[idx]["timestamp"]
         img_path = os.path.join(self.img_dir, img_filename)
         image = decode_image(img_path)
-
-        obj_labels = self.filter_by_token(
-            self.mask_annotations, "sample_data_token", img_token
-        )
 
         if self.transform:
             image = self.transform(image)
@@ -949,7 +961,7 @@ class NuImagesDataset_seg(ImageDataset):
             labels = self.target_transform(labels)
         if self.merge_transform:
             image, labels, attributes, timestamp = self.merge_transform(
-                image, obj_labels, timestamp
+                image, labels, timestamp
             )
 
         return {
@@ -1340,8 +1352,6 @@ class WaymoDataset_seg(ImageDataset):
                 semantic_id = self.get_semantic_class(instance_masks, semantic_masks, i)
                 class_id = semantic_id[0]    # see: https://github.com/waymo-research/waymo-open-dataset/issues/570 and page 6 of the original waymo paper: https://www.ecva.net/papers/eccv_2022/papers_ECCV/papers/136890052.pdf
                 instance_mask = instance_masks == i
-                print(class_id)
-
                 result = InstanceSegmentationResultI(
                     score=1.0, 
                     cls=int(class_id), 
@@ -1369,7 +1379,6 @@ class WaymoDataset_seg(ImageDataset):
         labels = img_data["labels"]
         timestamp = img_data["timestamp"]
         attributes = img_data["attributes"]
-
         # Decode the image
         image = transforms.ToTensor()(Image.open(io.BytesIO(img_bytes)))
 
