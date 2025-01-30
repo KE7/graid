@@ -1,4 +1,4 @@
-from scenic_reasoning.data.ImageLoader import Bdd10kDataset, NuImagesDataset_seg
+from scenic_reasoning.data.ImageLoader import Bdd10kDataset, NuImagesDataset_seg, WaymoDataset_seg
 from scenic_reasoning.models.UltralyticsYolo import Yolo_seg
 from scenic_reasoning.measurements.InstanceSegmentation import InstanceSegmentationMeasurements
 
@@ -20,6 +20,10 @@ bdd = Bdd10kDataset(
     use_original_categories=False,
     use_extended_annotations=False,
 )
+
+waymo = WaymoDataset_seg(split="validation")
+
+model = Yolo_seg(model="yolo11n-seg.pt")
 
 nuscene = NuImagesDataset_seg(
     split="test"

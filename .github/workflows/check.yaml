@@ -1,0 +1,35 @@
+name: Code Quality Check
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  check:
+    name: Run check.ch
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Install Dependencies
+        run: poetry install
+
+      - name: Ensure check.ch exists and is executable
+        run: |
+          cd $GITHUB_WORKSPACE
+          if [ -f check.ch ]; then
+            chmod +x check.ch
+            ./check.ch
+          else
+            echo "File check.ch does not exist. Listing files in the directory:"
+            ls -la
+          fi

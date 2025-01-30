@@ -9,14 +9,14 @@
 |                       | Ultralytics | Detectron | MMDetection |
 |-----------------------|-------------|-----------|-------------|
 | Object Detection      | ✅           | 🧑‍💻        | 🧑‍💻          |
-| Instance Segmentation | ❌           | ✅        | ❌          |
+| Instance Segmentation | ✅           | ✅        | ❌          |
 
 ### Datasets
 
 |                       | BDD         | Waymo     | nuScenes    |
 |-----------------------|-------------|-----------|-------------|
-| Object Detection      | ✅           | ✅        | ✅          |
-| Instance Segmentation | 🧑‍💻           | ❌        | ❌          |
+| Object Detection      | ✅           | 🧑‍💻        | 🧑‍💻          |
+| Instance Segmentation | ✅           | 🧑‍💻        | 🧑‍💻 (PR)     |
 
 
 ## Installation steps
