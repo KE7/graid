@@ -44,9 +44,9 @@ def open_video(video_path: str, batch_size: int = 1) -> Iterator[List[Image.Imag
     cap.release()
 
 def convert_to_xyxy(center_x: int, center_y: int, width: int, height: int):
-        """Converts bounding box from center-width-height format to XYXY format."""
-        x1 = center_x - width / 2
-        y1 = center_y - height / 2
-        x2 = center_x + width / 2
-        y2 = center_y + height / 2
-        return x1, y1, x2, y2
+    """Converts bounding box from center-width-height format to XYXY format."""
+    x1 = center_x - width / 2
+    y1 = center_y - height / 2
+    x2 = center_x + width / 2
+    y2 = center_y + height / 2
+    return x1, y1, x2, y2
