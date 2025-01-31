@@ -31,6 +31,7 @@ class InstanceSegmentationResultI:
         image_hw: Tuple[int, int],
         mask: Union[torch.Tensor, BitMasks],
         mask_format: Mask_Format = Mask_Format.BITMASK,
+        attributes: Optional[List[List[Dict]]] = None,
     ):
         """
         Initialize InstanceSegmentationResultI.

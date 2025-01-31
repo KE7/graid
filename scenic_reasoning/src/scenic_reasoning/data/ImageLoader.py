@@ -81,14 +81,9 @@ class ImageDataset(Dataset):
             if self.target_transform:
                 labels = self.target_transform(labels)
             if self.merge_transform:
-                if self.use_extended_annotations:
-                    image, labels, attributes, timestamp = self.merge_transform(
-                        image, labels, attributes, timestamp
-                    )
-                else:
-                    image, labels = self.merge_transform(
-                        image, labels, attributes, timestamp
-                    )
+                image, labels, attributes, timestamp = self.merge_transform(
+                    image, labels, attributes, timestamp
+                )
 
             return {
                 "image": image,
@@ -97,21 +92,21 @@ class ImageDataset(Dataset):
                 "timestamp": timestamp,
             }
         
-        if self.masks:
-            img_name = os.path.basename(self.masks[idx][:-3] + "jpg")
-            img_path = os.path.join(self.img_dir, img_name)
-            mask_path = self.masks[idx]
+        # if self.masks:
+        #     img_name = os.path.basename(self.masks[idx][:-3] + "jpg")
+        #     img_path = os.path.join(self.img_dir, img_name)
+        #     mask_path = self.masks[idx]
 
-            image = decode_image(img_path)
-            mask = cv2.imread(mask_path, cv2.IMREAD_UNCHANGED)
-            # mask = Image.open(mask_path).convert("RGBA").load()
-            image, labels, attributes = self.merge_transform(image, mask)
+        #     image = decode_image(img_path)
+        #     mask = cv2.imread(mask_path, cv2.IMREAD_UNCHANGED)
+        #     # mask = Image.open(mask_path).convert("RGBA").load()
+        #     image, labels, attributes = self.merge_transform(image, mask)
 
-            return {
-                "image": image,
-                "labels": labels,
-                "attributes": attributes
-            }
+        #     return {
+        #         "image": image,
+        #         "labels": labels,
+        #         "attributes": attributes
+        #     }
 
 
 class Bdd10kDataset(ImageDataset):
@@ -416,7 +411,6 @@ class Bdd100kDataset(ImageDataset):
     def __init__(
         self,
         split: Literal["train", "val", "test"] = "train",
-        result_type: Literal["obj", "seg"] = "obj",
         use_original_categories: bool = True,
         use_extended_annotations: bool = True,
         **kwargs,
@@ -455,48 +449,27 @@ class Bdd100kDataset(ImageDataset):
                     # handle the case where exact category is not in COCO aka different names for people
                     res_label = label["category"] if cls != 0 else "person"
 
-                if result_type == "obj":
-                    result = ObjectDetectionResultI(
-                        score=1.0,
-                        cls=cls,
-                        label=res_label,
-                        bbox=[
-                            label["box2d"]["x1"],
-                            label["box2d"]["y1"],
-                            label["box2d"]["x2"],
-                            label["box2d"]["y2"],
-                        ],
-                        image_hw=(height, width),
-                        bbox_format=BBox_Format.XYXY,
-                        attributes=label["attributes"],
-                    )
-                else:
-                    result = InstanceSegmentationResultI(
-                        score=1.0,
-                        cls=cls,
-                        label=res_label,
-                        instance_id=label["id"],
-                        image_hw=(height, width),
+
+                result = ObjectDetectionResultI(
+                    score=1.0,
+                    cls=cls,
+                    label=res_label,
+                    bbox=[
+                        label["box2d"]["x1"],
+                        label["box2d"]["y1"],
+                        label["box2d"]["x2"],
+                        label["box2d"]["y2"],
+                    ],
+                    image_hw=(height, width),
+                    bbox_format=BBox_Format.XYXY,
+                    attributes=[label["attributes"]],
+                )
 
 
-                    )
+                results.append(result)
 
 
-                if use_extended_annotations:
-                    results.append(
-                        (
-                            result,
-                            label["attributes"],
-                            timestamp,
-                        )
-                    )
-                else:
-                    results.append(result)
-
-            if use_extended_annotations:
-                return (image, results, attributes, timestamp)
-            else:
-                return (image, results)
+            return (image, results, [[attributes]], timestamp)
 
         super().__init__(
             annotations_file=str(annotations_file),
@@ -693,6 +666,7 @@ class NuImagesDataset(ImageDataset):
                 _, height, width = image.shape
                 obj_category = obj_label['category']
                 obj_attributes = obj_label['attributes']
+
                 results.append(
                     ObjectDetectionResultI(
                         score=1.0,
@@ -892,7 +866,7 @@ class WaymoDataset(ImageDataset):
                     label=self.cls_to_category(cls),
                     bbox=list(bbox),
                     image_hw=image.shape,
-                    attributes=attributes
+                    attributes=[attributes]
                 )
                 results.append(result)
 

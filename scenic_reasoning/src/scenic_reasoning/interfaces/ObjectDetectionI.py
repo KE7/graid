@@ -37,7 +37,7 @@ class ObjectDetectionResultI:
         ],
         image_hw: Tuple[int, int],
         bbox_format: BBox_Format = BBox_Format.XYXY,
-        attributes: Optional[Dict] = None,
+        attributes: Optional[List[Dict]] = None,
     ):
         """
         Initialize ObjectDetectionResultI. If you are creating multiple
