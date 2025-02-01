@@ -8,14 +8,14 @@
 
 |                       | Ultralytics | Detectron | MMDetection |
 |-----------------------|-------------|-----------|-------------|
-| Object Detection      | ✅           | 🧑‍💻        | 🧑‍💻          |
+| Object Detection      | ✅           | ✅        | 🧑‍💻          |
 | Instance Segmentation | ✅           | ✅        | ❌          |
 
 ### Datasets
 
 |                       | BDD         | Waymo     | nuScenes    |
 |-----------------------|-------------|-----------|-------------|
-| Object Detection      | ✅           | 🧑‍💻        | 🧑‍💻          |
+| Object Detection      | ✅           | ✅        | ✅          |
 | Instance Segmentation | ✅           | 🧑‍💻        | 🧑‍💻 (PR)     |
 
 
