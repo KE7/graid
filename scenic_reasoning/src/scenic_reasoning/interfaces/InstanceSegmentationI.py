@@ -5,7 +5,7 @@ import torch
 from detectron2.structures import BitMasks
 from detectron2.structures.boxes import pairwise_intersection, pairwise_iou
 from detectron2.structures.masks import polygons_to_bitmask
-
+import pycocotools.mask as mask_util
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from enum import Enum
@@ -19,7 +19,6 @@ class Mask_Format(Enum):
     BITMASK = 0
     POLYGON = 1
     RLE = 2
-
 
 class InstanceSegmentationResultI:
     def __init__(
@@ -59,7 +58,10 @@ class InstanceSegmentationResultI:
                 self._bitmask = BitMasks(
                     polygons_to_bitmask(mask, image_hw[0], image_hw[1])
                 )
-                # TODO: add Mask_Format.RLE
+            elif mask_format == Mask_Format.RLE:
+                height, width = self._image_hw
+                # TODO: implement this if needed. NuImage doens't need this yet.
+
             else:
                 raise NotImplementedError(
                     f"{mask_format} not supported for initializing InstanceSegmentationResultI"
@@ -200,7 +202,7 @@ class InstanceSegmentationUtils:
         scores = []
         class_ids = []
         instance_ids = []
-        
+
         for truth in ground_truth:
             masks.append(truth._bitmask.tensor)
             scores.append(truth._score)  # score is a float or tensor
@@ -209,12 +211,12 @@ class InstanceSegmentationUtils:
 
         scores = (
             torch.tensor(scores) if isinstance(scores[0], float) else torch.cat(scores)
-        )
+        ) if scores else torch.tensor([])
         class_ids = (
             torch.tensor(class_ids) if isinstance(class_ids[0], int) else torch.cat(class_ids)
-        )
+        ) if class_ids else torch.tensor([])
 
-        masks = torch.cat(masks)
+        masks = torch.cat(masks) if masks else torch.tensor([])
 
         targets = [
             dict(masks=masks, scores=scores, labels=class_ids)
@@ -234,7 +236,7 @@ class InstanceSegmentationUtils:
         pred_scores = torch.tensor(pred_scores)
         pred_class_ids = torch.tensor(pred_class_ids)
 
-        pred_masks = torch.cat(pred_masks)
+        pred_masks = torch.cat(pred_masks) if pred_masks else torch.tensor([])
 
         preds = [
             dict(masks=pred_masks, scores=pred_scores, labels=pred_class_ids)

@@ -11,6 +11,7 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
     ObjectDetectionResultI,
 )
 from scenic_reasoning.interfaces.InstanceSegmentationI import (
+    Mask_Format,
     InstanceSegmentationResultI
 )
 from scenic_reasoning.utilities.common import project_root_dir
@@ -735,6 +736,241 @@ class NuImagesDataset(ImageDataset):
             "timestamp": timestamp,
         }
     
+class NuImagesDataset_seg(ImageDataset):
+    """
+    The structure of how NuImages labels are stored
+    nuim.table_names:
+        'attribute',
+        'calibrated_sensor',
+        'category',
+        'ego_pose',
+        'log',
+        'object_ann',
+        'sample',
+        'sample_data',
+        'sensor',
+        'surface_ann'
+
+    <v1.0-{split}/sample_data.json>, sample data label
+    sample_data = {
+        "token": "003bf191da774ac3b7c47e44075d9cf9",
+        "sample_token": "d626e96768f44c2890c2a5693dd11ec4",
+        "ego_pose_token": "2c731fd2f92b4956b15cbeed160417c1",
+        "calibrated_sensor_token": "d9480acc4135525dbcffb2a0db6d7c11",
+        "filename": "samples/CAM_BACK_LEFT/n013-2018-08-03-14-44-49+0800__CAM_BACK_LEFT__1533278795447155.jpg",
+        "fileformat": "jpg",
+        "width": 1600,
+        "height": 900,
+        "timestamp": 1533278795447155,
+        "is_key_frame": true,
+        "prev": "20974c9684ae4b5d812604e099d433e2",
+        "next": "ca3edcbb46d041a4a2662d91ab68b59d"
+    }
+
+    <v1.0-{split}/object_ann.json>, sample object
+    object_ann =
+    {
+        "token": "251cb138f0134f038b37e272a3ff88e6",
+        "category_token": "85abebdccd4d46c7be428af5a6173947",
+        "bbox": [
+            101,
+            503,
+            174,
+            594
+        ],
+        "mask": {
+        "size": [
+            900,
+            1600
+        ],
+        "counts": "Z15oMjFTbDAyTjFPMk4yTjFPMDAwMDAwMDAwMDAwMDAwMDAwMU8wTTNKNks1SjZLNUo2SzVKNks1SjdKNUo2TTMwMEhlTWdWT1syVmkwaE1qVk9YMlZpMGhNalZPWDJWaTBoTWpWT1gyVmkwaE1qVk9YMlZpMGhNalZPWTJVaTBnTWtWT1gyVmkwaE1qVk9YMlZpMGhNalZPWDJWaTBoTWpWT1gyVmkwaE1qVk9YMlVpMGpNalZPVjJhaTAxM0w1TDVLNUs0TDVLNUs0TDVKNks0TDVLNUs0TDNNME8xMDAwMDAxTzAwMDAwMDBPMk8wMDAwMDAwMDRMbWdUVzE="
+        },
+        "attribute_tokens": [],
+        "sample_data_token": "003bf191da774ac3b7c47e44075d9cf9"
+    }
+
+    <v1.0-{split}/attribute.json>, sample attribute
+    {
+        "token": "271f6773e4d2496cbb9942c204c8a4c1",
+        "name": "cycle.with_rider",
+        "description": "There is a rider on the bicycle or motorcycle."
+    }
+
+    <v1.0-{split}/category.json, sample category
+    {
+        "token": "63a94dfa99bb47529567cd90d3b58384",
+        "name": "animal",
+        "description": "All animals, e.g. cats, rats, dogs, deer, birds."
+    },
+    """
+
+    _CATEGORIES = {
+        "animal": 0,
+        "flat.driveable_surface": 1,
+        "human.pedestrian.adult": 2,
+        "human.pedestrian.child": 3,
+        "human.pedestrian.construction_worker": 4,
+        "human.pedestrian.personal_mobility": 5,
+        "human.pedestrian.police_officer": 6,
+        "human.pedestrian.stroller": 7,
+        "human.pedestrian.wheelchair": 8,
+        "movable_object.barrier": 9,
+        "movable_object.debris": 10,
+        "movable_object.pushable_pullable": 11,
+        "movable_object.trafficcone": 12,
+        "static_object.bicycle_rack": 13,
+        "vehicle.bicycle": 14,
+        "vehicle.bus.bendy": 15,
+        "vehicle.bus.rigid": 16,
+        "vehicle.car": 17,
+        "vehicle.construction": 18,
+        "vehicle.ego": 19,
+        "vehicle.emergency.ambulance": 20,
+        "vehicle.emergency.police": 21,
+        "vehicle.motorcycle": 22,
+        "vehicle.trailer": 23,
+        "vehicle.truck": 24,
+    }
+
+    def category_to_cls(self, category: str) -> int:
+        return self._CATEGORIES[category]
+
+    def filter_by_token(
+        self, data: List[Dict[str, Any]], field: str, match_value: str
+    ) -> List[Dict[str, Any]]:
+        filtered_list = []
+        for item in data:
+            if item.get(field) == match_value:
+                filtered_list.append(item)
+        return filtered_list
+
+    def __init__(
+        self, split: Union[Literal["train", "val", "test"]] = "train", size: Union[Literal["mini", "full"]] = "mini", **kwargs
+    ):
+        
+        from nuimages import NuImages
+        import base64
+        from pycocotools import mask as cocomask
+
+        root_dir = project_root_dir() / "data" / "nuimages" / size
+        img_dir = root_dir
+        mask_annotations_file = (root_dir / f"v1.0-{size}" / "object_ann.json")
+        categories_file = (root_dir / f"v1.0-{size}" / "category.json")
+        sample_data_labels_file = (root_dir / f"v1.0-{size}" / "sample_data.json")
+        attributes_file = (root_dir / f"v1.0-{size}" / "attribute.json")
+
+        self.nuim = NuImages(dataroot=img_dir, version=f"v1.0-{size}", verbose=True, lazy=True)
+
+        self.sample_data_labels = json.load(open(sample_data_labels_file))
+        self.attribute_labels = json.load(open(attributes_file))
+        self.category_labels = json.load(open(categories_file))
+        self.mask_annotations = json.load(open(mask_annotations_file))
+
+        img_labels = []
+        for i in range(len(self.nuim.sample)):
+            # see: https://www.nuscenes.org/tutorials/nuimages_tutorial.html
+            sample = self.nuim.sample[i]
+            sample_token = sample['token']
+            key_camera_token = sample['key_camera_token']
+            object_tokens, surface_tokens = self.nuim.list_anns(sample_token)
+
+            object_data = []
+            for object_token in object_tokens:
+                obj = self.nuim.get("object_ann", object_token)
+                category_token = obj['category_token']
+                attribute_tokens = obj['attribute_tokens']
+                attributes = []
+                for attribute_token in attribute_tokens:
+                    attribute = self.nuim.get("attribute", attribute_token)
+                    attributes.append(attribute)
+
+                category = self.nuim.get('category', category_token)['name']
+                obj['category'] = category
+                obj['attributes'] = attributes
+                object_data.append(obj)
+
+            sample_data = self.nuim.get("sample_data", key_camera_token)
+            img_filename = sample_data['filename']
+            timestamp = sample_data['timestamp']
+            img_labels.append({
+                'filename': img_filename,
+                "labels": object_data,
+                'timestamp': timestamp
+                })
+            
+
+        def merge_transform(
+            image: Tensor,
+            labels: List[Dict[str, Any]],
+            timestamp: str,
+            stride=32,
+        ) -> Tuple[
+            Tensor,
+            List[Tuple[InstanceSegmentationResultI, Dict[str, Any], str]],
+            Dict[str, Any],
+            str,
+        ]:
+            C, H, W = image.shape
+            new_H = (H + stride - 1) // stride * stride
+            new_W = (W + stride - 1) // stride * stride
+            image = image.permute(1, 2, 0).cpu().numpy()
+            resized_image = cv2.resize(image, (new_W, new_H), interpolation=cv2.INTER_LINEAR)  #TODO: should I use this package to do resizing?
+            resized_image = torch.from_numpy(resized_image).permute(2, 0, 1).float()
+
+            results = []
+            attributes = []
+
+            for instance_id, obj_label in enumerate(labels):
+                _, height, width = image.shape
+                obj_category = obj_label['category']
+                obj_attributes = obj_label['attributes']
+                new_mask = obj_label['mask'].copy()
+                new_mask['counts'] = base64.b64decode(new_mask['counts'])
+                mask = cocomask.decode(new_mask)
+
+                results.append(
+                    InstanceSegmentationResultI(
+                        score=1.0,
+                        cls=self.category_to_cls(obj_category),
+                        label=obj_category,
+                        instance_id=instance_id,
+                        image_hw=(height, width),
+                        mask=torch.from_numpy(mask).unsqueeze(0),
+                        mask_format=Mask_Format.BITMASK
+                    )
+                )
+                attributes.append(obj_attributes)
+
+            return (resized_image, results, attributes, timestamp)
+
+        super().__init__(
+            img_labels=img_labels, img_dir=img_dir, merge_transform=merge_transform, **kwargs
+        )
+
+    def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
+        print(f"__getitem__ entered, {len(self.img_labels)}")
+        img_filename = self.img_labels[idx]["filename"]
+        labels = self.img_labels[idx]["labels"]
+        timestamp = self.img_labels[idx]["timestamp"]
+        img_path = os.path.join(self.img_dir, img_filename)
+        image = decode_image(img_path)
+
+        if self.transform:
+            image = self.transform(image)
+        if self.target_transform:
+            labels = self.target_transform(labels)
+        if self.merge_transform:
+            image, labels, attributes, timestamp = self.merge_transform(
+                image, labels, timestamp
+            )
+
+        return {
+            "image": image,
+            "labels": labels,
+            "attributes": attributes,
+            "timestamp": timestamp,
+        }
+    
 
 class WaymoDataset(ImageDataset):
     """
@@ -1116,8 +1352,6 @@ class WaymoDataset_seg(ImageDataset):
                 semantic_id = self.get_semantic_class(instance_masks, semantic_masks, i)
                 class_id = semantic_id[0]    # see: https://github.com/waymo-research/waymo-open-dataset/issues/570 and page 6 of the original waymo paper: https://www.ecva.net/papers/eccv_2022/papers_ECCV/papers/136890052.pdf
                 instance_mask = instance_masks == i
-                print(class_id)
-
                 result = InstanceSegmentationResultI(
                     score=1.0, 
                     cls=int(class_id), 
@@ -1145,7 +1379,6 @@ class WaymoDataset_seg(ImageDataset):
         labels = img_data["labels"]
         timestamp = img_data["timestamp"]
         attributes = img_data["attributes"]
-
         # Decode the image
         image = transforms.ToTensor()(Image.open(io.BytesIO(img_bytes)))
 

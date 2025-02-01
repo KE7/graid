@@ -130,8 +130,8 @@ class InstanceSegmentationMeasurements:
             masks.append(mask.tensor)
             fake_boxes.append(torch.tensor([0, 0, 0, 0, 0.0, -1]))   
         
-        masks = torch.cat(masks)
-        fake_boxes = torch.stack(fake_boxes)
+        masks = torch.cat(masks) if masks else torch.tensor([])
+        fake_boxes = torch.stack(fake_boxes) if fake_boxes else torch.tensor([0, 0, 0, 0, 0.0, -1])
 
         im = Results(
             orig_img=image.unsqueeze(0),  # Add batch dimension
@@ -140,6 +140,8 @@ class InstanceSegmentationMeasurements:
             masks=masks,
             boxes=fake_boxes
         )
+
+        # TODO: add class label display for ins seg gt
 
         im.show(boxes=False)
 
