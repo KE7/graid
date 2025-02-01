@@ -81,32 +81,15 @@ class ImageDataset(Dataset):
             if self.target_transform:
                 labels = self.target_transform(labels)
             if self.merge_transform:
-                image, labels, attributes, timestamp = self.merge_transform(
+                image, labels, timestamp = self.merge_transform(
                     image, labels, attributes, timestamp
                 )
 
             return {
                 "image": image,
                 "labels": labels,
-                "attributes": attributes,
                 "timestamp": timestamp,
             }
-        
-        # if self.masks:
-        #     img_name = os.path.basename(self.masks[idx][:-3] + "jpg")
-        #     img_path = os.path.join(self.img_dir, img_name)
-        #     mask_path = self.masks[idx]
-
-        #     image = decode_image(img_path)
-        #     mask = cv2.imread(mask_path, cv2.IMREAD_UNCHANGED)
-        #     # mask = Image.open(mask_path).convert("RGBA").load()
-        #     image, labels, attributes = self.merge_transform(image, mask)
-
-        #     return {
-        #         "image": image,
-        #         "labels": labels,
-        #         "attributes": attributes
-        #     }
 
 
 class Bdd10kDataset(ImageDataset):
@@ -309,7 +292,6 @@ class Bdd10kDataset(ImageDataset):
             img_dir=str(img_dir),
             mask_dir=str(mask_dir),
             merge_transform=merge_transform,
-            # use_extended_annotations=use_extended_annotations,
             **kwargs,
         )
 
@@ -419,9 +401,6 @@ class Bdd100kDataset(ImageDataset):
         root_dir = project_root_dir() / "data" / "bdd100k"
         img_dir = root_dir / "images" / "100k" / split
         annotations_file = root_dir / "labels" / "det_20" / f"det_{split}.json"
-        masks_file = root_dir / "labels" / "ins_seg" / "bitmasks" / split
-
-        # result_type = ObjectDetectionResultI if type == "obj" else InstanceSegmentationResultI
 
         def merge_transform(
             image: Tensor,
@@ -449,7 +428,6 @@ class Bdd100kDataset(ImageDataset):
                     # handle the case where exact category is not in COCO aka different names for people
                     res_label = label["category"] if cls != 0 else "person"
 
-
                 result = ObjectDetectionResultI(
                     score=1.0,
                     cls=cls,
@@ -465,11 +443,9 @@ class Bdd100kDataset(ImageDataset):
                     attributes=[label["attributes"]],
                 )
 
-
                 results.append(result)
 
-
-            return (image, results, [[attributes]], timestamp)
+            return image, results, timestamp
 
         super().__init__(
             annotations_file=str(annotations_file),
@@ -479,6 +455,32 @@ class Bdd100kDataset(ImageDataset):
             **kwargs,
         )
 
+
+    def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
+        if self.img_labels:
+                
+            img_path = os.path.join(self.img_dir, self.img_labels[idx]["name"])
+
+            image = decode_image(img_path)
+
+            labels = self.img_labels[idx]["labels"]
+            attributes = self.img_labels[idx]["attributes"]
+            timestamp = self.img_labels[idx]["timestamp"]
+
+            if self.transform:
+                image = self.transform(image)
+            if self.target_transform:
+                labels = self.target_transform(labels)
+            if self.merge_transform:
+                image, labels, timestamp = self.merge_transform(
+                    image, labels, attributes, timestamp
+                )
+
+            return {
+                "image": image,
+                "labels": labels,
+                "timestamp": timestamp,
+            }
 
 class NuImagesDataset(ImageDataset):
     """
