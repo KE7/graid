@@ -15,6 +15,7 @@ bdd = Bdd100kDataset(
 
 q_list = [Quadrants(2, 2), MostAppearance(), IsObjectCentered(), WidthVsHeight(), LargestAppearance(), LeastAppearance(), LeftOf(), RightOf(), LeftMost(), RightMost(), HowMany()]
 for i in range(10):
+    print(i)
     data = bdd[i]
     image = data['image']
     image = transforms.ToPILImage()(image)
