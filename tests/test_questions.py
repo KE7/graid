@@ -13,16 +13,24 @@ bdd = Bdd100kDataset(
     use_extended_annotations=False,
 )
 
-data = bdd[0]
-image = data['image']
-image = transforms.ToPILImage()(image)
-labels = data['labels']
-timestamp = data['timestamp']
-q =  Quadrants(2, 2)
+# data = bdd[2]
+# image = data['image']
+# image = transforms.ToPILImage()(image)
+# labels = data['labels']
+# timestamp = data['timestamp']
 
-q_list = [MostAppearance(), IsObjectCentered(), WidthVsHeight(), LargestAppearance(), LeastAppearance(), LeftOf(), RightOf(), LeftMost(), RightMost(), HowMany()]
-for q in q_list:    
-    if q.is_applicable(image, labels):
-        qa_list = q.apply(image, labels)
-        print(q, "Passed", qa_list)
+q_list = [Quadrants(2, 2), MostAppearance(), IsObjectCentered(), WidthVsHeight(), LargestAppearance(), LeastAppearance(), LeftOf(), RightOf(), LeftMost(), RightMost(), HowMany()]
+for i in range(10):
+    data = bdd[i]
+    image = data['image']
+    image = transforms.ToPILImage()(image)
+    labels = data['labels']
+    for q in q_list:    
+        if q.is_applicable(image, labels):
+            qa_list = q.apply(image, labels)
+            print(q, "Passed", qa_list)
+        else:
+            print(q, "Not applicable")
+
+    print("==================================================================")
 
