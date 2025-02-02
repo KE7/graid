@@ -2,7 +2,7 @@ from scenic_reasoning.data.ImageLoader import Bdd10kDataset, NuImagesDataset_seg
 from scenic_reasoning.models.UltralyticsYolo import Yolo_seg
 from scenic_reasoning.measurements.InstanceSegmentation import InstanceSegmentationMeasurements
 
-from scenic_reasoning.utilities.common import get_default_device
+from scenic_reasoning.utilities.common import get_default_device, yolo_transform
 import torch
 from itertools import islice
 from ultralytics.data.augment import LetterBox
@@ -14,15 +14,14 @@ BATCH_SIZE = 1
 
 bdd = Bdd10kDataset(
     split="val", 
-    # YOLO requires images to be 640x640 or 768x1280, 
-    # but BDD100K images are 720x1280 so we need to resize
-    # transform=transform_image_for_yolo,  
+    transform=yolo_transform
 )
 
-waymo = WaymoDataset_seg(split="validation")
+waymo = WaymoDataset_seg(split="validation", transform=yolo_transform)
 
 nuscene = NuImagesDataset_seg(
-    split="test"
+    split="test",
+    transform=yolo_transform
 )
 
 model = Yolo_seg(model="yolo11n-seg.pt")

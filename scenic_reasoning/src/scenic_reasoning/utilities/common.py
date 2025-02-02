@@ -50,3 +50,13 @@ def convert_to_xyxy(center_x: int, center_y: int, width: int, height: int):
     x2 = center_x + width / 2
     y2 = center_y + height / 2
     return x1, y1, x2, y2
+
+
+def yolo_transform(image, stride=32):
+    C, H, W = image.shape
+    new_H = (H + stride - 1) // stride * stride
+    new_W = (W + stride - 1) // stride * stride
+    image = image.permute(1, 2, 0).cpu().numpy()
+    resized_image = cv2.resize(image, (new_W, new_H), interpolation=cv2.INTER_LINEAR)
+    resized_image = torch.from_numpy(resized_image).permute(2, 0, 1).float()
+    return resized_image

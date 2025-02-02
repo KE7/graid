@@ -20,7 +20,7 @@ from torch.utils.data import Dataset
 from torchvision import transforms
 from torchvision.io import decode_image
 import torch
-from scenic_reasoning.utilities.common import convert_to_xyxy
+from scenic_reasoning.utilities.common import convert_to_xyxy, yolo_transform
 import base64
 from pycocotools import mask as cocomask
 
@@ -142,17 +142,6 @@ class Bdd10kDataset(ImageDataset):
         rle = root_dir / "labels" / "ins_seg" / "rles" / f"ins_seg_{split}.json"
 
         def merge_transform(image: Tensor, labels, timestamp, stride=32):
-
-            C, H, W = image.shape
-
-            new_H = (H + stride - 1) // stride * stride
-            new_W = (W + stride - 1) // stride * stride
-
-            image = image.permute(1, 2, 0).cpu().numpy()
-
-            resized_image = cv2.resize(image, (new_W, new_H), interpolation=cv2.INTER_LINEAR)  #TODO: should I use this package to do resizing?
-            resized_image = torch.from_numpy(resized_image).permute(2, 0, 1).float()
-
             results = []
             attributes = []
 
@@ -172,7 +161,7 @@ class Bdd10kDataset(ImageDataset):
                 results.append(result)
                 attributes.append(label['attributes'])
 
-            return resized_image, results, timestamp
+            return image, results, timestamp
 
         super().__init__(
             img_dir=str(img_dir),
@@ -558,14 +547,6 @@ class NuImagesDataset(ImageDataset):
             List[Dict[str, Any]],
             str,
         ]:
-            
-            C, H, W = image.shape
-            new_H = (H + stride - 1) // stride * stride
-            new_W = (W + stride - 1) // stride * stride
-            image = image.permute(1, 2, 0).cpu().numpy()
-            resized_image = cv2.resize(image, (new_W, new_H), interpolation=cv2.INTER_LINEAR)  #TODO: should I use this package to do resizing?
-            resized_image = torch.from_numpy(resized_image).permute(2, 0, 1).float()
-
             results = []
             attributes = []
 
@@ -587,7 +568,7 @@ class NuImagesDataset(ImageDataset):
                 )
                 attributes.append(obj_attributes)
 
-            return (resized_image, results, attributes, timestamp)
+            return (image, results, attributes, timestamp)
 
         super().__init__(
             img_labels=img_labels, img_dir=img_dir, merge_transform=merge_transform, **kwargs
@@ -787,13 +768,6 @@ class NuImagesDataset_seg(ImageDataset):
             Dict[str, Any],
             str,
         ]:
-            C, H, W = image.shape
-            new_H = (H + stride - 1) // stride * stride
-            new_W = (W + stride - 1) // stride * stride
-            image = image.permute(1, 2, 0).cpu().numpy()
-            resized_image = cv2.resize(image, (new_W, new_H), interpolation=cv2.INTER_LINEAR)  #TODO: should I use this package to do resizing?
-            resized_image = torch.from_numpy(resized_image).permute(2, 0, 1).float()
-
             results = []
             attributes = []
 
@@ -818,7 +792,7 @@ class NuImagesDataset_seg(ImageDataset):
                 )
                 attributes.append(obj_attributes)
 
-            return (resized_image, results, attributes, timestamp)
+            return (image, results, attributes, timestamp)
 
         super().__init__(
             img_labels=img_labels, img_dir=img_dir, merge_transform=merge_transform, **kwargs
