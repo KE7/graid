@@ -13,12 +13,6 @@ bdd = Bdd100kDataset(
     use_extended_annotations=False,
 )
 
-# data = bdd[2]
-# image = data['image']
-# image = transforms.ToPILImage()(image)
-# labels = data['labels']
-# timestamp = data['timestamp']
-
 q_list = [Quadrants(2, 2), MostAppearance(), IsObjectCentered(), WidthVsHeight(), LargestAppearance(), LeastAppearance(), LeftOf(), RightOf(), LeftMost(), RightMost(), HowMany()]
 for i in range(10):
     data = bdd[i]
