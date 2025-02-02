@@ -21,6 +21,8 @@ from torchvision import transforms
 from torchvision.io import decode_image
 import torch
 from scenic_reasoning.utilities.common import convert_to_xyxy
+import base64
+from pycocotools import mask as cocomask
 
 
 class ImageDataset(Dataset):
@@ -47,13 +49,7 @@ class ImageDataset(Dataset):
 
         if annotations_file:
             self.img_labels = self.load_annotations(annotations_file)
-        if mask_dir:
-            self.masks = self.load_masks(mask_dir)
     
-    def load_masks(self, mask_dir: str):
-        masks = [os.path.join(mask_dir, file) for file in os.listdir(mask_dir)]
-        return masks
-
     def load_annotations(self, annotations_file: str) -> List[Dict]:
         """Load annotations from a JSON file."""
         with open(annotations_file, 'r') as file:
@@ -61,37 +57,7 @@ class ImageDataset(Dataset):
     
     
     def __len__(self) -> int:
-        if self.img_labels:
-            return len(self.img_labels)
-        if self.masks:
-            return len(self.masks)
-
-    def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
-        if self.img_labels:
-                
-            img_path = os.path.join(self.img_dir, self.img_labels[idx]["name"])
-
-            image = decode_image(img_path)
-
-            labels = self.img_labels[idx]["labels"]
-            attributes = self.img_labels[idx]["attributes"]
-            timestamp = self.img_labels[idx]["timestamp"]
-
-            if self.transform:
-                image = self.transform(image)
-            if self.target_transform:
-                labels = self.target_transform(labels)
-            if self.merge_transform:
-                image, labels, timestamp = self.merge_transform(
-                    image, labels, attributes, timestamp
-                )
-
-            return {
-                "image": image,
-                "labels": labels,
-                "timestamp": timestamp,
-            }
-
+        return len(self.img_labels)
 
 class Bdd10kDataset(ImageDataset):
     """
@@ -219,21 +185,15 @@ class Bdd10kDataset(ImageDataset):
     def __init__(
         self,
         split: Literal["train", "val", "test"] = "train",
-        use_original_categories: bool = True,
-        use_extended_annotations: bool = True,
         **kwargs,
     ):
 
         root_dir = project_root_dir() / "data" / "bdd100k"
         img_dir = root_dir / "images" / "10k" / split
-        mask_dir = root_dir / "labels" / "ins_seg" / "bitmasks" / split
-        colormap_dir = root_dir / "labels" / "ins_seg" / "colormaps" / split
-        polygon_dir = root_dir / "labels" / "ins_seg" / "polygons" / split
-        rle_dir = root_dir / "labels" / "ins_seg" / "rles" / split
+        rle = root_dir / "labels" / "ins_seg" / "rles" / f"ins_seg_{split}.json"
 
+        def merge_transform(image: Tensor, labels, timestamp, stride=32):
 
-        def merge_transform(image, mask, stride=32):   # WARNING ⚠️ torch.Tensor inputs should be BCHW i.e. shape(1, 3, 640, 640) divisible by stride 32
-            
             C, H, W = image.shape
 
             new_H = (H + stride - 1) // stride * stride
@@ -245,57 +205,54 @@ class Bdd10kDataset(ImageDataset):
             resized_image = torch.from_numpy(resized_image).permute(2, 0, 1).float()
 
             results = []
+            attributes = []
 
-            B, G, R, A = mask[..., 0], mask[..., 1], mask[..., 2], mask[..., 3]
-
-            class_id_map = R
-
-            truncated = (G & 0b1000) >> 3
-            occluded = (G & 0b0100) >> 2
-            crowd = (G & 0b0010) >> 1
-            ignore = (G & 0b0001)
-
-            attributes = {
-                "truncated": truncated,
-                "occluded": occluded,
-                "crowd": crowd,
-                "ignore": ignore
-            }
-
-            instance_id_map = (B << 8) + A
-
-            image_hw = (resized_image.shape[0], resized_image.shape[1])
-            unique_instance_ids = np.unique(instance_id_map)
-
-            results = []
-
-            for instance_id in unique_instance_ids:
-            
-                instance_mask = (instance_id_map == instance_id).astype(np.uint8)
-                class_mask = class_id_map * instance_mask
-                unique_classes, counts = np.unique(class_mask[class_mask > 0], return_counts=True)
-                class_id = unique_classes[np.argmax(counts)] if len(unique_classes) > 0 else -1
-                class_label = self._CATEGORIES[class_id] if class_id in self._CATEGORIES else "invalid"
-
+            for instance_id, label in enumerate(labels):
+                rle = label['rle']
+                mask = cocomask.decode(rle)
+                class_label = label['category']
+                class_id = self.category_to_coco_cls(class_label)
                 result = InstanceSegmentationResultI(
                     score=1.0, 
                     cls=int(class_id), 
                     label=class_label,
                     instance_id=int(instance_id),
-                    image_hw=image_hw,
-                    mask=torch.from_numpy(instance_mask).unsqueeze(0),
+                    image_hw=rle['size'],
+                    mask=torch.from_numpy(mask).unsqueeze(0),
                 )
                 results.append(result)
-            return (resized_image, results, attributes)
+                attributes.append(label['attributes'])
 
+            return resized_image, results, timestamp
 
         super().__init__(
             img_dir=str(img_dir),
-            mask_dir=str(mask_dir),
+            annotations_file=rle,
             merge_transform=merge_transform,
             **kwargs,
         )
+    
+    def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
+        data = self.img_labels['frames'][idx]
+        img_path = os.path.join(self.img_dir, data['name'])
+        labels = data["labels"]
+        timestamp = data["timestamp"]
+        image = decode_image(img_path)
 
+        if self.transform:
+            image = self.transform(image)
+        if self.target_transform:
+            labels = self.target_transform(labels)
+        if self.merge_transform:
+            image, labels, timestamp = self.merge_transform(
+                image, labels, timestamp
+            )
+
+        return {
+            "image": image,
+            "labels": labels,
+            "timestamp": timestamp,
+        }
 
 
 class Bdd100kDataset(ImageDataset):
@@ -391,6 +348,9 @@ class Bdd100kDataset(ImageDataset):
     def category_to_coco_cls(self, category: str) -> int:
         return self._CATEGORIES_TO_COCO[category]
 
+    def __len__(self) -> int:
+        return len(self.img_labels)
+
     def __init__(
         self,
         split: Literal["train", "val", "test"] = "train",
@@ -406,7 +366,6 @@ class Bdd100kDataset(ImageDataset):
         def merge_transform(
             image: Tensor,
             labels: List[Dict[str, Any]],
-            attributes: Dict[str, Any],
             timestamp: str,
         ) -> Union[
             Tuple[Tensor, List[Union[ObjectDetectionResultI, InstanceSegmentationResultI]]],
@@ -458,30 +417,26 @@ class Bdd100kDataset(ImageDataset):
 
 
     def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
-        if self.img_labels:
-                
-            img_path = os.path.join(self.img_dir, self.img_labels[idx]["name"])
+        img_path = os.path.join(self.img_dir, self.img_labels[idx]["name"])
+        image = decode_image(img_path)
+        labels = self.img_labels[idx]["labels"]
+        timestamp = self.img_labels[idx]["timestamp"]
 
-            image = decode_image(img_path)
+        if self.transform:
+            image = self.transform(image)
+        if self.target_transform:
+            labels = self.target_transform(labels)
+        if self.merge_transform:
+            image, labels, timestamp = self.merge_transform(
+                image, labels, timestamp
+            )
 
-            labels = self.img_labels[idx]["labels"]
-            attributes = self.img_labels[idx]["attributes"]
-            timestamp = self.img_labels[idx]["timestamp"]
+        return {
+            "image": image,
+            "labels": labels,
+            "timestamp": timestamp,
+        }
 
-            if self.transform:
-                image = self.transform(image)
-            if self.target_transform:
-                labels = self.target_transform(labels)
-            if self.merge_transform:
-                image, labels, timestamp = self.merge_transform(
-                    image, labels, attributes, timestamp
-                )
-
-            return {
-                "image": image,
-                "labels": labels,
-                "timestamp": timestamp,
-            }
 
 class NuImagesDataset(ImageDataset):
     """
@@ -825,8 +780,6 @@ class NuImagesDataset_seg(ImageDataset):
     ):
         
         from nuimages import NuImages
-        import base64
-        from pycocotools import mask as cocomask
 
         root_dir = project_root_dir() / "data" / "nuimages" / size
         img_dir = root_dir
@@ -874,7 +827,6 @@ class NuImagesDataset_seg(ImageDataset):
                 'timestamp': timestamp
                 })
             
-
         def merge_transform(
             image: Tensor,
             labels: List[Dict[str, Any]],
@@ -1231,7 +1183,6 @@ class WaymoDataset_seg(ImageDataset):
         unique_semantic_classes = np.unique(semantic_classes)
         return unique_semantic_classes.tolist()
     
-    
     def __init__(self, split: Union[Literal["training", "validation", "testing"]] = "training", **kwargs):
         root_dir = project_root_dir() / "data" / "waymo"
         self.camera_img_dir = root_dir / f"{split}" / "camera_image"
@@ -1311,9 +1262,6 @@ class WaymoDataset_seg(ImageDataset):
 
         if not self.img_labels:
             raise ValueError(f"No valid data found in {self.camera_img_dir} and {self.camera_box_dir}")
-        
-        print("Size of img_labels:", len(self.img_labels))
-        print(type(self.img_labels))
 
         def merge_transform(image, labels, attributes, timestamp):
             masks_bytes = labels[0]['masks']
