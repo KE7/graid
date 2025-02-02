@@ -28,12 +28,8 @@ nuscene = NuImagesDataset_seg(
 model = Yolo_seg(model="yolo11n-seg.pt")
 for d in [bdd, nuscene, waymo]:
     # https://docs.ultralytics.com/models/yolov5/#performance-metrics
-    # measurements = InstanceSegmentationMeasurements(model, bdd, batch_size=BATCH_SIZE, collate_fn=lambda x: x) # hacky way to avoid RuntimeError: each element in list of batch should be of equal size
     measurements = InstanceSegmentationMeasurements(model, d, batch_size=BATCH_SIZE, collate_fn=lambda x: x)
-    model.identify_for_image(['../demo/demo.jpg', '../demo/demo2.jpg'])
-    # model.identify_for_image('../demo/demo.jpg')
     # WARNING ⚠️ imgsz=[720, 1280] must be multiple of max stride 64, updating to [768, 1280]
-    from pprint import pprint
     for (results, ims) in islice(measurements.iter_measurements(
             device=get_default_device(), 
             imgsz=[768, 1280],
@@ -44,5 +40,3 @@ for d in [bdd, nuscene, waymo]:
             ), 
         NUM_EXAMPLES_TO_SHOW):
         print("")
-        # pprint(results)
-        # [im.show() for im in ims]  #TODO: need to write a custom function to display the ground truth instance segmentation result.
