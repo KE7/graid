@@ -59,62 +59,11 @@ class ImageDataset(Dataset):
     def __len__(self) -> int:
         return len(self.img_labels)
 
-class Bdd10kDataset(ImageDataset):
-    """
-    The structure of how BDD100K labels are stored.
-    Mapping = {
-        "name": "name",
-        "attributes": {
-            "weather": "weather",
-            "timeofday": "timeofday",
-            "scene": "scene"
-        },
-        "timestamp": "timestamp",
-        "labels": [
-            {
-                "id": "id",
-                "attributes": {
-                    "occluded": "occluded",
-                    "truncated": "truncated",
-                    "trafficLightColor": "trafficLightColor"
-                },
-                "category": "category",
-                "box2d": {
-                    "x1": "x1",
-                    "y1": "y1",
-                    "x2": "x2",
-                    "y2": "y2"
-                }
-            }
-        ]
-    }
+    def __getitem__(self):
+        raise NotImplementedError("Subclasses must implement __getitem__")
 
-    Example:
-        "name": "b1c66a42-6f7d68ca.jpg",
-        "attributes": {
-        "weather": "overcast",
-        "timeofday": "daytime",
-        "scene": "city street"
-        },
-        "timestamp": 10000,
-        "labels": [
-        {
-            "id": "0",
-            "attributes": {
-                "occluded": false,
-                "truncated": false,
-                "trafficLightColor": "NA"
-            },
-            "category": "traffic sign",
-            "box2d": {
-                "x1": 1000.698742,
-                "y1": 281.992415,
-                "x2": 1040.626872,
-                "y2": 326.91156
-            }
-            ...
-        }
-    """
+
+class Bdd10kDataset(ImageDataset):
 
     _CATEGORIES_TO_COCO = {
         "pedestrian": 0,  # in COCO there is no pedestrian so map to person
@@ -1100,38 +1049,6 @@ class WaymoDataset(ImageDataset):
         }
 
 class WaymoDataset_seg(ImageDataset):
-    """
--    camera_image/{segment_context_name}.parquet
--    15 columns
--    Index(['key.segment_context_name', 'key.frame_timestamp_micros',
--       'key.camera_name', '[CameraImageComponent].image',
--       '[CameraImageComponent].pose.transform',
--       '[CameraImageComponent].velocity.linear_velocity.x',
--       '[CameraImageComponent].velocity.linear_velocity.y',
--       '[CameraImageComponent].velocity.linear_velocity.z',
--       '[CameraImageComponent].velocity.angular_velocity.x',
--       '[CameraImageComponent].velocity.angular_velocity.y',
--       '[CameraImageComponent].velocity.angular_velocity.z',
--       '[CameraImageComponent].pose_timestamp',
--       '[CameraImageComponent].rolling_shutter_params.shutter',
--       '[CameraImageComponent].rolling_shutter_params.camera_trigger_time',
--       '[CameraImageComponent].rolling_shutter_params.camera_readout_done_time'],
--      dtype='object')
--    (variable_size_rows, 15)
--
--    camera_box/{segment_context_name}.parquet
--    11 columns
--    Index(['key.segment_context_name', 'key.frame_timestamp_micros',
--       'key.camera_name', 'key.camera_object_id',
--       '[CameraBoxComponent].box.center.x',
--       '[CameraBoxComponent].box.center.y', '[CameraBoxComponent].box.size.x',
--       '[CameraBoxComponent].box.size.y', '[CameraBoxComponent].type',
--       '[CameraBoxComponent].difficulty_level.detection',
--       '[CameraBoxComponent].difficulty_level.tracking'],
--      dtype='object')
--    (variable_size_rows, 11)
--
--    """
 
     _CATEGORIES = {
         "TYPE_UNDEFINED": 0,
