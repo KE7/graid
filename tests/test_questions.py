@@ -13,17 +13,23 @@ bdd = Bdd100kDataset(
     use_extended_annotations=False,
 )
 
+niu = NuImagesDataset(split='test', transform=yolo_transform)
+
+waymo = WaymoDataset(split="validation", transform=yolo_transform)
+
+my_dataset = waymo
+
 q_list = [Quadrants(2, 2), MostAppearance(), IsObjectCentered(), WidthVsHeight(), LargestAppearance(), LeastAppearance(), LeftOf(), RightOf(), LeftMost(), RightMost(), HowMany()]
 for i in range(10):
     print(i)
-    data = bdd[i]
+    data = my_dataset[i]
     image = data['image']
     image = transforms.ToPILImage()(image)
     labels = data['labels']
     for q in q_list:    
         if q.is_applicable(image, labels):
             qa_list = q.apply(image, labels)
-            print(q, "Passed", qa_list)
+            print(q, qa_list, "Passed")
         else:
             print(q, "Not applicable")
 

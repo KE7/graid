@@ -141,7 +141,7 @@ class Bdd10kDataset(ImageDataset):
         img_dir = root_dir / "images" / "10k" / split
         rle = root_dir / "labels" / "ins_seg" / "rles" / f"ins_seg_{split}.json"
 
-        def merge_transform(image: Tensor, labels, timestamp, stride=32):
+        def merge_transform(image: Tensor, labels, timestamp):
             results = []
             attributes = []
 
@@ -472,8 +472,39 @@ class NuImagesDataset(ImageDataset):
         "vehicle.truck": 24,
     }
 
+    _CATEGORIES_TO_COCO = {
+        "animal": 0,
+        "flat.driveable_surface": "driveable_surface",  # ??
+        "human.pedestrian.adult": "pedestrian",
+        "human.pedestrian.child": "pedestrian",
+        "human.pedestrian.construction_worker": "pedestrian",
+        "human.pedestrian.personal_mobility": "pedestrian",
+        "human.pedestrian.police_officer": "pedestrian",
+        "human.pedestrian.stroller": "pedestrian",
+        "human.pedestrian.wheelchair": "pedestrian",
+        "movable_object.barrier": "barrier",  # ??
+        "movable_object.debris": "debris",  # ??
+        "movable_object.pushable_pullable": "pushable_pullable",  # ??
+        "movable_object.trafficcone": "traffic sign",
+        "static_object.bicycle_rack": "bicycle_rack",  # ??
+        "vehicle.bicycle": "bicycle",
+        "vehicle.bus.bendy": "bus",
+        "vehicle.bus.rigid": "bus",
+        "vehicle.car": "car",
+        "vehicle.construction": "construction",  # ??
+        "vehicle.ego": "ego",  # ??
+        "vehicle.emergency.ambulance": "ambulance", # ??
+        "vehicle.emergency.police": "police", # ??
+        "vehicle.motorcycle": "motorcycle", 
+        "vehicle.trailer": "truck",
+        "vehicle.truck": "truck",
+    }
+
     def category_to_cls(self, category: str) -> int:
         return self._CATEGORIES[category]
+    
+    def category_to_coco(self, category: str):
+        return self._CATEGORIES_TO_COCO[category]
 
     def filter_by_token(
         self, data: List[Dict[str, Any]], field: str, match_value: str
@@ -539,8 +570,7 @@ class NuImagesDataset(ImageDataset):
         def merge_transform(
             image: Tensor,
             labels: List[Dict[str, Any]],
-            timestamp: str,
-            stride=32
+            timestamp: str
         ) -> Tuple[
             Tensor,
             List[Tuple[ObjectDetectionResultI, Dict[str, Any], str]],
@@ -559,7 +589,7 @@ class NuImagesDataset(ImageDataset):
                     ObjectDetectionResultI(
                         score=1.0,
                         cls=self.category_to_cls(obj_category),
-                        label=obj_category,
+                        label=self.category_to_coco(obj_category),
                         bbox=obj_label["bbox"],
                         image_hw=(height, width),
                         bbox_format=BBox_Format.XYXY,
@@ -760,8 +790,7 @@ class NuImagesDataset_seg(ImageDataset):
         def merge_transform(
             image: Tensor,
             labels: List[Dict[str, Any]],
-            timestamp: str,
-            stride=32,
+            timestamp: str
         ) -> Tuple[
             Tensor,
             List[Tuple[InstanceSegmentationResultI, Dict[str, Any], str]],
@@ -867,14 +896,26 @@ class WaymoDataset(ImageDataset):
 
     _CLS_TO_CATEGORIES = {
         "0": "TYPE_UNKNOWN",
-        "1": "TYPE VEHICLE",
+        "1": "TYPE_VEHICLE",
         "2": "TYPE_PEDESTRIAN",
         "3": "TYPE_SIGN",
         "4": "TYPE_CYCLIST",
     }
 
+    _CATEGORIES_TO_COCO = {
+        "TYPE_UNKNOWN": "unknown",  #??
+        "TYPE_VEHICLE": "vehicle",  #??
+        "TYPE_PEDESTRIAN": "pedestrain",
+        "TYPE_SIGN": "traffic sign",
+        "TYPE_CYCLIST": "person",
+    }
+
+
     def category_to_cls(self, category: str) -> int:
         return self._CATEGORIES[category]
+    
+    def category_to_coco(self, category: str):
+        return self._CATEGORIES_TO_COCO[category]
 
     def cls_to_category(self, cls: int) -> str:
         return self._CLS_TO_CATEGORIES[str(cls)]
@@ -972,11 +1013,12 @@ class WaymoDataset(ImageDataset):
                     
                 cls = label['type']
                 bbox = label['bbox']
+                class_label = self.cls_to_category(cls)
 
                 result = ObjectDetectionResultI(
                     score=1.0,
                     cls=cls,
-                    label=self.cls_to_category(cls),
+                    label=self.category_to_coco(class_label),
                     bbox=list(bbox),
                     image_hw=image.shape,
                     attributes=[attributes]
