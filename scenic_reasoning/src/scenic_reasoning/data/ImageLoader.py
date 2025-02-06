@@ -20,7 +20,7 @@ from torch.utils.data import Dataset
 from torchvision import transforms
 from torchvision.io import decode_image
 import torch
-from scenic_reasoning.utilities.common import convert_to_xyxy, yolo_transform
+from scenic_reasoning.utilities.common import convert_to_xyxy
 import base64
 from pycocotools import mask as cocomask
 

@@ -1,6 +1,6 @@
 from pathlib import Path
 from typing import Iterator, List
-
+from ultralytics.data.augment import LetterBox
 import cv2
 import torch
 from PIL import Image
@@ -52,7 +52,7 @@ def convert_to_xyxy(center_x: int, center_y: int, width: int, height: int):
     return x1, y1, x2, y2
 
 
-def yolo_transform(image, stride=32):
+def yolo_waymo_transform(image, stride=32):
     C, H, W = image.shape
     new_H = (H + stride - 1) // stride * stride
     new_W = (W + stride - 1) // stride * stride
@@ -60,3 +60,18 @@ def yolo_transform(image, stride=32):
     resized_image = cv2.resize(image, (new_W, new_H), interpolation=cv2.INTER_LINEAR)
     resized_image = torch.from_numpy(resized_image).permute(2, 0, 1).float()
     return resized_image
+
+def yolo_bdd_transform(image : torch.Tensor):
+    shape_transform = LetterBox(new_shape=(768, 1280))
+    image_np  = image.permute(1, 2, 0).numpy()
+    # 2) resize to 768x1280
+    image_np = shape_transform(image=image_np)
+    # 3) convert back to tensor
+    image = torch.tensor(image_np).permute(2, 0, 1)
+    # 4) normalize to 0-1
+    image = image.to(torch.float32) / 255.0
+
+    return image
+
+def yolo_nuscene_transform(image):
+    return yolo_bdd_transform(image)
