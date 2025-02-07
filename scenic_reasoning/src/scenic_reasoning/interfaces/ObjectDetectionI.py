@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from collections import defaultdict
 from enum import Enum
 from pathlib import Path
 from typing import Dict, Iterator, List, Optional, Tuple, Union
@@ -12,7 +11,7 @@ from detectron2.structures.boxes import (
     pairwise_iou,
     pairwise_point_box_distance,
 )
-from PIL import Image
+from PIL import Image, ImageDraw
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
 from ultralytics.engine.results import Boxes as UltralyticsBoxes
 
@@ -283,6 +282,40 @@ class ObjectDetectionUtils:
         metric.update(targets, preds)
 
         return metric.compute()
+
+    def show_image_with_detections(
+        image: Image, detections: List[ObjectDetectionResultI]
+    ):
+        copied_image = image.copy()
+        draw = ImageDraw.Draw(copied_image)
+
+        for detection in detections:
+            bbox = detection.as_xyxy()
+            if bbox.shape[0] > 1:
+                for i, box in enumerate(bbox):
+                    x1, y1, x2, y2 = (
+                        int(box[0].item()),
+                        int(box[1].item()),
+                        int(box[2].item()),
+                        int(box[3].item()),
+                    )
+                    score = detection.score[i].item()
+                    label = detection.label[i].item()
+                    draw.rectangle([x1, y1, x2, y2], outline="red", width=3)
+                    draw.text((x1, y1), f"{label}: {score:.2f}", fill="red")
+            else:
+                x1, y1, x2, y2 = (
+                    int(bbox[0][0].item()),
+                    int(bbox[0][1].item()),
+                    int(bbox[0][2].item()),
+                    int(bbox[0][3].item()),
+                )
+                score = detection.score
+                label = detection.label
+                draw.rectangle([x1, y1, x2, y2], outline="red", width=2)
+                draw.text((x1, y1), f"{label}: {score:.2f}", fill="red")
+
+        copied_image.show()
 
 
 class ObjectDetectionModelI(ABC):
