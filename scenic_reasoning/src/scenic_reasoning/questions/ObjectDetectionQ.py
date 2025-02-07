@@ -16,10 +16,7 @@ logger = logging.getLogger(__name__)
 class Question(ABC):
     @abstractmethod
     def __init__(
-        self,
-        question: str,
-        variables: List[str],
-        predicates: List[Callable]
+        self, question: str, variables: List[str], predicates: List[Callable]
     ) -> None:
         self.question = question
         self.variables = variables
@@ -986,5 +983,5 @@ ALL_QUESTIONS = [
     RightOf,
     LeftMost,
     RightMost,
-    HowMany,   
+    HowMany,
 ]

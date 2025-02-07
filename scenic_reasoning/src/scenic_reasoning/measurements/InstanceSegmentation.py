@@ -1,24 +1,22 @@
+from typing import Callable, Dict, Iterator, List, Optional, Tuple, Union
+
 import torch
-from detectron2.structures import BitMasks, pairwise_iou
-import matplotlib.pyplot as plt
+from scenic_reasoning.data.ImageLoader import (
+    ImageDataset,
+)
 from scenic_reasoning.interfaces.InstanceSegmentationI import (
     InstanceSegmentationModelI,
     InstanceSegmentationResultI,
     InstanceSegmentationUtils,
 )
-from scenic_reasoning.data.ImageLoader import Bdd100kDataset, ImageDataset
-from scenic_reasoning.models.Detectron import Detectron2InstanceSegmentation
-from scenic_reasoning.data.ImageLoader import Bdd100kDataset, NuImagesDataset
-from torch.utils.data import DataLoader
-from typing import Callable, Dict, Iterator, List, Optional, Tuple, Union
 from scenic_reasoning.models.UltralyticsYolo import Yolo, Yolo_seg
 from scenic_reasoning.utilities.common import get_default_device
 from torch.utils.data import DataLoader
 from ultralytics.engine.results import Results
-from ultralytics.engine.results import Boxes as UltralyticsBoxes
 
 # TODO: torch metrics and validate comparison methods
 #       implement onto YOLO and other datasets
+
 
 class InstanceSegmentationMeasurements:
     """
@@ -93,7 +91,7 @@ class InstanceSegmentationMeasurements:
             for idx, (isrs, gt) in enumerate(
                 zip(prediction, y)
             ):  # isr = instance segmentation result, gt = ground truth
-                
+
                 measurements: dict = self._calculate_measurements(
                     isrs,
                     gt,
@@ -111,13 +109,11 @@ class InstanceSegmentationMeasurements:
                 yield results
 
     def _show_debug_image(
-        self,
-        image: torch.Tensor,
-        gt: List[InstanceSegmentationResultI]
+        self, image: torch.Tensor, gt: List[InstanceSegmentationResultI]
     ) -> Results:
-        
+
         import tempfile
-        
+
         names = {}
         masks = []
         fake_boxes = []
@@ -128,17 +124,21 @@ class InstanceSegmentationMeasurements:
             names[cls] = label
             mask = ground_truth._bitmask
             masks.append(mask.tensor)
-            fake_boxes.append(torch.tensor([0, 0, 0, 0, 0.0, -1]))   
-        
+            fake_boxes.append(torch.tensor([0, 0, 0, 0, 0.0, -1]))
+
         masks = torch.cat(masks) if masks else torch.tensor([])
-        fake_boxes = torch.stack(fake_boxes) if fake_boxes else torch.tensor([0, 0, 0, 0, 0.0, -1])
+        fake_boxes = (
+            torch.stack(fake_boxes)
+            if fake_boxes
+            else torch.tensor([0, 0, 0, 0, 0.0, -1])
+        )
 
         im = Results(
             orig_img=image.unsqueeze(0),  # Add batch dimension
             path=tempfile.mktemp(suffix=".jpg"),
             names=names,
             masks=masks,
-            boxes=fake_boxes
+            boxes=fake_boxes,
         )
 
         # TODO: add class label display for ins seg gt

@@ -1,9 +1,10 @@
 from pathlib import Path
 from typing import Iterator, List
-from ultralytics.data.augment import LetterBox
+
 import cv2
 import torch
 from PIL import Image
+from ultralytics.data.augment import LetterBox
 
 
 def get_default_device() -> torch.device:
@@ -43,6 +44,7 @@ def open_video(video_path: str, batch_size: int = 1) -> Iterator[List[Image.Imag
 
     cap.release()
 
+
 def convert_to_xyxy(center_x: int, center_y: int, width: int, height: int):
     """Converts bounding box from center-width-height format to XYXY format."""
     x1 = center_x - width / 2
@@ -61,9 +63,10 @@ def yolo_waymo_transform(image, stride=32):
     resized_image = torch.from_numpy(resized_image).permute(2, 0, 1).float()
     return resized_image
 
-def yolo_bdd_transform(image : torch.Tensor):
+
+def yolo_bdd_transform(image: torch.Tensor):
     shape_transform = LetterBox(new_shape=(768, 1280))
-    image_np  = image.permute(1, 2, 0).numpy()
+    image_np = image.permute(1, 2, 0).numpy()
     # 2) resize to 768x1280
     image_np = shape_transform(image=image_np)
     # 3) convert back to tensor
@@ -72,6 +75,7 @@ def yolo_bdd_transform(image : torch.Tensor):
     image = image.to(torch.float32) / 255.0
 
     return image
+
 
 def yolo_nuscene_transform(image):
     return yolo_bdd_transform(image)
