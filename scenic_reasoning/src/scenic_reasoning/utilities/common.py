@@ -54,28 +54,80 @@ def convert_to_xyxy(center_x: int, center_y: int, width: int, height: int):
     return x1, y1, x2, y2
 
 
-def yolo_waymo_transform(image, stride=32):
+def yolo_waymo_transform(image, labels, stride=32):
+    orig_H, orig_W = image.shape[1:]
+
+
     C, H, W = image.shape
     new_H = (H + stride - 1) // stride * stride
     new_W = (W + stride - 1) // stride * stride
     image = image.permute(1, 2, 0).cpu().numpy()
     resized_image = cv2.resize(image, (new_W, new_H), interpolation=cv2.INTER_LINEAR)
     resized_image = torch.from_numpy(resized_image).permute(2, 0, 1).float()
-    return resized_image
+
+    scale_x = new_W / orig_W
+    scale_y = new_H / orig_H
+    for label in labels:
+        x1, y1, x2, y2 = label['bbox']
+        label['bbox'] = (
+            x1 * scale_x,
+            y1 * scale_y,
+            x2 * scale_x,
+            y2 * scale_y
+        )
 
 
-def yolo_bdd_transform(image: torch.Tensor):
+    return resized_image, labels
+
+
+def yolo_bdd_transform(image: torch.Tensor, labels):
+    orig_H, orig_W = image.shape[1:]
     shape_transform = LetterBox(new_shape=(768, 1280))
     image_np = image.permute(1, 2, 0).numpy()
-    # 2) resize to 768x1280
     image_np = shape_transform(image=image_np)
-    # 3) convert back to tensor
     image = torch.tensor(image_np).permute(2, 0, 1)
-    # 4) normalize to 0-1
     image = image.to(torch.float32) / 255.0
+    
+    new_H, new_W = 768, 1280
+    scale_x = new_W / orig_W
+    scale_y = new_H / orig_H
+    pad_x = (orig_W - new_W) / 2
+    pad_y = (orig_H - new_H) / 2
 
-    return image
+    for label in labels:
+        bbox = label['box2d']
+        label['box2d'] = {
+            'x1': bbox['x1'] * scale_x,
+            'y1': bbox['y1'] * scale_y,
+            'x2': bbox['x2'] * scale_x,
+            'y2': bbox['y2'] * scale_y,
+        }
+    
+    return image, labels
 
 
-def yolo_nuscene_transform(image):
-    return yolo_bdd_transform(image)
+def yolo_nuscene_transform(image, labels):
+    orig_H, orig_W = image.shape[1:]
+
+    shape_transform = LetterBox(new_shape=(768, 1280))
+    image_np = image.permute(1, 2, 0).numpy()
+    image_np = shape_transform(image=image_np)
+    image = torch.tensor(image_np).permute(2, 0, 1)
+    image = image.to(torch.float32) / 255.0
+    
+    new_H, new_W = 768, 1280
+    scale_x = new_W / orig_W
+    scale_y = new_H / orig_H
+    pad_x = (orig_W - new_W) / 2
+    pad_y = (orig_H - new_H) / 2
+
+    for label in labels:
+        x1, y1, x2, y2 = label['bbox']
+        label['bbox'] = [
+            x1 * scale_x,
+            y1 * scale_y,
+            x2 * scale_x,
+            y2 * scale_y
+            ]
+        
+    return image, labels

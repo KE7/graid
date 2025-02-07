@@ -363,9 +363,7 @@ class Bdd100kDataset(ImageDataset):
         timestamp = self.img_labels[idx]["timestamp"]
 
         if self.transform:
-            image = self.transform(image)
-        if self.target_transform:
-            labels = self.target_transform(labels)
+            image, labels = self.transform(image, labels)
         if self.merge_transform:
             image, labels, timestamp = self.merge_transform(image, labels, timestamp)
 
@@ -621,7 +619,7 @@ class NuImagesDataset(ImageDataset):
         image = decode_image(img_path)
 
         if self.transform:
-            image = self.transform(image)
+            image, labels = self.transform(image, labels)
         if self.target_transform:
             labels = self.target_transform(labels)
         if self.merge_transform:
@@ -1108,7 +1106,7 @@ class WaymoDataset(ImageDataset):
 
         # Apply transformations if any
         if self.transform:
-            image = self.transform(image)
+            image, labels = self.transform(image, labels)
         if self.target_transform:
             labels = self.target_transform(labels)
         if self.merge_transform:
