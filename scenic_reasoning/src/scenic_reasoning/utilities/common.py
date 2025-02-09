@@ -1,10 +1,13 @@
+from copy import deepcopy
 from pathlib import Path
-from typing import Iterator, List
+from typing import Iterator, List, Tuple
 
 import cv2
+import numpy as np
 import torch
 from PIL import Image
 from ultralytics.data.augment import LetterBox
+from ultralytics.utils.instance import Instances
 
 
 def get_default_device() -> torch.device:
@@ -80,54 +83,66 @@ def yolo_waymo_transform(image, labels, stride=32):
     return resized_image, labels
 
 
-def yolo_bdd_transform(image: torch.Tensor, labels):
+def yolo_bdd_transform(image: torch.Tensor, labels : List[dict], new_shape : Tuple[int, int]):
     orig_H, orig_W = image.shape[1:]
-    shape_transform = LetterBox(new_shape=(768, 1280))
+
+    shape_transform = LetterBox(new_shape=new_shape)
     image_np = image.permute(1, 2, 0).numpy()
-    image_np = shape_transform(image=image_np)
-    image = torch.tensor(image_np).permute(2, 0, 1)
+    updated_labels = dict()
+    updated_labels["img"] = image_np
+    updated_labels["cls"] = np.zeros_like(labels)
+    ratio = min(new_shape[0] / orig_H, new_shape[1] / orig_W)
+    updated_labels["ratio_pad"] = ((ratio, ratio), 0, 0)
+    updated_labels["instances"] = Instances(
+        bboxes=np.array(list(
+            map(lambda label : [label['box2d']['x1'], label['box2d']['y1'], label['box2d']['x2'], label['box2d']['y2']], labels)
+        )),
+        # providing segments to make ultralyics bug in instance.py:258 happy
+        segments=np.zeros(shape=[len(labels), int(new_shape[1]*3/4), 2])
+    )
+    updated_labels = shape_transform(updated_labels)
+    left, top = updated_labels["ratio_pad"][1]
+    image = torch.tensor(updated_labels["img"]).permute(2, 0, 1)
     image = image.to(torch.float32) / 255.0
-    
-    new_H, new_W = 768, 1280
-    scale_x = new_W / orig_W
-    scale_y = new_H / orig_H
-    pad_x = (orig_W - new_W) / 2
-    pad_y = (orig_H - new_H) / 2
 
     for label in labels:
-        bbox = label['box2d']
-        label['box2d'] = {
-            'x1': bbox['x1'] * scale_x,
-            'y1': bbox['y1'] * scale_y,
-            'x2': bbox['x2'] * scale_x,
-            'y2': bbox['y2'] * scale_y,
-        }
-    
+        label['box2d']['x1'] = label['box2d']['x1'] * ratio + left
+        label['box2d']['y1'] = label['box2d']['y1'] * ratio + top
+        label['box2d']['x2'] = label['box2d']['x2'] * ratio + left
+        label['box2d']['y2'] = label['box2d']['y2'] * ratio + top
+        
     return image, labels
 
 
-def yolo_nuscene_transform(image, labels):
+def yolo_nuscene_transform(image: torch.Tensor, labels : List[dict], new_shape : Tuple[int, int]):
     orig_H, orig_W = image.shape[1:]
 
-    shape_transform = LetterBox(new_shape=(768, 1280))
+    shape_transform = LetterBox(new_shape=new_shape)
     image_np = image.permute(1, 2, 0).numpy()
-    image_np = shape_transform(image=image_np)
-    image = torch.tensor(image_np).permute(2, 0, 1)
+    updated_labels = dict()
+    updated_labels["img"] = image_np
+    updated_labels["cls"] = np.zeros_like(labels)
+    ratio = min(new_shape[0] / orig_H, new_shape[1] / orig_W)
+    updated_labels["ratio_pad"] = ((ratio, ratio), 0, 0)
+    updated_labels["instances"] = Instances(
+        bboxes=np.array(list(
+            map(lambda label : label['bbox'], labels)
+        )),
+        # providing segments to make ultralyics bug in instance.py:258 happy
+        segments=np.zeros(shape=[len(labels), int(new_shape[1]*3/4), 2])
+    )
+    updated_labels = shape_transform(updated_labels)
+    left, top = updated_labels["ratio_pad"][1]
+    image = torch.tensor(updated_labels["img"]).permute(2, 0, 1)
     image = image.to(torch.float32) / 255.0
-    
-    new_H, new_W = 768, 1280
-    scale_x = new_W / orig_W
-    scale_y = new_H / orig_H
-    pad_x = (orig_W - new_W) / 2
-    pad_y = (orig_H - new_H) / 2
 
     for label in labels:
         x1, y1, x2, y2 = label['bbox']
         label['bbox'] = [
-            x1 * scale_x,
-            y1 * scale_y,
-            x2 * scale_x,
-            y2 * scale_y
-            ]
+            x1 * ratio + left,
+            y1 * ratio + top,
+            x2 * ratio + left,
+            y2 * ratio + top
+        ]
         
     return image, labels

@@ -31,16 +31,16 @@ BATCH_SIZE = 1
 
 bdd = Bdd100kDataset(
     split="val",
-    transform=yolo_bdd_transform,
+    transform=lambda i, l : yolo_bdd_transform(i, l, new_shape=(768, 1280)),
     use_original_categories=False,
     use_extended_annotations=False,
 )
 
-niu = NuImagesDataset(split="test", transform=yolo_nuscene_transform)
+niu = NuImagesDataset(split="test", transform=lambda i, l: yolo_nuscene_transform(i, l, (768, 1280)))
 
-waymo = WaymoDataset(split="validation", transform=yolo_waymo_transform)
+# waymo = WaymoDataset(split="validation", transform=lambda i, l:  yolo_waymo_transform(i, l, stride=32))
 
-my_dataset = niu
+my_dataset = bdd
 
 q_list = [
     Quadrants(2, 2),
@@ -61,12 +61,21 @@ for i in range(10):
     image = data["image"]
     image = transforms.ToPILImage()(image)
     labels = data["labels"]
+    at_least_one_was_applicable = False
     for q in q_list:
         if q.is_applicable(image, labels):
             qa_list = q.apply(image, labels)
-            print(q, qa_list, "Passed")
-            ObjectDetectionUtils.show_image_with_detections(image, labels)
+            if len(qa_list) == 0:
+
+                print(str(q)  + "\tIs applicable but no questions\n")
+                continue
+            
+            print(str(q) + "\t" + "Passed")
+            print("[\n" + "\n".join(["\t" + str(item) for item in qa_list]) + "\n]\n")
+            at_least_one_was_applicable = True
         else:
             print(q, "Not applicable")
+    if at_least_one_was_applicable:
+        ObjectDetectionUtils.show_image_with_detections(image, labels)
 
     print("==================================================================")

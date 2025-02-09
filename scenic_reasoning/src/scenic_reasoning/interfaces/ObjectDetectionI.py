@@ -11,7 +11,7 @@ from detectron2.structures.boxes import (
     pairwise_iou,
     pairwise_point_box_distance,
 )
-from PIL import Image, ImageDraw
+from PIL import Image
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
 from ultralytics.engine.results import Boxes as UltralyticsBoxes
 
@@ -286,6 +286,7 @@ class ObjectDetectionUtils:
     def show_image_with_detections(
         image: Image, detections: List[ObjectDetectionResultI]
     ):
+        from PIL import ImageDraw
         copied_image = image.copy()
         draw = ImageDraw.Draw(copied_image)
 
@@ -312,8 +313,14 @@ class ObjectDetectionUtils:
                 )
                 score = detection.score
                 label = detection.label
-                draw.rectangle([x1, y1, x2, y2], outline="red", width=2)
-                draw.text((x1, y1), f"{label}: {score:.2f}", fill="red")
+                if score > 0.8:
+                    box_color = "green"
+                elif score > 0.5:
+                    box_color = "yellow"
+                else:
+                    box_color = "red"
+                draw.rectangle([x1, y1, x2, y2], outline=box_color, width=2)
+                draw.text((x1, y1), f"{label}: {score:.2f}", fill="white")
 
         copied_image.show()
 

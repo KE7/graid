@@ -195,6 +195,9 @@ class Question(ABC):
         """
         pass
 
+    def __repr__(self):
+        return f"Question: {self.question}"
+
 
 class ObjectDetectionPredicates:
     @staticmethod
