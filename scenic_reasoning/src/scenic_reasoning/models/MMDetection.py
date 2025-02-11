@@ -1,7 +1,7 @@
 from itertools import islice
 from pathlib import Path
 from typing import Iterator, List, Optional, Union
-
+import os
 import numpy as np
 import torch
 from PIL import Image
@@ -24,6 +24,7 @@ import mmdet
 
 # https://github.com/HumanSignal/label-studio/blob/develop/docs/source/tutorials/object-detector.md
 coco_label = {
+    0: "unlabeled",
     1: "airplane",
     2: "apple",
     3: "backpack",
@@ -142,27 +143,35 @@ class MMdetection_obj(ObjectDetectionModelI):
             detections in a particular image.
         """
 
-        # inputsw can only be Union[str, np.ndarray]
-        if isinstance(image, torch.Tensor):
-            image = image.cpu().numpy()
+        # image is batched input. MMdetection only supports Union[InputType, Sequence[InputType]], where InputType = Union[str, np.ndarray]
+        image_list = [image[i].permute(1, 2, 0).cpu().numpy() for i in range(len(image))]
+        image_hw = image_list[0].shape[:-1]
 
-        predictions = self._model(image)['predictions']
+        out_dir = '../output'
+        predictions = self._model(image_list, out_dir=out_dir)['predictions']
+
+        if debug:
+            for filename in os.listdir(f"{out_dir}/vis"):
+                file_path = os.path.join(f"{out_dir}/vis", filename)
+                with Image.open(file_path) as img:
+                    img.show()
 
         formatted_results = []
+
         for prediction in predictions:
+            result_for_image = []
             for bbox, label, score in zip(prediction['bboxes'], prediction['labels'], prediction['scores']):
-                result_for_image = []
                 odr = ObjectDetectionResultI(
                         score=score,
                         cls=label,
                         label=coco_label[label],
                         bbox=bbox,
-                        image_hw=image.shape,
-                        bbox_format=BBox_Format.UltralyticsBox,
+                        image_hw=image_hw,
+                        bbox_format=BBox_Format.XYXY,
                     )
                 result_for_image.append(odr)
-
             formatted_results.append(result_for_image)
+
         return formatted_results
 
     def identify_for_image_as_tensor(

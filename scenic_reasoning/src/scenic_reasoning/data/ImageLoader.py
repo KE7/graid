@@ -367,7 +367,14 @@ class Bdd100kDataset(ImageDataset):
 
     def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
         img_path = os.path.join(self.img_dir, self.img_labels[idx]["name"])
-        image = decode_image(img_path)
+        try:
+            image = decode_image(img_path)
+        except Exception as e:
+            print(e)
+            print("switching to cv2 ...")
+            image = cv2.imread(img_path)
+            image = torch.from_numpy(image).permute(2, 0, 1)
+
         labels = self.img_labels[idx]["labels"]
         timestamp = self.img_labels[idx]["timestamp"]
 

@@ -10,6 +10,7 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
     ObjectDetectionUtils,
 )
 from scenic_reasoning.models.UltralyticsYolo import Yolo
+from scenic_reasoning.models.MMDetection import MMdetection_obj
 from scenic_reasoning.utilities.common import get_default_device
 from torch.utils.data import DataLoader
 from ultralytics.data.augment import LetterBox
@@ -82,7 +83,7 @@ class ObjectDetectionMeasurements:
                 prediction = self.model.identify_for_image(x, debug=debug, **kwargs)
             else:
                 self.model.to(device=get_default_device())
-                prediction = self.model.identify_for_image(x)
+                prediction = self.model.identify_for_image(x, debug=debug)
                 self.model.to(device="cpu")
 
             results = []

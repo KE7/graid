@@ -7,7 +7,7 @@ import torch
 from ultralytics.data.augment import LetterBox
 
 NUM_EXAMPLES_TO_SHOW = 3
-BATCH_SIZE = 1
+BATCH_SIZE = 2
 
 shape_transform = LetterBox(new_shape=(768, 1280))
 def transform_image_for_yolo(image : torch.Tensor):
@@ -26,7 +26,7 @@ bdd = Bdd100kDataset(
     split="val", 
     # YOLO requires images to be 640x640 or 768x1280, 
     # but BDD100K images are 720x1280 so we need to resize
-    transform=transform_image_for_yolo,  
+    # transform=transform_image_for_yolo,  
     use_original_categories=False,
     use_extended_annotations=False,
 )
@@ -44,24 +44,24 @@ model = MMdetection_obj(model=model_name, checkpoint=checkpoint)
 
 import cv2
 image = cv2.imread('../demo/demo.jpg')
-results =  model.identify_for_image(['../demo/demo.jpg', '../demo/demo2.jpg'])
-import pdb
-pdb.set_trace()
+print("???????", image.shape)
+
+# results =  model.identify_for_image([image],  ['../demo/demo2.jpg'])
 
 
-# for d in [bdd, niu, waymo]:
+for d in [bdd]:
         
-#     measurements = ObjectDetectionMeasurements(model, d, batch_size=BATCH_SIZE, collate_fn=lambda x: x) # hacky way to avoid RuntimeError: each element in list of batch should be of equal size
+    measurements = ObjectDetectionMeasurements(model, d, batch_size=BATCH_SIZE, collate_fn=lambda x: x) # hacky way to avoid RuntimeError: each element in list of batch should be of equal size
 
-#     # WARNING ⚠️ imgsz=[720, 1280] must be multiple of max stride 64, updating to [768, 1280]
-#     for (results, ims) in islice(measurements.iter_measurements(
-#             # device=get_default_device(), 
-#             imgsz=[768, 1280],
-#             bbox_offset=24,
-#             debug=True,
-#             conf=0.1,
-#             class_metrics=True,
-#             extended_summary=True,
-#             ), 
-#         NUM_EXAMPLES_TO_SHOW):
-#         print("")
+    # WARNING ⚠️ imgsz=[720, 1280] must be multiple of max stride 64, updating to [768, 1280]
+    for (results, ims) in islice(measurements.iter_measurements(
+            # device=get_default_device(), 
+            imgsz=[768, 1280],
+            bbox_offset=24,
+            debug=True,
+            conf=0.1,
+            class_metrics=True,
+            extended_summary=True,
+            ), 
+        NUM_EXAMPLES_TO_SHOW):
+        print("")
