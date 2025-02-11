@@ -14,6 +14,7 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
     BBox_Format,
     ObjectDetectionModelI,
     ObjectDetectionResultI,
+    ObjectDetectionUtils
 )
 from scenic_reasoning.utilities.common import get_default_device
 from ultralytics import YOLO
@@ -150,11 +151,11 @@ class MMdetection_obj(ObjectDetectionModelI):
         out_dir = '../output'
         predictions = self._model(image_list, out_dir=out_dir)['predictions']
 
-        if debug:
-            for filename in os.listdir(f"{out_dir}/vis"):
-                file_path = os.path.join(f"{out_dir}/vis", filename)
-                with Image.open(file_path) as img:
-                    img.show()
+        # if debug:
+        #     for filename in os.listdir(f"{out_dir}/vis"):
+        #         file_path = os.path.join(f"{out_dir}/vis", filename)
+        #         with Image.open(file_path) as img:
+        #             img.show()
 
         formatted_results = []
 
@@ -171,6 +172,10 @@ class MMdetection_obj(ObjectDetectionModelI):
                     )
                 result_for_image.append(odr)
             formatted_results.append(result_for_image)
+
+        if debug:
+            for i in len(image_list):
+                ObjectDetectionUtils.show_image_with_detections(Image.fromarray(image_list[i]), formatted_results[i])
 
         return formatted_results
 
