@@ -16,16 +16,11 @@ logger = logging.getLogger(__name__)
 class Question(ABC):
     @abstractmethod
     def __init__(
-        self,
-        question: str,
-        variables: List[str],
-        predicates: List[Callable],
-        answer: Any,
+        self, question: str, variables: List[str], predicates: List[Callable]
     ) -> None:
         self.question = question
         self.variables = variables
         self.predicates = predicates
-        self.answer = answer
 
     def is_applicable(
         self,
@@ -141,28 +136,28 @@ class Question(ABC):
                 if class_name not in right_most_detections:
                     right_most_detections[class_name] = (center_box[0], bbox[0])
                 else:
-                    if center_box[0][0] > right_most_detections[class_name][0]:
+                    if center_box[0][0] > right_most_detections[class_name][0][0]:
                         right_most_detections[class_name] = (center_box[0], bbox[0])
 
                 # left most
                 if class_name not in left_most_detections:
                     left_most_detections[class_name] = (center_box[0], bbox[0])
                 else:
-                    if center_box[0][0] < left_most_detections[class_name][0]:
+                    if center_box[0][0] < left_most_detections[class_name][0][0]:
                         left_most_detections[class_name] = (center_box[0], bbox[0])
 
                 # top most
                 if class_name not in top_most_detections:
                     top_most_detections[class_name] = (center_box[0], bbox[0])
                 else:
-                    if center_box[0][1] < top_most_detections[class_name][1]:
+                    if center_box[0][1] < top_most_detections[class_name][0][1]:
                         top_most_detections[class_name] = (center_box[0], bbox[0])
 
                 # bottom most
                 if class_name not in bottom_most_detections:
                     bottom_most_detections[class_name] = (center_box[0], bbox[0])
                 else:
-                    if center_box[0][1] > bottom_most_detections[class_name][1]:
+                    if center_box[0][1] > bottom_most_detections[class_name][0][1]:
                         bottom_most_detections[class_name] = (center_box[0], bbox[0])
 
         return [
@@ -199,6 +194,9 @@ class Question(ABC):
             ]
         """
         pass
+
+    def __repr__(self):
+        return f"Question: {self.question}"
 
 
 class ObjectDetectionPredicates:
@@ -420,7 +418,7 @@ class Quadrants(Question):
             ],
         )
 
-        self.question = self.question.format(N=N, M=M)
+        # self.question = self.question.format(N=N, M=M)
 
     def _question_answer(
         self, image: Image.Image, class_name: str, detection: ObjectDetectionResultI
@@ -451,7 +449,7 @@ class Quadrants(Question):
             return None
         quadrant = row * self.cols + col + 1
 
-        question = self.question.format(object_1=class_name)
+        question = self.question.format(N=self.rows, M=self.cols, object_1=class_name)
         answer = str(quadrant)
         return (question, answer)
 
@@ -505,7 +503,7 @@ class Quadrants(Question):
 class LargestAppearance(Question):
     def __init__(self) -> None:
         super().__init__(
-            question="Which object appears the largest in the image?",
+            question="Which kind of object appears the largest in the image?",
             variables=[],
             predicates=[
                 lambda image, detections: ObjectDetectionPredicates.at_least_x_many_class_detections(
@@ -531,7 +529,7 @@ class LargestAppearance(Question):
         largest_detection = detections[torch.argmax(torch.stack(areas))]
 
         question = self.question
-        answer = "The " + str(largest_detection.label)
+        answer = str(largest_detection.label)
         return [(question, answer)]
 
 
@@ -581,7 +579,7 @@ class MostAppearance(Question):
         most_detections = sorted_detections[0][0]
 
         question = self.question
-        answer = "The " + str(most_detections)
+        answer = str(most_detections)
         return [(question, answer)]
 
 
@@ -628,7 +626,7 @@ class LeastAppearance(Question):
         least_detections = sorted_detections[0][0]
 
         question = self.question
-        answer = "The " + str(least_detections)
+        answer = str(least_detections)
         return [(question, answer)]
 
 
@@ -807,7 +805,7 @@ class LeftMost(Question):
 
         flattened_detections = []
         for detection in detections:
-            curr_bbox = detection.as_xyxy()
+            curr_bbox = detection.as_xyxy().squeeze(0)
             if type(detection.label) == torch.Tensor:
                 for i in range(detection.label.shape[0]):
                     label = detection.label[i]
@@ -892,7 +890,7 @@ class RightMost(Question):
 
         flattened_detections = []
         for detection in detections:
-            curr_bbox = detection.as_xyxy()
+            curr_bbox = detection.as_xyxy().squeeze(0)
             if type(detection.label) == torch.Tensor:
                 for i in range(detection.label.shape[0]):
                     label = detection.label[i]
@@ -988,5 +986,5 @@ ALL_QUESTIONS = [
     RightOf,
     LeftMost,
     RightMost,
-    HowMany,   
+    HowMany,
 ]

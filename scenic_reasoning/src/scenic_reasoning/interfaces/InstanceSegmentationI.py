@@ -1,24 +1,23 @@
+from abc import ABC, abstractmethod
 from enum import Enum
-from typing import List, Tuple, Union
+from pathlib import Path
+from typing import Dict, Iterator, List, Optional, Tuple, Union
 
+import numpy as np
+import pycocotools.mask as mask_util
 import torch
 from detectron2.structures import BitMasks
 from detectron2.structures.boxes import pairwise_intersection, pairwise_iou
 from detectron2.structures.masks import polygons_to_bitmask
-import pycocotools.mask as mask_util
-from abc import ABC, abstractmethod
-from collections import defaultdict
-from enum import Enum
-from pathlib import Path
-from typing import Dict, Iterator, List, Optional, Tuple, Union
 from PIL import Image
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
-import numpy as np
+
 
 class Mask_Format(Enum):
     BITMASK = 0
     POLYGON = 1
     RLE = 2
+
 
 class InstanceSegmentationResultI:
     def __init__(
@@ -48,7 +47,7 @@ class InstanceSegmentationResultI:
         self._label = label
         self._instance_id = instance_id
         self._image_hw = image_hw
-    
+
         if isinstance(mask, BitMasks):
             self._bitmask = mask
         else:
@@ -103,8 +102,8 @@ class InstanceSegmentationResultI:
             float: Intersection area.
         """
         return pairwise_intersection(self._bitmask, other.bitmask)
-    
-    def union(self, other: 'InstanceSegmentationResultI') -> torch.Tensor:
+
+    def union(self, other: "InstanceSegmentationResultI") -> torch.Tensor:
         """
         Calculates the union area between this mask and another mask.
         Args:
@@ -187,7 +186,7 @@ class InstanceSegmentationUtils:
             for j, inst2 in enumerate(instances2):
                 union_matrix[i, j] = inst1.union(inst2)
         return union_matrix
-    
+
     @staticmethod
     def compute_metrics_for_single_img(
         ground_truth: List[InstanceSegmentationResultI],
@@ -197,8 +196,7 @@ class InstanceSegmentationUtils:
         debug: bool = False,
         image: Optional[Image.Image] = None,
     ) -> Dict[str, float]:
-        
-        
+
         masks = []
         scores = []
         class_ids = []
@@ -211,23 +209,33 @@ class InstanceSegmentationUtils:
             instance_ids.append(truth._instance_id)
 
         scores = (
-            torch.tensor(scores) if isinstance(scores[0], float) else torch.cat(scores)
-        ) if scores else torch.tensor([])
+            (
+                torch.tensor(scores)
+                if isinstance(scores[0], float)
+                else torch.cat(scores)
+            )
+            if scores
+            else torch.tensor([])
+        )
         class_ids = (
-            torch.tensor(class_ids) if isinstance(class_ids[0], int) else torch.cat(class_ids)
-        ) if class_ids else torch.tensor([])
+            (
+                torch.tensor(class_ids)
+                if isinstance(class_ids[0], int)
+                else torch.cat(class_ids)
+            )
+            if class_ids
+            else torch.tensor([])
+        )
 
         masks = torch.cat(masks) if masks else torch.tensor([])
 
-        targets = [
-            dict(masks=masks, scores=scores, labels=class_ids)
-        ]
+        targets = [dict(masks=masks, scores=scores, labels=class_ids)]
 
         pred_masks = []
         pred_scores = []
         pred_class_ids = []
         pred_instance_ids = []
-        
+
         for pred in predictions:
             pred_masks.append(pred._bitmask.tensor)
             pred_scores.append(pred._score)  # score is a float or tensor
@@ -239,9 +247,7 @@ class InstanceSegmentationUtils:
 
         pred_masks = torch.cat(pred_masks) if pred_masks else torch.tensor([])
 
-        preds = [
-            dict(masks=pred_masks, scores=pred_scores, labels=pred_class_ids)
-        ]
+        preds = [dict(masks=pred_masks, scores=pred_scores, labels=pred_class_ids)]
 
         metric = MeanAveragePrecision(
             iou_type="segm",
@@ -249,10 +255,10 @@ class InstanceSegmentationUtils:
             extended_summary=extended_summary,
         )
 
-
         metric.update(preds, targets)
 
         return metric.compute()
+
 
 class InstanceSegmentationModelI(ABC):
     def __init__(self):

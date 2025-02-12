@@ -1,57 +1,53 @@
 from itertools import islice
-from scenic_reasoning.data.ImageLoader import Bdd100kDataset, NuImagesDataset, WaymoDataset
-from scenic_reasoning.models.UltralyticsYolo import Yolo
+
+from scenic_reasoning.data.ImageLoader import (
+    Bdd100kDataset,
+    NuImagesDataset,
+    WaymoDataset,
+)
 from scenic_reasoning.measurements.ObjectDetection import ObjectDetectionMeasurements
-from scenic_reasoning.utilities.common import get_default_device
-import torch
-from ultralytics.data.augment import LetterBox
+from scenic_reasoning.models.UltralyticsYolo import Yolo
+from scenic_reasoning.utilities.common import (
+    get_default_device,
+    yolo_bdd_transform,
+    yolo_nuscene_transform,
+    yolo_waymo_transform,
+)
 
 NUM_EXAMPLES_TO_SHOW = 3
 BATCH_SIZE = 1
 
-shape_transform = LetterBox(new_shape=(768, 1280))
-def transform_image_for_yolo(image : torch.Tensor):
-    # 1) convert from tensor to cv2 image
-    image_np  = image.permute(1, 2, 0).numpy()
-    # 2) resize to 768x1280
-    image_np = shape_transform(image=image_np)
-    # 3) convert back to tensor
-    image = torch.tensor(image_np).permute(2, 0, 1)
-    # 4) normalize to 0-1
-    image = image.to(torch.float32) / 255.0
-
-    return image
-
 bdd = Bdd100kDataset(
-    split="val", 
-    # YOLO requires images to be 640x640 or 768x1280, 
-    # but BDD100K images are 720x1280 so we need to resize
-    transform=transform_image_for_yolo,  
+    split="val",
+    transform=yolo_bdd_transform,
     use_original_categories=False,
     use_extended_annotations=False,
 )
 
-niu = NuImagesDataset(split='test')
+nu = NuImagesDataset(split="test", transform=yolo_nuscene_transform)
 
-waymo = WaymoDataset(split="validation")
+waymo = WaymoDataset(split="validation", transform=yolo_waymo_transform)
 
 # https://docs.ultralytics.com/models/yolov5/#performance-metrics
 model = Yolo(model="yolo11n.pt")
 
+for d in [bdd, nu, waymo]:
 
-for d in [bdd, niu, waymo]:
-        
-    measurements = ObjectDetectionMeasurements(model, d, batch_size=BATCH_SIZE, collate_fn=lambda x: x) # hacky way to avoid RuntimeError: each element in list of batch should be of equal size
+    measurements = ObjectDetectionMeasurements(
+        model, d, batch_size=BATCH_SIZE, collate_fn=lambda x: x
+    )  # hacky way to avoid RuntimeError: each element in list of batch should be of equal size
 
     # WARNING ⚠️ imgsz=[720, 1280] must be multiple of max stride 64, updating to [768, 1280]
-    for (results, ims) in islice(measurements.iter_measurements(
-            # device=get_default_device(), 
+    for results, ims in islice(
+        measurements.iter_measurements(
+            # device=get_default_device(),
             imgsz=[768, 1280],
             bbox_offset=24,
             debug=True,
             conf=0.1,
             class_metrics=True,
             extended_summary=True,
-            ), 
-        NUM_EXAMPLES_TO_SHOW):
+        ),
+        NUM_EXAMPLES_TO_SHOW,
+    ):
         print("")

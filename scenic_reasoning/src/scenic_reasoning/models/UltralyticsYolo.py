@@ -5,20 +5,18 @@ from typing import Iterator, List, Optional, Union
 import numpy as np
 import torch
 from PIL import Image
+from scenic_reasoning.interfaces.InstanceSegmentationI import (
+    InstanceSegmentationModelI,
+    InstanceSegmentationResultI,
+    Mask_Format,
+)
 from scenic_reasoning.interfaces.ObjectDetectionI import (
     BBox_Format,
     ObjectDetectionModelI,
     ObjectDetectionResultI,
 )
-
-from scenic_reasoning.interfaces.InstanceSegmentationI import (
-    Mask_Format,
-    InstanceSegmentationModelI,
-    InstanceSegmentationResultI
-)
 from scenic_reasoning.utilities.common import get_default_device
 from ultralytics import YOLO
-
 
 # TODO: Need class for InstanceSegmentation here
 
@@ -195,7 +193,7 @@ class Yolo(ObjectDetectionModelI):
                     boxes_across_frames.append(per_frame_results)
 
             yield boxes_across_frames
-    
+
     def to(self, device: Union[str, torch.device]):
         pass
 
@@ -205,7 +203,7 @@ class Yolo_seg(InstanceSegmentationModelI):
         super().__init__()
         self._model = YOLO(model, **kwargs)
         self._instance_count = {}
-    
+
     def identify_for_image(
         self,
         image: Union[
@@ -248,7 +246,7 @@ class Yolo_seg(InstanceSegmentationModelI):
             scores = result.boxes.conf
             name_map = result.names
             num_instances = masks.shape[0]
-            
+
             for i in range(num_instances):
                 mask = masks[i]
                 cls_id = cls_ids[i].item()
@@ -262,9 +260,9 @@ class Yolo_seg(InstanceSegmentationModelI):
                     instance_id=i,
                     mask=mask.unsqueeze(0),
                     image_hw=result.orig_shape,
-                    mask_format=Mask_Format.BITMASK
+                    mask_format=Mask_Format.BITMASK,
                 )
-                
+
                 instances.append(instance)
             all_instances.append(instances)
 
@@ -278,7 +276,7 @@ class Yolo_seg(InstanceSegmentationModelI):
         debug: bool = False,
         **kwargs
     ) -> List[Optional[InstanceSegmentationResultI]]:
-        """ Run instance segmentation on an image or a batch of images.
+        """Run instance segmentation on an image or a batch of images.
         Args:
             image: either a PIL image or a tensor of shape (B, C, H, W) where B is the batch size,
                 C is the channel size, H is the height, and W is the width.
@@ -330,7 +328,7 @@ class Yolo_seg(InstanceSegmentationModelI):
                 instance_id=None,  # Not aggregating IDs across batch
                 mask=masks_tensor,
                 image_hw=results.orig_shape,
-                mask_format=Mask_Format.BITMASK
+                mask_format=Mask_Format.BITMASK,
             )
             instances.append(instance)
 
@@ -345,7 +343,11 @@ class Yolo_seg(InstanceSegmentationModelI):
             iterator = iter(iterable)
             return iter(lambda: list(islice(iterator, n)), [])
 
-        video_iterator = _batch_iterator(video, batch_size) if isinstance(video, list) else _batch_iterator(video, batch_size)
+        video_iterator = (
+            _batch_iterator(video, batch_size)
+            if isinstance(video, list)
+            else _batch_iterator(video, batch_size)
+        )
 
         for batch in video_iterator:
             if not batch:
@@ -382,7 +384,7 @@ class Yolo_seg(InstanceSegmentationModelI):
                         instance_id=self._instance_count[class_id],
                         mask=mask_tensor,
                         image_hw=results.orig_shape,
-                        mask_format=Mask_Format.BITMASK
+                        mask_format=Mask_Format.BITMASK,
                     )
                     instances.append(instance)
 
@@ -391,5 +393,5 @@ class Yolo_seg(InstanceSegmentationModelI):
             yield results_per_frame
 
     def to(self, device: Union[str, torch.device]):
-        #self._model.to(device)
+        # self._model.to(device)
         pass
