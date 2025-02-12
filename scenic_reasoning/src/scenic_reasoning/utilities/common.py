@@ -60,7 +60,6 @@ def convert_to_xyxy(center_x: int, center_y: int, width: int, height: int):
 def yolo_waymo_transform(image, labels, stride=32):
     orig_H, orig_W = image.shape[1:]
 
-
     C, H, W = image.shape
     new_H = (H + stride - 1) // stride * stride
     new_W = (W + stride - 1) // stride * stride
@@ -71,19 +70,15 @@ def yolo_waymo_transform(image, labels, stride=32):
     scale_x = new_W / orig_W
     scale_y = new_H / orig_H
     for label in labels:
-        x1, y1, x2, y2 = label['bbox']
-        label['bbox'] = (
-            x1 * scale_x,
-            y1 * scale_y,
-            x2 * scale_x,
-            y2 * scale_y
-        )
-
+        x1, y1, x2, y2 = label["bbox"]
+        label["bbox"] = (x1 * scale_x, y1 * scale_y, x2 * scale_x, y2 * scale_y)
 
     return resized_image, labels
 
 
-def yolo_bdd_transform(image: torch.Tensor, labels : List[dict], new_shape : Tuple[int, int]):
+def yolo_transform(
+    image: torch.Tensor, labels: List[dict], new_shape: Tuple[int, int], box_key: str
+):
     orig_H, orig_W = image.shape[1:]
 
     shape_transform = LetterBox(new_shape=new_shape)
@@ -94,11 +89,21 @@ def yolo_bdd_transform(image: torch.Tensor, labels : List[dict], new_shape : Tup
     ratio = min(new_shape[0] / orig_H, new_shape[1] / orig_W)
     updated_labels["ratio_pad"] = ((ratio, ratio), 0, 0)
     updated_labels["instances"] = Instances(
-        bboxes=np.array(list(
-            map(lambda label : [label['box2d']['x1'], label['box2d']['y1'], label['box2d']['x2'], label['box2d']['y2']], labels)
-        )),
+        bboxes=np.array(
+            list(
+                map(
+                    lambda label: [
+                        label[box_key]["x1"],
+                        label[box_key]["y1"],
+                        label[box_key]["x2"],
+                        label[box_key]["y2"],
+                    ],
+                    labels,
+                )
+            )
+        ),
         # providing segments to make ultralyics bug in instance.py:258 happy
-        segments=np.zeros(shape=[len(labels), int(new_shape[1]*3/4), 2])
+        segments=np.zeros(shape=[len(labels), int(new_shape[1] * 3 / 4), 2]),
     )
     updated_labels = shape_transform(updated_labels)
     left, top = updated_labels["ratio_pad"][1]
@@ -106,43 +111,21 @@ def yolo_bdd_transform(image: torch.Tensor, labels : List[dict], new_shape : Tup
     image = image.to(torch.float32) / 255.0
 
     for label in labels:
-        label['box2d']['x1'] = label['box2d']['x1'] * ratio + left
-        label['box2d']['y1'] = label['box2d']['y1'] * ratio + top
-        label['box2d']['x2'] = label['box2d']['x2'] * ratio + left
-        label['box2d']['y2'] = label['box2d']['y2'] * ratio + top
-        
+        label[box_key]["x1"] = label[box_key]["x1"] * ratio + left
+        label[box_key]["y1"] = label[box_key]["y1"] * ratio + top
+        label[box_key]["x2"] = label[box_key]["x2"] * ratio + left
+        label[box_key]["y2"] = label[box_key]["y2"] * ratio + top
+
     return image, labels
 
 
-def yolo_nuscene_transform(image: torch.Tensor, labels : List[dict], new_shape : Tuple[int, int]):
-    orig_H, orig_W = image.shape[1:]
+def yolo_bdd_transform(
+    image: torch.Tensor, labels: List[dict], new_shape: Tuple[int, int]
+):
+    return yolo_transform(image, labels, new_shape, "box2d")
 
-    shape_transform = LetterBox(new_shape=new_shape)
-    image_np = image.permute(1, 2, 0).numpy()
-    updated_labels = dict()
-    updated_labels["img"] = image_np
-    updated_labels["cls"] = np.zeros_like(labels)
-    ratio = min(new_shape[0] / orig_H, new_shape[1] / orig_W)
-    updated_labels["ratio_pad"] = ((ratio, ratio), 0, 0)
-    updated_labels["instances"] = Instances(
-        bboxes=np.array(list(
-            map(lambda label : label['bbox'], labels)
-        )),
-        # providing segments to make ultralyics bug in instance.py:258 happy
-        segments=np.zeros(shape=[len(labels), int(new_shape[1]*3/4), 2])
-    )
-    updated_labels = shape_transform(updated_labels)
-    left, top = updated_labels["ratio_pad"][1]
-    image = torch.tensor(updated_labels["img"]).permute(2, 0, 1)
-    image = image.to(torch.float32) / 255.0
 
-    for label in labels:
-        x1, y1, x2, y2 = label['bbox']
-        label['bbox'] = [
-            x1 * ratio + left,
-            y1 * ratio + top,
-            x2 * ratio + left,
-            y2 * ratio + top
-        ]
-        
-    return image, labels
+def yolo_nuscene_transform(
+    image: torch.Tensor, labels: List[dict], new_shape: Tuple[int, int]
+):
+    return yolo_transform(image, labels, new_shape, "bbox")

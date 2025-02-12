@@ -503,7 +503,7 @@ class Quadrants(Question):
 class LargestAppearance(Question):
     def __init__(self) -> None:
         super().__init__(
-            question="Which object appears the largest in the image?",
+            question="Which kind of object appears the largest in the image?",
             variables=[],
             predicates=[
                 lambda image, detections: ObjectDetectionPredicates.at_least_x_many_class_detections(
@@ -529,7 +529,7 @@ class LargestAppearance(Question):
         largest_detection = detections[torch.argmax(torch.stack(areas))]
 
         question = self.question
-        answer = "The " + str(largest_detection.label)
+        answer = str(largest_detection.label)
         return [(question, answer)]
 
 
@@ -579,7 +579,7 @@ class MostAppearance(Question):
         most_detections = sorted_detections[0][0]
 
         question = self.question
-        answer = "The " + str(most_detections)
+        answer = str(most_detections)
         return [(question, answer)]
 
 
@@ -626,7 +626,7 @@ class LeastAppearance(Question):
         least_detections = sorted_detections[0][0]
 
         question = self.question
-        answer = "The " + str(least_detections)
+        answer = str(least_detections)
         return [(question, answer)]
 
 
@@ -663,12 +663,7 @@ class LeftOf(Question):
                 if obj_2_class_name == obj_1_class_name:
                     continue
 
-                # check if the left most detection of obj_1 is to the left
-                # of the right most detection of obj_2
-                if not (left_most_bbox[2] < right_most_bbox[0]):  # not (x2 < x1)
-                    continue
-
-                # and non-overlapping
+                # non-overlapping
                 x1_inter = max(left_most_bbox[0], right_most_bbox[0])
                 x2_inter = min(left_most_bbox[2], right_most_bbox[2])
                 y1_inter = max(left_most_bbox[1], right_most_bbox[1])
@@ -681,11 +676,19 @@ class LeftOf(Question):
                 if inter_area > 0:
                     continue
 
+                # at this point, we have a question for sure
                 question = self.question.format(
                     object_1=obj_1_class_name,
                     object_2=obj_2_class_name,
                 )
-                answer = "Yes"
+
+                # check if the left most detection of obj_1 is to the left
+                # of the right most detection of obj_2
+                if not (left_most_bbox[2] < right_most_bbox[0]):  # not (x2 < x1)
+                    answer = "No"
+                else:
+                    answer = "Yes"
+
                 question_answer_pairs.append((question, answer))
 
         return question_answer_pairs
@@ -724,11 +727,6 @@ class RightOf(Question):
                 if obj_1_class_name == obj_2_class_name:
                     continue
 
-                # check if the right most detection of obj_1 is to the right
-                # of the left most detection of obj_2
-                if not (left_most_bbox[2] < right_most_bbox[0]):  # not (x2 < x1)
-                    continue
-
                 # and non-overlapping
                 x1_inter = max(left_most_bbox[0], right_most_bbox[0])
                 x2_inter = min(left_most_bbox[2], right_most_bbox[2])
@@ -742,11 +740,19 @@ class RightOf(Question):
                 if inter_area > 0:
                     continue
 
+                # at this point, we have a question for sure
                 question = self.question.format(
                     object_1=obj_1_class_name,
                     object_2=obj_2_class_name,
                 )
-                answer = "Yes"
+
+                # check if the right most detection of obj_1 is to the right
+                # of the left most detection of obj_2
+                if not (left_most_bbox[2] < right_most_bbox[0]):  # not (x2 < x1)
+                    answer = "No"
+                else:
+                    answer = "Yes"
+
                 question_answer_pairs.append((question, answer))
 
         return question_answer_pairs

@@ -287,6 +287,7 @@ class ObjectDetectionUtils:
         image: Image, detections: List[ObjectDetectionResultI]
     ):
         from PIL import ImageDraw
+
         copied_image = image.copy()
         draw = ImageDraw.Draw(copied_image)
 

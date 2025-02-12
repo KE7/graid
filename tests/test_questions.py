@@ -31,14 +31,18 @@ BATCH_SIZE = 1
 
 bdd = Bdd100kDataset(
     split="val",
-    transform=lambda i, l : yolo_bdd_transform(i, l, new_shape=(768, 1280)),
+    transform=lambda i, l: yolo_bdd_transform(i, l, new_shape=(768, 1280)),
     use_original_categories=False,
     use_extended_annotations=False,
 )
 
-niu = NuImagesDataset(split="test", transform=lambda i, l: yolo_nuscene_transform(i, l, (768, 1280)))
+niu = NuImagesDataset(
+    split="test", transform=lambda i, l: yolo_nuscene_transform(i, l, (768, 1280))
+)
 
-# waymo = WaymoDataset(split="validation", transform=lambda i, l:  yolo_waymo_transform(i, l, stride=32))
+waymo = WaymoDataset(
+    split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, stride=32)
+)
 
 my_dataset = bdd
 
@@ -67,9 +71,9 @@ for i in range(10):
             qa_list = q.apply(image, labels)
             if len(qa_list) == 0:
 
-                print(str(q)  + "\tIs applicable but no questions\n")
+                print(str(q) + "\tIs applicable but no questions\n")
                 continue
-            
+
             print(str(q) + "\t" + "Passed")
             print("[\n" + "\n".join(["\t" + str(item) for item in qa_list]) + "\n]\n")
             at_least_one_was_applicable = True

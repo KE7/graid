@@ -1,9 +1,7 @@
 from typing import Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import torch
-from scenic_reasoning.data.ImageLoader import (
-    ImageDataset,
-)
+from scenic_reasoning.data.ImageLoader import ImageDataset
 from scenic_reasoning.interfaces.InstanceSegmentationI import (
     InstanceSegmentationModelI,
     InstanceSegmentationResultI,
