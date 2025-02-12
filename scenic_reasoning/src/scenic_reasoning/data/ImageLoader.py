@@ -18,9 +18,8 @@ from scenic_reasoning.utilities.common import project_root_dir
 from torch import Tensor
 from torch.utils.data import Dataset
 from torchvision import transforms
-from torchvision.io import decode_image
 import torch
-from scenic_reasoning.utilities.common import convert_to_xyxy
+from scenic_reasoning.utilities.common import convert_to_xyxy, read_image
 import base64
 from pycocotools import mask as cocomask
 
@@ -186,13 +185,7 @@ class Bdd10kDataset(ImageDataset):
         img_path = os.path.join(self.img_dir, data['name'])
         labels = data["labels"]
         timestamp = data["timestamp"]
-        try:
-            image = decode_image(img_path)
-        except Exception as e:
-            print(e)
-            print("switching to cv2 ...")
-            image = cv2.imread(img_path)
-            image = torch.from_numpy(image).permute(2, 0, 1)
+        image = read_image(img_path)
 
         if self.transform:
             image = self.transform(image)
@@ -373,13 +366,7 @@ class Bdd100kDataset(ImageDataset):
 
     def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
         img_path = os.path.join(self.img_dir, self.img_labels[idx]["name"])
-        try:
-            image = decode_image(img_path)
-        except Exception as e:
-            print(e)
-            print("switching to cv2 ...")
-            image = cv2.imread(img_path)
-            image = torch.from_numpy(image).permute(2, 0, 1)
+        image = read_image(img_path)
 
         labels = self.img_labels[idx]["labels"]
         timestamp = self.img_labels[idx]["timestamp"]
@@ -611,7 +598,7 @@ class NuImagesDataset(ImageDataset):
         labels = self.img_labels[idx]["labels"]
         timestamp = self.img_labels[idx]["timestamp"]
         img_path = os.path.join(self.img_dir, img_filename)
-        image = decode_image(img_path)
+        image = read_image(img_path)
 
         if self.transform:
             image = self.transform(image)
@@ -843,7 +830,7 @@ class NuImagesDataset_seg(ImageDataset):
         labels = self.img_labels[idx]["labels"]
         timestamp = self.img_labels[idx]["timestamp"]
         img_path = os.path.join(self.img_dir, img_filename)
-        image = decode_image(img_path)
+        image = read_image(img_path)
 
         if self.transform:
             image = self.transform(image)

@@ -1,6 +1,6 @@
 from pathlib import Path
 from typing import Iterator, List
-
+from torchvision.io import decode_image
 import cv2
 import torch
 from PIL import Image
@@ -50,3 +50,13 @@ def convert_to_xyxy(center_x: int, center_y: int, width: int, height: int):
     x2 = center_x + width / 2
     y2 = center_y + height / 2
     return x1, y1, x2, y2
+
+def read_image(img_path):
+    try:
+        image = decode_image(img_path)
+    except Exception as e:
+        print(e)
+        print("switching to cv2 ...")
+        image = cv2.imread(img_path)
+        image = torch.from_numpy(image).permute(2, 0, 1)
+    return image
