@@ -663,7 +663,12 @@ class LeftOf(Question):
                 if obj_2_class_name == obj_1_class_name:
                     continue
 
-                # non-overlapping
+                # check if the left most detection of obj_1 is to the left
+                # of the right most detection of obj_2
+                if not (left_most_bbox[2] < right_most_bbox[0]):  # not (x2 < x1)
+                    continue
+
+                # and non-overlapping
                 x1_inter = max(left_most_bbox[0], right_most_bbox[0])
                 x2_inter = min(left_most_bbox[2], right_most_bbox[2])
                 y1_inter = max(left_most_bbox[1], right_most_bbox[1])
@@ -676,19 +681,11 @@ class LeftOf(Question):
                 if inter_area > 0:
                     continue
 
-                # at this point, we have a question for sure
                 question = self.question.format(
                     object_1=obj_1_class_name,
                     object_2=obj_2_class_name,
                 )
-
-                # check if the left most detection of obj_1 is to the left
-                # of the right most detection of obj_2
-                if not (left_most_bbox[2] < right_most_bbox[0]):  # not (x2 < x1)
-                    answer = "No"
-                else:
-                    answer = "Yes"
-
+                answer = "Yes"
                 question_answer_pairs.append((question, answer))
 
         return question_answer_pairs
@@ -727,6 +724,11 @@ class RightOf(Question):
                 if obj_1_class_name == obj_2_class_name:
                     continue
 
+                # check if the right most detection of obj_1 is to the right
+                # of the left most detection of obj_2
+                if not (left_most_bbox[2] < right_most_bbox[0]):  # not (x2 < x1)
+                    continue
+
                 # and non-overlapping
                 x1_inter = max(left_most_bbox[0], right_most_bbox[0])
                 x2_inter = min(left_most_bbox[2], right_most_bbox[2])
@@ -740,19 +742,11 @@ class RightOf(Question):
                 if inter_area > 0:
                     continue
 
-                # at this point, we have a question for sure
                 question = self.question.format(
                     object_1=obj_1_class_name,
                     object_2=obj_2_class_name,
                 )
-
-                # check if the right most detection of obj_1 is to the right
-                # of the left most detection of obj_2
-                if not (left_most_bbox[2] < right_most_bbox[0]):  # not (x2 < x1)
-                    answer = "No"
-                else:
-                    answer = "Yes"
-
+                answer = "Yes"
                 question_answer_pairs.append((question, answer))
 
         return question_answer_pairs
