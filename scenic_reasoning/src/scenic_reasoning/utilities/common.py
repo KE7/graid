@@ -77,44 +77,61 @@ def yolo_waymo_transform(image, labels, stride=32):
 
 
 def yolo_transform(
-    image: torch.Tensor, labels: List[dict], new_shape: Tuple[int, int], box_key: str
+    image: torch.Tensor, labels: List[dict], new_shape: Tuple[int, int], bbox_key: str
 ):
     orig_H, orig_W = image.shape[1:]
 
     shape_transform = LetterBox(new_shape=new_shape)
     image_np = image.permute(1, 2, 0).numpy()
+
     updated_labels = dict()
     updated_labels["img"] = image_np
     updated_labels["cls"] = np.zeros_like(labels)
     ratio = min(new_shape[0] / orig_H, new_shape[1] / orig_W)
     updated_labels["ratio_pad"] = ((ratio, ratio), 0, 0)
+
     updated_labels["instances"] = Instances(
         bboxes=np.array(
-            list(
-                map(
-                    lambda label: [
-                        label[box_key]["x1"],
-                        label[box_key]["y1"],
-                        label[box_key]["x2"],
-                        label[box_key]["y2"],
-                    ],
-                    labels,
+            [
+                (
+                    label[bbox_key]
+                    if bbox_key in label
+                    else [
+                        label["box2d"]["x1"],
+                        label["box2d"]["y1"],
+                        label["box2d"]["x2"],
+                        label["box2d"]["y2"],
+                    ]
                 )
-            )
+                for label in labels
+            ]
         ),
-        # providing segments to make ultralyics bug in instance.py:258 happy
+        # providing segments to avoid ultralytics bug in instance.py:258
         segments=np.zeros(shape=[len(labels), int(new_shape[1] * 3 / 4), 2]),
     )
+
     updated_labels = shape_transform(updated_labels)
     left, top = updated_labels["ratio_pad"][1]
     image = torch.tensor(updated_labels["img"]).permute(2, 0, 1)
     image = image.to(torch.float32) / 255.0
 
     for label in labels:
-        label[box_key]["x1"] = label[box_key]["x1"] * ratio + left
-        label[box_key]["y1"] = label[box_key]["y1"] * ratio + top
-        label[box_key]["x2"] = label[box_key]["x2"] * ratio + left
-        label[box_key]["y2"] = label[box_key]["y2"] * ratio + top
+        x1, y1, x2, y2 = (
+            label[bbox_key]
+            if bbox_key in label
+            else [
+                label["box2d"]["x1"],
+                label["box2d"]["y1"],
+                label["box2d"]["x2"],
+                label["box2d"]["y2"],
+            ]
+        )
+        label[bbox_key] = [
+            x1 * ratio + left,
+            y1 * ratio + top,
+            x2 * ratio + left,
+            y2 * ratio + top,
+        ]
 
     return image, labels
 
