@@ -18,10 +18,13 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
 )
 from scenic_reasoning.utilities.common import get_default_device
 from ultralytics import YOLO
-from mmdet.apis import DetInferencer
+from mmdet.apis import DetInferencer, init_detector, inference_detector
 from mmengine.utils import get_git_hash
 from mmengine.utils.dl_utils import collect_env as collect_base_env
+from mmdet.registry import VISUALIZERS
 import mmdet
+import mmcv
+import mmengine
 
 # https://github.com/HumanSignal/label-studio/blob/develop/docs/source/tutorials/object-detector.md
 coco_label = {
@@ -110,11 +113,9 @@ coco_label = {
 
 
 class MMdetection_obj(ObjectDetectionModelI):
-    def __init__(self, model: Union[str, Path], checkpoint, **kwargs) -> None:
-        for name, val in self.collect_env().items():
-            print(f'{name}: {val}')
+    def __init__(self, config_file: str, checkpoint_file, **kwargs) -> None:
         device = "cpu"   # Using mps will error, see: https://github.com/open-mmlab/mmdetection/issues/11794
-        self._model = DetInferencer(model, checkpoint, device)
+        self._model = init_detector(config_file, checkpoint_file, device=device)
 
     def collect_env(self):
         """Collect the information of the running environments."""
@@ -147,37 +148,38 @@ class MMdetection_obj(ObjectDetectionModelI):
         # image is batched input. MMdetection only supports Union[InputType, Sequence[InputType]], where InputType = Union[str, np.ndarray]
         image_list = [image[i].permute(1, 2, 0).cpu().numpy() for i in range(len(image))]
         image_hw = image_list[0].shape[:-1]
+        predictions = inference_detector(self._model, image_list)
 
-        out_dir = '../output'
-        predictions = self._model(image_list, out_dir=out_dir)['predictions']
+        all_objects = []
 
-        # if debug:
-        #     for filename in os.listdir(f"{out_dir}/vis"):
-        #         file_path = os.path.join(f"{out_dir}/vis", filename)
-        #         with Image.open(file_path) as img:
-        #             img.show()
+        for pred in predictions:
+            bboxes = pred.pred_instances.bboxes.tolist()
+            labels = pred.pred_instances.labels
+            scores = pred.pred_instances.scores
+            image_hw = pred.pad_shape   #TODO: should I use pad_shape or img_shape?
+            objects = []
 
-        formatted_results = []
+            for i in range(len(labels)):
+                cls_id = labels[i].item()
+                score = scores[i].item()
+                bbox = bboxes[i]
 
-        for prediction in predictions:
-            result_for_image = []
-            for bbox, label, score in zip(prediction['bboxes'], prediction['labels'], prediction['scores']):
                 odr = ObjectDetectionResultI(
                         score=score,
-                        cls=label,
-                        label=coco_label[label],
+                        cls=cls_id,
+                        label=coco_label[cls_id],
                         bbox=bbox,
                         image_hw=image_hw,
                         bbox_format=BBox_Format.XYXY,
                     )
-                result_for_image.append(odr)
-            formatted_results.append(result_for_image)
+                objects.append(odr)
+            all_objects.append(objects)
 
         if debug:
-            for i in len(image_list):
-                ObjectDetectionUtils.show_image_with_detections(Image.fromarray(image_list[i]), formatted_results[i])
+            for i in range(len(image_list)):
+                ObjectDetectionUtils.show_image_with_detections(Image.fromarray(image_list[i]), all_objects[i])
 
-        return formatted_results
+        return all_objects
 
     def identify_for_image_as_tensor(
         self,
@@ -213,11 +215,10 @@ class MMdetection_obj(ObjectDetectionModelI):
         pass
 
 
-class Yolo_seg(InstanceSegmentationModelI):
-    def __init__(self, model: Union[str, Path], **kwargs) -> None:
-        super().__init__()
-        self._model = YOLO(model, **kwargs)
-        self._instance_count = {}
+class MMdetection_seg(InstanceSegmentationModelI):
+    def __init__(self, config_file: str, checkpoint_file, **kwargs) -> None:
+        device = "cpu"   # Using mps will error, see: https://github.com/open-mmlab/mmdetection/issues/11794
+        self._model = init_detector(config_file, checkpoint_file, device=device)
 
     def identify_for_image(
         self,
@@ -240,41 +241,41 @@ class Yolo_seg(InstanceSegmentationModelI):
             represents the batch of images, and the inner list represents the
             detections in a particular image.
         """
-        results = self._model.predict(source=image)
+        image_list = [image[i].permute(1, 2, 0).cpu().numpy() for i in range(len(image))]
+        predictions = inference_detector(self._model, image_list)
 
-        # results = self._model.track(source=image, persist=True)
+        if debug:
+            # TODO: design a new visualizer
+            visualizer = VISUALIZERS.build(self._model.cfg.visualizer)
+            visualizer.dataset_meta = self._model.dataset_meta
+            for i in range(len(image_list)):
+                visualizer.add_datasample(
+                    'result',
+                    image_list[i],
+                    data_sample=predictions[i],
+                    draw_gt = None,
+                    wait_time=0
+                )
+                visualizer.show()
 
         all_instances = []
-
-        for result in results:
-
-            if debug:
-                result.show()
-
+        for pred in predictions:
+            masks = pred.pred_instances.masks
+            labels = pred.pred_instances.labels
+            scores = pred.pred_instances.scores
+            image_hw = pred.pad_shape   #TODO: should I use pad_shape or img_shape?
             instances = []
-            if result.masks is None:
-                all_instances.append([])
-                continue
-
-            masks = result.masks.data
-            cls_ids = result.boxes.cls
-            scores = result.boxes.conf
-            name_map = result.names
-            num_instances = masks.shape[0]
-
-            for i in range(num_instances):
+            for i in range(len(labels)):
+                cls_id = labels[i].item()
                 mask = masks[i]
-                cls_id = cls_ids[i].item()
-                cls_label = name_map[cls_id]
-                score = scores[i]
-
+                score = scores[i].item()
                 instance = InstanceSegmentationResultI(
                     score=score,
                     cls=cls_id,
-                    label=cls_label,
+                    label=coco_label[cls_id],
                     instance_id=i,
                     mask=mask.unsqueeze(0),
-                    image_hw=result.orig_shape,
+                    image_hw=image_hw,
                     mask_format=Mask_Format.BITMASK,
                 )
 
@@ -299,113 +300,14 @@ class Yolo_seg(InstanceSegmentationModelI):
         Returns:
             A list of InstanceSegmentationResultI for each image in the batch.
         """
-        results = self._model.predict(image, **kwargs)
-
-        if results.masks is None:
-            return [None] * (len(image) if isinstance(image, (list, tuple)) else 1)
-
-        instances = []
-
-        masks = results.masks.data
-        boxes = results.boxes
-        names = results.names
-
-        for img_idx in range(len(masks)):  # Process each image in the batch
-            image_masks = masks[img_idx]
-            image_boxes = boxes[img_idx]
-
-            if debug:
-                results.show(img_idx)
-
-            aggregated_masks = []
-            scores = []
-            classes = []
-
-            for mask, box in zip(image_masks, image_boxes):
-                class_id = int(box.cls.item())
-                if class_id not in self._instance_count:
-                    self._instance_count[class_id] = 0
-                self._instance_count[class_id] += 1
-
-                mask_tensor = mask.bool().cpu()
-                aggregated_masks.append(mask_tensor)
-                scores.append(box.conf.item())
-                classes.append(class_id)
-
-            masks_tensor = torch.stack(aggregated_masks)
-            scores_tensor = torch.tensor(scores)
-            classes_tensor = torch.tensor(classes)
-
-            instance = InstanceSegmentationResultI(
-                score=scores_tensor,
-                cls=classes_tensor,
-                label=[names[class_id] for class_id in classes_tensor],
-                instance_id=None,  # Not aggregating IDs across batch
-                mask=masks_tensor,
-                image_hw=results.orig_shape,
-                mask_format=Mask_Format.BITMASK,
-            )
-            instances.append(instance)
-
-        return instances
+        pass
 
     def identify_for_video(
         self,
         video: Union[Iterator[Image.Image], List[Image.Image]],
         batch_size: int = 1,
     ) -> Iterator[List[InstanceSegmentationResultI]]:
-        def _batch_iterator(iterable, n):
-            iterator = iter(iterable)
-            return iter(lambda: list(islice(iterator, n)), [])
-
-        video_iterator = (
-            _batch_iterator(video, batch_size)
-            if isinstance(video, list)
-            else _batch_iterator(video, batch_size)
-        )
-
-        for batch in video_iterator:
-            if not batch:
-                break
-
-            images = torch.stack([torch.tensor(np.array(img)) for img in batch])
-            batch_results = self._model(images)
-
-            results_per_frame = []
-            for results in batch_results:
-                if results.masks is None:
-                    results_per_frame.append([])
-                    continue
-
-                instances = []
-                masks = results.masks.data
-                boxes = results.boxes
-
-                for mask, box in zip(masks, boxes):
-                    class_id = int(box.cls.item())
-
-                    if class_id not in self._instance_count:
-                        self._instance_count[class_id] = 0
-                    self._instance_count[class_id] += 1
-
-                    mask_tensor = mask.bool().cpu()
-                    if len(mask_tensor.shape) == 2:
-                        mask_tensor = mask_tensor.unsqueeze(0)
-
-                    instance = InstanceSegmentationResultI(
-                        score=box.conf.item(),
-                        cls=class_id,
-                        label=results.names[class_id],
-                        instance_id=self._instance_count[class_id],
-                        mask=mask_tensor,
-                        image_hw=results.orig_shape,
-                        mask_format=Mask_Format.BITMASK,
-                    )
-                    instances.append(instance)
-
-                results_per_frame.append(instances)
-
-            yield results_per_frame
+        pass
 
     def to(self, device: Union[str, torch.device]):
         # self._model.to(device)

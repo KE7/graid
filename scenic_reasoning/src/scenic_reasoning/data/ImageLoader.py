@@ -186,7 +186,13 @@ class Bdd10kDataset(ImageDataset):
         img_path = os.path.join(self.img_dir, data['name'])
         labels = data["labels"]
         timestamp = data["timestamp"]
-        image = decode_image(img_path)
+        try:
+            image = decode_image(img_path)
+        except Exception as e:
+            print(e)
+            print("switching to cv2 ...")
+            image = cv2.imread(img_path)
+            image = torch.from_numpy(image).permute(2, 0, 1)
 
         if self.transform:
             image = self.transform(image)

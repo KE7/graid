@@ -37,16 +37,11 @@ bdd = Bdd100kDataset(
 
 # waymo = WaymoDataset(split="validation")
 
-# # https://docs.ultralytics.com/models/yolov5/#performance-metrics
-model_name = 'retinanet_r50-caffe_fpn_1x_coco'
-checkpoint = '../install/mmdetection/checkpoints/retinanet_r50_caffe_fpn_1x_coco_20200531-f11027c5.pth'
-model = MMdetection_obj(model=model_name, checkpoint=checkpoint)
 
-import cv2
-image = cv2.imread('../demo/demo.jpg')
-print("???????", image.shape)
+config_file = '../install/mmdetection/configs/mask_rcnn/mask-rcnn_r50-caffe_fpn_ms-poly-3x_coco.py'
+checkpoint_file = '../install/mmdetection/checkpoints/mask_rcnn_r50_caffe_fpn_mstrain-poly_3x_coco_bbox_mAP-0.408__segm_mAP-0.37_20200504_163245-42aa3d00.pth'
 
-# results =  model.identify_for_image([image],  ['../demo/demo2.jpg'])
+model = MMdetection_obj(config_file, checkpoint_file)
 
 
 for d in [bdd]:
