@@ -27,6 +27,7 @@
 Done ✅
 
 Potential Project Names:
+- GRAID – Generating Reasoning questions from Analysis of Images via Discriminative AI
 - GRASP - Generative Reasoning and Synthetic Physical analysis
 - SIGHT - Synthetic Images for Generalized Human-like Thinking
 - PERCEIVE - Physical Environments for Reasoning Capability Evaluation in Visual Environments
