@@ -668,7 +668,7 @@ class LeftOf(Question):
                 if not (left_most_bbox[2] < right_most_bbox[0]):  # not (x2 < x1)
                     continue
 
-                # and non-overlapping
+                # and non-overlapping boxes
                 x1_inter = max(left_most_bbox[0], right_most_bbox[0])
                 x2_inter = min(left_most_bbox[2], right_most_bbox[2])
                 y1_inter = max(left_most_bbox[1], right_most_bbox[1])
@@ -719,8 +719,8 @@ class RightOf(Question):
         # iterate over the left most detections and check if there is a different class
         # that is to the right and non-overlapping of the instances we found above
         question_answer_pairs = []
-        for obj_1_class_name, (_, left_most_bbox) in right_most_detections.items():
-            for obj_2_class_name, (_, right_most_bbox) in left_most_detections.items():
+        for obj_1_class_name, (_, right_most_bbox) in right_most_detections.items():
+            for obj_2_class_name, (_, left_most_bbox) in left_most_detections.items():
                 if obj_1_class_name == obj_2_class_name:
                     continue
 
