@@ -258,6 +258,7 @@ class Bdd100kDataset(ImageDataset):
         "traffic light": 9,
         "traffic sign": 11,  # in COCO there is no traffic sign. closest is a stop sign
         "sidewalk": 0,  # in COCO there is no sidewalk so map to person
+        # TODO: test a COCO model on a trailer. try image 2357
     }
 
     _CATEGORIES = {
@@ -362,9 +363,14 @@ class Bdd100kDataset(ImageDataset):
         self.img_labels = [
             label
             for label in self.img_labels
-            if not any(filter(lambda l: l["category"] in ["other person", "other vehicle", "trail", "trailer"], label["labels"]))
+            if not any(
+                filter(
+                    lambda l: l["category"]
+                    in ["other person", "other vehicle", "trail", "trailer"],
+                    label["labels"],
+                )
+            )
         ]
-
 
     def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
         img_path = os.path.join(self.img_dir, self.img_labels[idx]["name"])

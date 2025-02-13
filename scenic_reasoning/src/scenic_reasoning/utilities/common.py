@@ -1,6 +1,6 @@
 from copy import deepcopy
 from pathlib import Path
-from typing import Iterator, List, Tuple
+from typing import Any, Dict, Iterator, List, Tuple
 
 import cv2
 import numpy as np
@@ -76,11 +76,6 @@ def yolo_waymo_transform(image, labels, stride=32):
     return resized_image, labels
 
 
-from typing import Any, Dict, List, Tuple
-import torch
-import numpy as np
-
-
 def _get_bbox(label: Dict[str, Any], box_key: str) -> List[float]:
     """
     Retrieve bounding box coordinates from a label. The box may be stored
@@ -97,7 +92,7 @@ def _get_bbox(label: Dict[str, Any], box_key: str) -> List[float]:
 
 def _set_bbox(label: Dict[str, Any], box_key: str, coords: List[float]) -> None:
     """
-    Update bounding box coordinates in a label. 
+    Update bounding box coordinates in a label.
     If stored as dict, update dict fields. If stored as list, replace the list.
     """
     box_data = label[box_key]
@@ -115,21 +110,21 @@ def yolo_transform(
     image: torch.Tensor,
     labels: List[Dict[str, Any]],
     new_shape: Tuple[int, int],
-    box_key: str
+    box_key: str,
 ) -> Tuple[torch.Tensor, List[Dict[str, Any]]]:
     """
     A unified transform function that applies a letterbox transform to the image
     and rescales bounding boxes according to the new shape. The bounding box
     field is determined by 'box_key'.
     """
-    # Example: shape_transform is a letterbox transform that expects 
+    # Example: shape_transform is a letterbox transform that expects
     #   updated_labels["img"], updated_labels["instances"].bboxes, etc.
     shape_transform = LetterBox(new_shape=new_shape)
-    
+
     # Original image dimensions
     orig_H, orig_W = image.shape[1:]
     ratio = min(new_shape[0] / orig_H, new_shape[1] / orig_W)
-    
+
     # Prepare data for shape_transform
     image_np = image.permute(1, 2, 0).numpy()
     updated_labels = {
@@ -139,18 +134,20 @@ def yolo_transform(
         "instances": Instances(
             bboxes=np.array([_get_bbox(label, box_key) for label in labels]),
             # Provide 'segments' to avoid certain ultralytics issues
-            segments=np.zeros(shape=[len(labels), int(new_shape[1]*3/4), 2])
+            segments=np.zeros(shape=[len(labels), int(new_shape[1] * 3 / 4), 2]),
         ),
     }
-    
+
     # Perform the letterbox transform
     updated_labels = shape_transform(updated_labels)
     # After shape_transform, ratio_pad might include new left, top pad values
     left, top = updated_labels["ratio_pad"][1]
-    
+
     # Convert back to torch, scale to [0,1] range
-    image_out = torch.tensor(updated_labels["img"]).permute(2, 0, 1).to(torch.float32) / 255.0
-    
+    image_out = (
+        torch.tensor(updated_labels["img"]).permute(2, 0, 1).to(torch.float32) / 255.0
+    )
+
     # Update label bounding boxes based on the new ratio and padding
     for label in labels:
         x1, y1, x2, y2 = _get_bbox(label, box_key)
@@ -158,11 +155,12 @@ def yolo_transform(
             x1 * ratio + left,
             y1 * ratio + top,
             x2 * ratio + left,
-            y2 * ratio + top
+            y2 * ratio + top,
         ]
         _set_bbox(label, box_key, new_coords)
-    
+
     return image_out, labels
+
 
 def yolo_bdd_transform(
     image: torch.Tensor, labels: List[dict], new_shape: Tuple[int, int]

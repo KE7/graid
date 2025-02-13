@@ -253,7 +253,7 @@ class ObjectDetectionPredicates:
 class IsObjectCentered(Question):
     def __init__(self) -> None:
         super().__init__(
-            question="Is the {object_1} centered in the image, or is it off to the left or right?",
+            question="Divide the image into thirds. Is the {object_1} centered in the image, or is it off to the left or right?",
             variables=["object_1"],
             predicates=[
                 ObjectDetectionPredicates.at_least_one_single_detection,
@@ -332,7 +332,7 @@ class IsObjectCentered(Question):
 
 
 class WidthVsHeight(Question):
-    def __init__(self) -> None:
+    def __init__(self, threshold: float = 0.1) -> None:
         super().__init__(
             question="Is the width of the {object_1} larger than the height?",
             variables=["object_1"],
@@ -340,6 +340,7 @@ class WidthVsHeight(Question):
                 ObjectDetectionPredicates.at_least_one_single_detection,
             ],
         )
+        self.threshold = threshold
 
     def _question_answer(
         self, class_name: str, detection: ObjectDetectionResultI
@@ -350,7 +351,7 @@ class WidthVsHeight(Question):
         # TODO: verify this design decision manually
         # if the image is roughly square (within 10% of each other), return None
         # TODO: should we check for a minimum width or height?
-        if abs(width - height) / width < 0.1:
+        if abs(width - height) / width < self.threshold:
             return None
         answer = "yes" if width > height else "no"
         return (question, answer)
@@ -501,7 +502,7 @@ class Quadrants(Question):
 
 
 class LargestAppearance(Question):
-    def __init__(self) -> None:
+    def __init__(self, threshold: float = 0.3) -> None:
         super().__init__(
             question="Which kind of object appears the largest in the image?",
             variables=[],
@@ -511,6 +512,7 @@ class LargestAppearance(Question):
                 ),
             ],
         )
+        self.threshold = threshold
 
     def apply(
         self,
@@ -527,6 +529,17 @@ class LargestAppearance(Question):
         # the same logic should apply here regardless of detections being a tensor or not
         areas = [detection.get_area() for detection in detections]
         largest_detection = detections[torch.argmax(torch.stack(areas))]
+        second_largest_detection = detections[torch.argsort(torch.stack(areas))[-2]]
+
+        # check if the largest detection is at least 30% larger than the second largest
+        if not (
+            largest_detection.get_area()
+            > (1 + self.threshold) * second_largest_detection.get_area()
+        ):
+            logger.debug(
+                "Largest detection is not at least 30% larger than the second largest"
+            )
+            return []
 
         question = self.question
         answer = str(largest_detection.label)
@@ -726,7 +739,7 @@ class RightOf(Question):
 
                 # check if the right most detection of obj_1 is to the right
                 # of the left most detection of obj_2
-                if not (left_most_bbox[2] < right_most_bbox[0]):  # not (x2 < x1)
+                if not (right_most_bbox[2] < left_most_bbox[0]):  # not (x2 < x1)
                     continue
 
                 # and non-overlapping
