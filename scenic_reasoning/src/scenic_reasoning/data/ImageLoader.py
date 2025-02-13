@@ -356,6 +356,16 @@ class Bdd100kDataset(ImageDataset):
             **kwargs,
         )
 
+        # finally, filter out following labels
+        #   'other person', 'other vehicle' and 'trail'
+        # because they are uncertain objects: https://github.com/bdd100k/bdd100k/blob/master/bdd100k/common/typing.py#L4
+        self.img_labels = [
+            label
+            for label in self.img_labels
+            if not any(filter(lambda l: l["category"] in ["other person", "other vehicle", "trail", "trailer"], label["labels"]))
+        ]
+
+
     def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
         img_path = os.path.join(self.img_dir, self.img_labels[idx]["name"])
         image = decode_image(img_path)
