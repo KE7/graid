@@ -182,6 +182,8 @@ class Bdd10kDataset(ImageDataset):
             image, labels, timestamp = self.merge_transform(image, labels, timestamp)
 
         return {
+            "name": data["name"],
+            "path": img_path,
             "image": image,
             "labels": labels,
             "timestamp": timestamp,
@@ -384,6 +386,8 @@ class Bdd100kDataset(ImageDataset):
             image, labels, timestamp = self.merge_transform(image, labels, timestamp)
 
         return {
+            "name": self.img_labels[idx]["name"],
+            "path": img_path,
             "image": image,
             "labels": labels,
             "timestamp": timestamp,
@@ -644,6 +648,8 @@ class NuImagesDataset(ImageDataset):
             )
 
         return {
+            "name": img_filename,
+            "path": img_path,
             "image": image,
             "labels": labels,
             "attributes": attributes,
@@ -877,6 +883,8 @@ class NuImagesDataset_seg(ImageDataset):
             )
 
         return {
+            "name": img_filename,
+            "path": img_path,
             "image": image,
             "labels": labels,
             "attributes": attributes,
@@ -1059,6 +1067,7 @@ class WaymoDataset(ImageDataset):
                 self.img_labels.append(
                     {
                         "name": group_name,
+                        "path": image_path,
                         "image": img_bytes,
                         "labels": labels,
                         "attributes": {},  # empty for now, can adjust later to add more Waymo related attributes info
@@ -1131,6 +1140,8 @@ class WaymoDataset(ImageDataset):
             )
 
         return {
+            "name": img_data["name"],
+            "path": img_data["path"],
             "image": image,
             "labels": labels,
             "attributes": attributes,
@@ -1292,6 +1303,7 @@ class WaymoDataset_seg(ImageDataset):
                 self.img_labels.append(
                     {
                         "name": group_name,
+                        "path": image_path,
                         "image": img_bytes,
                         "labels": labels,
                         "attributes": {},  # empty for now, can adjust later to add more Waymo related attributes info
@@ -1369,6 +1381,8 @@ class WaymoDataset_seg(ImageDataset):
             )
 
         return {
+            "name": img_data["name"],
+            "path": img_data["path"],
             "image": image,
             "labels": labels,
             "attributes": attributes,
