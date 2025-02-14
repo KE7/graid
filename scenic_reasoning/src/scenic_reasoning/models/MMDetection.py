@@ -28,94 +28,95 @@ import mmengine
 
 # https://github.com/HumanSignal/label-studio/blob/develop/docs/source/tutorials/object-detector.md
 coco_label = {
-    0: "unlabeled",
-    1: "airplane",
-    2: "apple",
-    3: "backpack",
-    4: "banana",
-    5: "baseball_bat",
-    6: "baseball_glove",
-    7: "bear",
-    8: "bed",
-    9: "bench",
-    10: "bicycle",
-    11: "bird",
-    12: "boat",
-    13: "book",
-    14: "bottle",
-    15: "bowl",
-    16: "broccoli",
-    17: "bus",
-    18: "cake",
-    19: "car",
-    20: "carrot",
-    21: "cat",
-    22: "cell_phone",
-    23: "chair",
-    24: "clock",
-    25: "couch",
-    26: "cow",
-    27: "cup",
-    28: "dining_table",
-    29: "dog",
-    30: "donut",
-    31: "elephant",
-    32: "fire_hydrant",
-    33: "fork",
-    34: "frisbee",
-    35: "giraffe",
-    36: "hair_drier",
-    37: "handbag",
-    38: "horse",
-    39: "hot_dog",
-    40: "keyboard",
-    41: "kite",
-    42: "knife",
-    43: "laptop",
-    44: "microwave",
-    45: "motorcycle",
-    46: "mouse",
-    47: "orange",
-    48: "oven",
-    49: "parking_meter",
-    50: "person",
-    51: "pizza",
-    52: "potted_plant",
-    53: "refrigerator",
-    54: "remote",
-    55: "sandwich",
-    56: "scissors",
-    57: "sheep",
-    58: "sink",
-    59: "skateboard",
-    60: "skis",
-    61: "snowboard",
-    62: "spoon",
-    63: "sports_ball",
-    64: "stop_sign",
-    65: "suitcase",
-    66: "surfboard",
-    67: "teddy_bear",
-    68: "tennis_racket",
-    69: "tie",
+    0: "person",
+    1: "bicycle",
+    2: "car",
+    3: "motorcycle",
+    4: "airplane",
+    5: "bus",
+    6: "train",
+    7: "truck",
+    8: "boat",
+    9: "traffic light",
+    10: "fire hydrant",
+    11: "stop sign",
+    12: "parking meter",
+    13: "bench",
+    14: "bird",
+    15: "cat",
+    16: "dog",
+    17: "horse",
+    18: "sheep",
+    19: "cow",
+    20: "elephant",
+    21: "bear",
+    22: "zebra",
+    23: "giraffe",
+    24: "backpack",
+    25: "umbrella",
+    26: "handbag",
+    27: "tie",
+    28: "suitcase",
+    29: "frisbee",
+    30: "skis",
+    31: "snowboard",
+    32: "sports ball",
+    33: "kite",
+    34: "baseball bat",
+    35: "baseball glove",
+    36: "skateboard",
+    37: "surfboard",
+    38: "tennis racket",
+    39: "bottle",
+    40: "wine glass",
+    41: "cup",
+    42: "fork",
+    43: "knife",
+    44: "spoon",
+    45: "bowl",
+    46: "banana",
+    47: "apple",
+    48: "sandwich",
+    49: "orange",
+    50: "broccoli",
+    51: "carrot",
+    52: "hot dog",
+    53: "pizza",
+    54: "donut",
+    55: "cake",
+    56: "chair",
+    57: "couch",
+    58: "potted plant",
+    59: "bed",
+    60: "dining table",
+    61: "toilet",
+    62: "tv",
+    63: "laptop",
+    64: "mouse",
+    65: "remote",
+    66: "keyboard",
+    67: "cell phone",
+    68: "microwave",
+    69: "oven",
     70: "toaster",
-    71: "toilet",
-    72: "toothbrush",
-    73: "traffic_light",
-    74: "train",
-    75: "truck",
-    76: "tv",
-    77: "umbrella",
-    78: "vase",
-    79: "wine_glass",
-    80: "zebra"
+    71: "sink",
+    72: "refrigerator",
+    73: "book",
+    74: "clock",
+    75: "vase",
+    76: "scissors",
+    77: "teddy bear",
+    78: "hair drier",
+    79: "toothbrush"
 }
+
 
 
 class MMdetection_obj(ObjectDetectionModelI):
     def __init__(self, config_file: str, checkpoint_file, **kwargs) -> None:
         device = "cpu"   # Using mps will error, see: https://github.com/open-mmlab/mmdetection/issues/11794
         self._model = init_detector(config_file, checkpoint_file, device=device)
+
 
     def collect_env(self):
         """Collect the information of the running environments."""
@@ -147,6 +148,9 @@ class MMdetection_obj(ObjectDetectionModelI):
 
         # image is batched input. MMdetection only supports Union[InputType, Sequence[InputType]], where InputType = Union[str, np.ndarray]
         image_list = [image[i].permute(1, 2, 0).cpu().numpy() for i in range(len(image))]
+
+        if image_list[0].dtype == np.float32:
+            image_list = [i * 255 for i in image_list]
         image_hw = image_list[0].shape[:-1]
         predictions = inference_detector(self._model, image_list)
 
@@ -177,7 +181,10 @@ class MMdetection_obj(ObjectDetectionModelI):
 
         if debug:
             for i in range(len(image_list)):
-                ObjectDetectionUtils.show_image_with_detections(Image.fromarray(image_list[i]), all_objects[i])
+                curr_img = image_list[i]
+                if image_list[i].dtype == np.float32:
+                    curr_img = curr_img.astype(np.uint8)
+                ObjectDetectionUtils.show_image_with_detections(Image.fromarray(curr_img), all_objects[i])
 
         return all_objects
 

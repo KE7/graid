@@ -4,24 +4,23 @@ from detectron2.utils.logger import setup_logger
 from scenic_reasoning.utilities.common import get_default_device
 
 setup_logger()
-from typing import List, Optional, Iterator, Union
-from PIL import Image
 from itertools import islice
+from typing import Iterator, List, Optional, Union
 
 import cv2
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 from detectron2 import model_zoo
 from detectron2.config import get_cfg
 from detectron2.data import MetadataCatalog
 from detectron2.engine import DefaultPredictor
 from detectron2.structures import BitMasks
 from detectron2.utils.visualizer import Visualizer
+from PIL import Image
 from scenic_reasoning.interfaces.InstanceSegmentationI import (
     InstanceSegmentationResultI,
     Mask_Format,
 )
-from PIL import Image
 from scenic_reasoning.interfaces.ObjectDetectionI import (
     BBox_Format,
     ObjectDetectionModelI,
@@ -54,7 +53,6 @@ class Detectron_obj(ObjectDetectionModelI):
             detections in a particular image.
         """
 
-
         if isinstance(image, Image.Image):
             image = np.array(image)
 
@@ -71,7 +69,7 @@ class Detectron_obj(ObjectDetectionModelI):
             if image.ndimension() == 4:  # Batched input (B, C, H, W)
                 batch_results = []
                 for img in image:
-                    img_np = img.permute(1, 2, 0).cpu().numpy()  # Convert to HWC 
+                    img_np = img.permute(1, 2, 0).cpu().numpy()  # Convert to HWC
                     # img_np = img.cpu().numpy()
                     batch_results.append(self._process_single_image(img_np))
                 return batch_results
@@ -79,7 +77,9 @@ class Detectron_obj(ObjectDetectionModelI):
             elif image.ndimension() == 3:  # Single input (C, H, W)
                 print(f"image should be CHW: {image.shape}")
                 image = image.permute(1, 2, 0).cpu().numpy()  # Convert to HWC
-                image = np.ascontiguousarray(image)  # Ensure the array is contiguous in memory
+                image = np.ascontiguousarray(
+                    image
+                )  # Ensure the array is contiguous in memory
 
         # Single image input
         print(f"image should be HWC: {image.shape}")
@@ -89,7 +89,7 @@ class Detectron_obj(ObjectDetectionModelI):
         print(f"Image to predict: {image.shape}")
 
         predictions = self._predictor(image)
-        
+
         print(f"Predictions: {predictions}")
 
         if len(predictions) == 0:
@@ -146,6 +146,7 @@ class Detectron_obj(ObjectDetectionModelI):
             list represents the batches, the middle list represents frames, and the
             inner list represents detections within a frame.
         """
+
         def batch_iterator(iterable, n):
             iterator = iter(iterable)
             return iter(lambda: list(islice(iterator, n)), [])
@@ -168,7 +169,6 @@ class Detectron_obj(ObjectDetectionModelI):
 
     def to(self, device: Union[str, torch.device]):
         pass
-        
 
 
 class Detectron2InstanceSegmentation:

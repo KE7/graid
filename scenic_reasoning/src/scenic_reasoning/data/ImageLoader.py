@@ -1,20 +1,23 @@
+import base64
 import io
 import json
 import os
-import cv2
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
+
 import numpy as np
 import pandas as pd
+import torch
 from PIL import Image
+from pycocotools import mask as cocomask
+from scenic_reasoning.interfaces.InstanceSegmentationI import (
+    InstanceSegmentationResultI,
+    Mask_Format,
+)
 from scenic_reasoning.interfaces.ObjectDetectionI import (
     BBox_Format,
     ObjectDetectionResultI,
 )
-from scenic_reasoning.interfaces.InstanceSegmentationI import (
-    Mask_Format,
-    InstanceSegmentationResultI
-)
-from scenic_reasoning.utilities.common import project_root_dir
+from scenic_reasoning.utilities.common import convert_to_xyxy, project_root_dir
 from torch import Tensor
 from torch.utils.data import Dataset
 from torchvision import transforms
@@ -41,20 +44,19 @@ class ImageDataset(Dataset):
         self.target_transform = target_transform
         self.merge_transform = merge_transform
         self.use_extended_annotations = use_extended_annotations
-        self.img_labels = img_labels or []      # either pass it in or default empty
+        self.img_labels = img_labels or []  # either pass it in or default empty
         self.mask_dir = mask_dir
         self.masks = []
         # Load annotations if annotations_file is provided, else keep img_labels empty
 
         if annotations_file:
             self.img_labels = self.load_annotations(annotations_file)
-    
+
     def load_annotations(self, annotations_file: str) -> List[Dict]:
         """Load annotations from a JSON file."""
-        with open(annotations_file, 'r') as file:
+        with open(annotations_file, "r") as file:
             return json.load(file)
-    
-    
+
     def __len__(self) -> int:
         return len(self.img_labels)
 
@@ -120,9 +122,8 @@ class Bdd10kDataset(ImageDataset):
         37: "motorcycle",
         38: "trailer",
         39: "train",
-        40: "truck"
+        40: "truck",
     }
-
 
     def category_to_cls(self, category: str) -> int:
         return self._CATEGORIES[category]
@@ -140,38 +141,27 @@ class Bdd10kDataset(ImageDataset):
         img_dir = root_dir / "images" / "10k" / split
         rle = root_dir / "labels" / "ins_seg" / "rles" / f"ins_seg_{split}.json"
 
-        def merge_transform(image: Tensor, labels, timestamp, stride=32):
-
-            C, H, W = image.shape
-
-            new_H = (H + stride - 1) // stride * stride
-            new_W = (W + stride - 1) // stride * stride
-
-            image = image.permute(1, 2, 0).cpu().numpy()
-
-            resized_image = cv2.resize(image, (new_W, new_H), interpolation=cv2.INTER_LINEAR)  #TODO: should I use this package to do resizing?
-            resized_image = torch.from_numpy(resized_image).permute(2, 0, 1).float()
-
+        def merge_transform(image: Tensor, labels, timestamp):
             results = []
             attributes = []
 
             for instance_id, label in enumerate(labels):
-                rle = label['rle']
+                rle = label["rle"]
                 mask = cocomask.decode(rle)
-                class_label = label['category']
+                class_label = label["category"]
                 class_id = self.category_to_coco_cls(class_label)
                 result = InstanceSegmentationResultI(
-                    score=1.0, 
-                    cls=int(class_id), 
+                    score=1.0,
+                    cls=int(class_id),
                     label=class_label,
                     instance_id=int(instance_id),
-                    image_hw=rle['size'],
+                    image_hw=rle["size"],
                     mask=torch.from_numpy(mask).unsqueeze(0),
                 )
                 results.append(result)
-                attributes.append(label['attributes'])
+                attributes.append(label["attributes"])
 
-            return resized_image, results, timestamp
+            return image, results, timestamp
 
         super().__init__(
             img_dir=str(img_dir),
@@ -179,10 +169,10 @@ class Bdd10kDataset(ImageDataset):
             merge_transform=merge_transform,
             **kwargs,
         )
-    
+
     def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
-        data = self.img_labels['frames'][idx]
-        img_path = os.path.join(self.img_dir, data['name'])
+        data = self.img_labels["frames"][idx]
+        img_path = os.path.join(self.img_dir, data["name"])
         labels = data["labels"]
         timestamp = data["timestamp"]
         image = read_image(img_path)
@@ -192,9 +182,7 @@ class Bdd10kDataset(ImageDataset):
         if self.target_transform:
             labels = self.target_transform(labels)
         if self.merge_transform:
-            image, labels, timestamp = self.merge_transform(
-                image, labels, timestamp
-            )
+            image, labels, timestamp = self.merge_transform(image, labels, timestamp)
 
         return {
             "image": image,
@@ -316,10 +304,18 @@ class Bdd100kDataset(ImageDataset):
             labels: List[Dict[str, Any]],
             timestamp: str,
         ) -> Union[
-            Tuple[Tensor, List[Union[ObjectDetectionResultI, InstanceSegmentationResultI]]],
+            Tuple[
+                Tensor, List[Union[ObjectDetectionResultI, InstanceSegmentationResultI]]
+            ],
             Tuple[
                 Tensor,
-                List[Tuple[Union[ObjectDetectionResultI, InstanceSegmentationResultI], Dict[str, Any], str]],
+                List[
+                    Tuple[
+                        Union[ObjectDetectionResultI, InstanceSegmentationResultI],
+                        Dict[str, Any],
+                        str,
+                    ]
+                ],
                 Dict[str, Any],
                 str,
             ],
@@ -363,7 +359,6 @@ class Bdd100kDataset(ImageDataset):
             **kwargs,
         )
 
-
     def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
         img_path = os.path.join(self.img_dir, self.img_labels[idx]["name"])
         image = read_image(img_path)
@@ -372,13 +367,9 @@ class Bdd100kDataset(ImageDataset):
         timestamp = self.img_labels[idx]["timestamp"]
 
         if self.transform:
-            image = self.transform(image)
-        if self.target_transform:
-            labels = self.target_transform(labels)
+            image, labels = self.transform(image, labels)
         if self.merge_transform:
-            image, labels, timestamp = self.merge_transform(
-                image, labels, timestamp
-            )
+            image, labels, timestamp = self.merge_transform(image, labels, timestamp)
 
         return {
             "image": image,
@@ -483,8 +474,39 @@ class NuImagesDataset(ImageDataset):
         "vehicle.truck": 24,
     }
 
+    _CATEGORIES_TO_COCO = {
+        "animal": 0,
+        "flat.driveable_surface": "driveable_surface",  # ??
+        "human.pedestrian.adult": "pedestrian",
+        "human.pedestrian.child": "pedestrian",
+        "human.pedestrian.construction_worker": "pedestrian",
+        "human.pedestrian.personal_mobility": "pedestrian",
+        "human.pedestrian.police_officer": "pedestrian",
+        "human.pedestrian.stroller": "pedestrian",
+        "human.pedestrian.wheelchair": "pedestrian",
+        "movable_object.barrier": "barrier",  # ??
+        "movable_object.debris": "debris",  # ??
+        "movable_object.pushable_pullable": "pushable_pullable",  # ??
+        "movable_object.trafficcone": "traffic sign",
+        "static_object.bicycle_rack": "bicycle_rack",  # ??
+        "vehicle.bicycle": "bicycle",
+        "vehicle.bus.bendy": "bus",
+        "vehicle.bus.rigid": "bus",
+        "vehicle.car": "car",
+        "vehicle.construction": "construction",  # ??
+        "vehicle.ego": "ego",  # ??
+        "vehicle.emergency.ambulance": "ambulance",  # ??
+        "vehicle.emergency.police": "police",  # ??
+        "vehicle.motorcycle": "motorcycle",
+        "vehicle.trailer": "truck",
+        "vehicle.truck": "truck",
+    }
+
     def category_to_cls(self, category: str) -> int:
         return self._CATEGORIES[category]
+
+    def category_to_coco(self, category: str):
+        return self._CATEGORIES_TO_COCO[category]
 
     def filter_by_token(
         self, data: List[Dict[str, Any]], field: str, match_value: str
@@ -495,90 +517,87 @@ class NuImagesDataset(ImageDataset):
                 filtered_list.append(item)
         return filtered_list
 
-    def __init__(self, split: Union[Literal["train", "val", "test"]] = "train", size: Union[Literal["mini", "full"]] = "mini", **kwargs):
+    def __init__(
+        self,
+        split: Union[Literal["train", "val", "test"]] = "train",
+        size: Union[Literal["mini", "full"]] = "mini",
+        **kwargs,
+    ):
         from nuimages import NuImages
 
         root_dir = project_root_dir() / "data" / "nuimages" / size
         img_dir = root_dir
-        obj_annotations_file = (root_dir / f"v1.0-{size}" / "object_ann.json")
-        categories_file = (root_dir / f"v1.0-{size}" / "category.json")
-        sample_data_labels_file = (root_dir / f"v1.0-{size}" / "sample_data.json")
-        attributes_file = (root_dir / f"v1.0-{size}" / "attribute.json")
+        obj_annotations_file = root_dir / f"v1.0-{size}" / "object_ann.json"
+        categories_file = root_dir / f"v1.0-{size}" / "category.json"
+        sample_data_labels_file = root_dir / f"v1.0-{size}" / "sample_data.json"
+        attributes_file = root_dir / f"v1.0-{size}" / "attribute.json"
 
         self.sample_data_labels = json.load(open(sample_data_labels_file))
         self.attribute_labels = json.load(open(attributes_file))
         self.category_labels = json.load(open(categories_file))
         self.obj_annotations = json.load(open(obj_annotations_file))
 
-        self.nuim = NuImages(dataroot=img_dir, version=f'v1.0-{size}', verbose=True, lazy=True)
+        self.nuim = NuImages(
+            dataroot=img_dir, version=f"v1.0-{size}", verbose=True, lazy=True
+        )
 
         img_labels = []
         for i in range(len(self.nuim.sample)):
             # see: https://www.nuscenes.org/tutorials/nuimages_tutorial.html
             sample = self.nuim.sample[i]
-            sample_token = sample['token']
-            key_camera_token = sample['key_camera_token']
+            sample_token = sample["token"]
+            key_camera_token = sample["key_camera_token"]
             object_tokens, surface_tokens = self.nuim.list_anns(sample_token)
 
             object_data = []
             for object_token in object_tokens:
                 obj = self.nuim.get("object_ann", object_token)
-                category_token = obj['category_token']
-                attribute_tokens = obj['attribute_tokens']
+                category_token = obj["category_token"]
+                attribute_tokens = obj["attribute_tokens"]
                 attributes = []
                 for attribute_token in attribute_tokens:
                     attribute = self.nuim.get("attribute", attribute_token)
                     attributes.append(attribute)
 
-                category = self.nuim.get('category', category_token)['name']
-                obj['category'] = category
-                obj['attributes'] = attributes
+                category = self.nuim.get("category", category_token)["name"]
+                obj["category"] = category
+                obj["attributes"] = attributes
                 object_data.append(obj)
 
             sample_data = self.nuim.get("sample_data", key_camera_token)
-            img_filename = sample_data['filename']
-            timestamp = sample_data['timestamp']
-            img_labels.append({
-                'filename': img_filename,
-                "labels": object_data,
-                'timestamp': timestamp
-                })
-            
+            img_filename = sample_data["filename"]
+            timestamp = sample_data["timestamp"]
+            img_labels.append(
+                {
+                    "filename": img_filename,
+                    "labels": object_data,
+                    "timestamp": timestamp,
+                }
+            )
+
             # TODO: add error catching logic in case of empty token or token mismatch.
-            
 
         def merge_transform(
-            image: Tensor,
-            labels: List[Dict[str, Any]],
-            timestamp: str,
-            stride=32
+            image: Tensor, labels: List[Dict[str, Any]], timestamp: str
         ) -> Tuple[
             Tensor,
             List[Tuple[ObjectDetectionResultI, Dict[str, Any], str]],
             List[Dict[str, Any]],
             str,
         ]:
-            
-            C, H, W = image.shape
-            new_H = (H + stride - 1) // stride * stride
-            new_W = (W + stride - 1) // stride * stride
-            image = image.permute(1, 2, 0).cpu().numpy()
-            resized_image = cv2.resize(image, (new_W, new_H), interpolation=cv2.INTER_LINEAR)  #TODO: should I use this package to do resizing?
-            resized_image = torch.from_numpy(resized_image).permute(2, 0, 1).float()
-
             results = []
             attributes = []
 
             for obj_label in labels:
                 _, height, width = image.shape
-                obj_category = obj_label['category']
-                obj_attributes = obj_label['attributes']
+                obj_category = obj_label["category"]
+                obj_attributes = obj_label["attributes"]
 
                 results.append(
                     ObjectDetectionResultI(
                         score=1.0,
                         cls=self.category_to_cls(obj_category),
-                        label=obj_category,
+                        label=self.category_to_coco(obj_category),
                         bbox=obj_label["bbox"],
                         image_hw=(height, width),
                         bbox_format=BBox_Format.XYXY,
@@ -587,10 +606,13 @@ class NuImagesDataset(ImageDataset):
                 )
                 attributes.append(obj_attributes)
 
-            return (resized_image, results, attributes, timestamp)
+            return (image, results, attributes, timestamp)
 
         super().__init__(
-            img_labels=img_labels, img_dir=img_dir, merge_transform=merge_transform, **kwargs
+            img_labels=img_labels,
+            img_dir=img_dir,
+            merge_transform=merge_transform,
+            **kwargs,
         )
 
     def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
@@ -601,7 +623,7 @@ class NuImagesDataset(ImageDataset):
         image = read_image(img_path)
 
         if self.transform:
-            image = self.transform(image)
+            image, labels = self.transform(image, labels)
         if self.target_transform:
             labels = self.target_transform(labels)
         if self.merge_transform:
@@ -615,7 +637,8 @@ class NuImagesDataset(ImageDataset):
             "attributes": attributes,
             "timestamp": timestamp,
         }
-    
+
+
 class NuImagesDataset_seg(ImageDataset):
     """
     The structure of how NuImages labels are stored
@@ -725,19 +748,24 @@ class NuImagesDataset_seg(ImageDataset):
         return filtered_list
 
     def __init__(
-        self, split: Union[Literal["train", "val", "test"]] = "train", size: Union[Literal["mini", "full"]] = "mini", **kwargs
+        self,
+        split: Union[Literal["train", "val", "test"]] = "train",
+        size: Union[Literal["mini", "full"]] = "mini",
+        **kwargs,
     ):
-        
+
         from nuimages import NuImages
 
         root_dir = project_root_dir() / "data" / "nuimages" / size
         img_dir = root_dir
-        mask_annotations_file = (root_dir / f"v1.0-{size}" / "object_ann.json")
-        categories_file = (root_dir / f"v1.0-{size}" / "category.json")
-        sample_data_labels_file = (root_dir / f"v1.0-{size}" / "sample_data.json")
-        attributes_file = (root_dir / f"v1.0-{size}" / "attribute.json")
+        mask_annotations_file = root_dir / f"v1.0-{size}" / "object_ann.json"
+        categories_file = root_dir / f"v1.0-{size}" / "category.json"
+        sample_data_labels_file = root_dir / f"v1.0-{size}" / "sample_data.json"
+        attributes_file = root_dir / f"v1.0-{size}" / "attribute.json"
 
-        self.nuim = NuImages(dataroot=img_dir, version=f"v1.0-{size}", verbose=True, lazy=True)
+        self.nuim = NuImages(
+            dataroot=img_dir, version=f"v1.0-{size}", verbose=True, lazy=True
+        )
 
         self.sample_data_labels = json.load(open(sample_data_labels_file))
         self.attribute_labels = json.load(open(attributes_file))
@@ -748,61 +776,53 @@ class NuImagesDataset_seg(ImageDataset):
         for i in range(len(self.nuim.sample)):
             # see: https://www.nuscenes.org/tutorials/nuimages_tutorial.html
             sample = self.nuim.sample[i]
-            sample_token = sample['token']
-            key_camera_token = sample['key_camera_token']
+            sample_token = sample["token"]
+            key_camera_token = sample["key_camera_token"]
             object_tokens, surface_tokens = self.nuim.list_anns(sample_token)
 
             object_data = []
             for object_token in object_tokens:
                 obj = self.nuim.get("object_ann", object_token)
-                category_token = obj['category_token']
-                attribute_tokens = obj['attribute_tokens']
+                category_token = obj["category_token"]
+                attribute_tokens = obj["attribute_tokens"]
                 attributes = []
                 for attribute_token in attribute_tokens:
                     attribute = self.nuim.get("attribute", attribute_token)
                     attributes.append(attribute)
 
-                category = self.nuim.get('category', category_token)['name']
-                obj['category'] = category
-                obj['attributes'] = attributes
+                category = self.nuim.get("category", category_token)["name"]
+                obj["category"] = category
+                obj["attributes"] = attributes
                 object_data.append(obj)
 
             sample_data = self.nuim.get("sample_data", key_camera_token)
-            img_filename = sample_data['filename']
-            timestamp = sample_data['timestamp']
-            img_labels.append({
-                'filename': img_filename,
-                "labels": object_data,
-                'timestamp': timestamp
-                })
-            
+            img_filename = sample_data["filename"]
+            timestamp = sample_data["timestamp"]
+            img_labels.append(
+                {
+                    "filename": img_filename,
+                    "labels": object_data,
+                    "timestamp": timestamp,
+                }
+            )
+
         def merge_transform(
-            image: Tensor,
-            labels: List[Dict[str, Any]],
-            timestamp: str,
-            stride=32,
+            image: Tensor, labels: List[Dict[str, Any]], timestamp: str
         ) -> Tuple[
             Tensor,
             List[Tuple[InstanceSegmentationResultI, Dict[str, Any], str]],
             Dict[str, Any],
             str,
         ]:
-            C, H, W = image.shape
-            new_H = (H + stride - 1) // stride * stride
-            new_W = (W + stride - 1) // stride * stride
-            image = image.permute(1, 2, 0).cpu().numpy()
-            resized_image = cv2.resize(image, (new_W, new_H), interpolation=cv2.INTER_LINEAR)  #TODO: should I use this package to do resizing?
-            resized_image = torch.from_numpy(resized_image).permute(2, 0, 1).float()
-
             results = []
             attributes = []
 
             for instance_id, obj_label in enumerate(labels):
                 _, height, width = image.shape
-                obj_category = obj_label['category']
-                obj_attributes = obj_label['attributes']
-                new_mask = obj_label['mask'].copy()
-                new_mask['counts'] = base64.b64decode(new_mask['counts'])
+                obj_category = obj_label["category"]
+                obj_attributes = obj_label["attributes"]
+                new_mask = obj_label["mask"].copy()
+                new_mask["counts"] = base64.b64decode(new_mask["counts"])
                 mask = cocomask.decode(new_mask)
 
                 results.append(
@@ -813,15 +833,18 @@ class NuImagesDataset_seg(ImageDataset):
                         instance_id=instance_id,
                         image_hw=(height, width),
                         mask=torch.from_numpy(mask).unsqueeze(0),
-                        mask_format=Mask_Format.BITMASK
+                        mask_format=Mask_Format.BITMASK,
                     )
                 )
                 attributes.append(obj_attributes)
 
-            return (resized_image, results, attributes, timestamp)
+            return (image, results, attributes, timestamp)
 
         super().__init__(
-            img_labels=img_labels, img_dir=img_dir, merge_transform=merge_transform, **kwargs
+            img_labels=img_labels,
+            img_dir=img_dir,
+            merge_transform=merge_transform,
+            **kwargs,
         )
 
     def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
@@ -847,41 +870,41 @@ class NuImagesDataset_seg(ImageDataset):
             "attributes": attributes,
             "timestamp": timestamp,
         }
-    
+
 
 class WaymoDataset(ImageDataset):
     """
--    camera_image/{segment_context_name}.parquet
--    15 columns
--    Index(['key.segment_context_name', 'key.frame_timestamp_micros',
--       'key.camera_name', '[CameraImageComponent].image',
--       '[CameraImageComponent].pose.transform',
--       '[CameraImageComponent].velocity.linear_velocity.x',
--       '[CameraImageComponent].velocity.linear_velocity.y',
--       '[CameraImageComponent].velocity.linear_velocity.z',
--       '[CameraImageComponent].velocity.angular_velocity.x',
--       '[CameraImageComponent].velocity.angular_velocity.y',
--       '[CameraImageComponent].velocity.angular_velocity.z',
--       '[CameraImageComponent].pose_timestamp',
--       '[CameraImageComponent].rolling_shutter_params.shutter',
--       '[CameraImageComponent].rolling_shutter_params.camera_trigger_time',
--       '[CameraImageComponent].rolling_shutter_params.camera_readout_done_time'],
--      dtype='object')
--    (variable_size_rows, 15)
--
--    camera_box/{segment_context_name}.parquet
--    11 columns
--    Index(['key.segment_context_name', 'key.frame_timestamp_micros',
--       'key.camera_name', 'key.camera_object_id',
--       '[CameraBoxComponent].box.center.x',
--       '[CameraBoxComponent].box.center.y', '[CameraBoxComponent].box.size.x',
--       '[CameraBoxComponent].box.size.y', '[CameraBoxComponent].type',
--       '[CameraBoxComponent].difficulty_level.detection',
--       '[CameraBoxComponent].difficulty_level.tracking'],
--      dtype='object')
--    (variable_size_rows, 11)
--
--    """
+    -    camera_image/{segment_context_name}.parquet
+    -    15 columns
+    -    Index(['key.segment_context_name', 'key.frame_timestamp_micros',
+    -       'key.camera_name', '[CameraImageComponent].image',
+    -       '[CameraImageComponent].pose.transform',
+    -       '[CameraImageComponent].velocity.linear_velocity.x',
+    -       '[CameraImageComponent].velocity.linear_velocity.y',
+    -       '[CameraImageComponent].velocity.linear_velocity.z',
+    -       '[CameraImageComponent].velocity.angular_velocity.x',
+    -       '[CameraImageComponent].velocity.angular_velocity.y',
+    -       '[CameraImageComponent].velocity.angular_velocity.z',
+    -       '[CameraImageComponent].pose_timestamp',
+    -       '[CameraImageComponent].rolling_shutter_params.shutter',
+    -       '[CameraImageComponent].rolling_shutter_params.camera_trigger_time',
+    -       '[CameraImageComponent].rolling_shutter_params.camera_readout_done_time'],
+    -      dtype='object')
+    -    (variable_size_rows, 15)
+    -
+    -    camera_box/{segment_context_name}.parquet
+    -    11 columns
+    -    Index(['key.segment_context_name', 'key.frame_timestamp_micros',
+    -       'key.camera_name', 'key.camera_object_id',
+    -       '[CameraBoxComponent].box.center.x',
+    -       '[CameraBoxComponent].box.center.y', '[CameraBoxComponent].box.size.x',
+    -       '[CameraBoxComponent].box.size.y', '[CameraBoxComponent].type',
+    -       '[CameraBoxComponent].difficulty_level.detection',
+    -       '[CameraBoxComponent].difficulty_level.tracking'],
+    -      dtype='object')
+    -    (variable_size_rows, 11)
+    -
+    -"""
 
     _CATEGORIES = {
         "TYPE_UNKNOWN": 0,
@@ -893,26 +916,45 @@ class WaymoDataset(ImageDataset):
 
     _CLS_TO_CATEGORIES = {
         "0": "TYPE_UNKNOWN",
-        "1": "TYPE VEHICLE",
+        "1": "TYPE_VEHICLE",
         "2": "TYPE_PEDESTRIAN",
         "3": "TYPE_SIGN",
         "4": "TYPE_CYCLIST",
     }
 
+    _CATEGORIES_TO_COCO = {
+        "TYPE_UNKNOWN": "unknown",  # ??
+        "TYPE_VEHICLE": "vehicle",  # ??
+        "TYPE_PEDESTRIAN": "pedestrain",
+        "TYPE_SIGN": "traffic sign",
+        "TYPE_CYCLIST": "person",
+    }
+
     def category_to_cls(self, category: str) -> int:
         return self._CATEGORIES[category]
 
+    def category_to_coco(self, category: str):
+        return self._CATEGORIES_TO_COCO[category]
+
     def cls_to_category(self, cls: int) -> str:
         return self._CLS_TO_CATEGORIES[str(cls)]
-    
-    def __init__(self, split: Union[Literal["training", "validation", "testing"]] = "training", **kwargs):
+
+    def __init__(
+        self,
+        split: Union[Literal["training", "validation", "testing"]] = "training",
+        **kwargs,
+    ):
         root_dir = project_root_dir() / "data" / "waymo"
         self.camera_img_dir = root_dir / f"{split}" / "camera_image"
         self.camera_box_dir = root_dir / f"{split}" / "camera_box"
 
         # Check if directories exist
-        if not os.path.exists(self.camera_img_dir) or not os.path.exists(self.camera_box_dir):
-            raise FileNotFoundError(f"Directories not found: {self.camera_img_dir}, {self.camera_box_dir}")
+        if not os.path.exists(self.camera_img_dir) or not os.path.exists(
+            self.camera_box_dir
+        ):
+            raise FileNotFoundError(
+                f"Directories not found: {self.camera_img_dir}, {self.camera_box_dir}"
+            )
 
         # Initialize img_labels
         self.img_labels = []
@@ -922,12 +964,16 @@ class WaymoDataset(ImageDataset):
             f for f in os.listdir(self.camera_img_dir) if f.endswith(".parquet")
         ]
 
-        camera_image_files = camera_image_files[:10]    # TODO: doing this because using the entire validation gives us memory issue. Need to change later.
+        camera_image_files = camera_image_files[
+            :10
+        ]  # TODO: doing this because using the entire validation gives us memory issue. Need to change later.
 
         # Check if image files are found
         if not camera_image_files:
-            raise FileNotFoundError(f"No parquet image files found in {self.camera_img_dir}")
-        
+            raise FileNotFoundError(
+                f"No parquet image files found in {self.camera_img_dir}"
+            )
+
         merged_dfs = []
         for image_file in camera_image_files:
             box_file = image_file.replace("camera_image", "camera_box")
@@ -943,12 +989,22 @@ class WaymoDataset(ImageDataset):
             image_df = pd.read_parquet(image_path)
             box_df = pd.read_parquet(box_path)
 
-            unique_images_df = box_df.groupby(['key.segment_context_name', 'key.frame_timestamp_micros', 'key.camera_name'])
+            unique_images_df = box_df.groupby(
+                [
+                    "key.segment_context_name",
+                    "key.frame_timestamp_micros",
+                    "key.camera_name",
+                ]
+            )
             # Merge image and box data
             merged_df = pd.merge(
                 image_df,
                 box_df,
-                on=["key.segment_context_name", "key.frame_timestamp_micros", "key.camera_name"],
+                on=[
+                    "key.segment_context_name",
+                    "key.frame_timestamp_micros",
+                    "key.camera_name",
+                ],
                 how="inner",
             )
 
@@ -960,7 +1016,13 @@ class WaymoDataset(ImageDataset):
 
         # Group dataframes by unique identifiers and process them
         for merged_df in merged_dfs:
-            grouped_df = merged_df.groupby(['key.segment_context_name', 'key.frame_timestamp_micros', 'key.camera_name'])
+            grouped_df = merged_df.groupby(
+                [
+                    "key.segment_context_name",
+                    "key.frame_timestamp_micros",
+                    "key.camera_name",
+                ]
+            )
 
             for group_name, group_data in grouped_df:
                 # Each group has one unique image frame, in which all the detected objects belong to
@@ -970,49 +1032,62 @@ class WaymoDataset(ImageDataset):
 
                 labels = []
                 for _, row in group_data.iterrows():
-                    labels.append({
-                        "type": row["[CameraBoxComponent].type"],
-                        "bbox": convert_to_xyxy(
-                            row["[CameraBoxComponent].box.center.x"],
-                            row["[CameraBoxComponent].box.center.y"],
-                            row["[CameraBoxComponent].box.size.x"],
-                            row["[CameraBoxComponent].box.size.y"],
-                        ),
-                    })
+                    labels.append(
+                        {
+                            "type": row["[CameraBoxComponent].type"],
+                            "bbox": convert_to_xyxy(
+                                row["[CameraBoxComponent].box.center.x"],
+                                row["[CameraBoxComponent].box.center.y"],
+                                row["[CameraBoxComponent].box.size.x"],
+                                row["[CameraBoxComponent].box.size.y"],
+                            ),
+                        }
+                    )
 
-                self.img_labels.append({
-                    "name": group_name,
-                    "image": img_bytes,
-                    "labels": labels,
-                    "attributes": {},  # empty for now, can adjust later to add more Waymo related attributes info
-                    "timestamp": str(frame_timestamp_micros)
-                })
+                self.img_labels.append(
+                    {
+                        "name": group_name,
+                        "image": img_bytes,
+                        "labels": labels,
+                        "attributes": {},  # empty for now, can adjust later to add more Waymo related attributes info
+                        "timestamp": str(frame_timestamp_micros),
+                    }
+                )
 
         if not self.img_labels:
-            raise ValueError(f"No valid data found in {self.camera_img_dir} and {self.camera_box_dir}")
-        
+            raise ValueError(
+                f"No valid data found in {self.camera_img_dir} and {self.camera_box_dir}"
+            )
+
         def merge_transform(image, labels, attributes, timestamp):
             results = []
 
             for label in labels:
-                    
-                cls = label['type']
-                bbox = label['bbox']
+
+                cls = label["type"]
+                bbox = label["bbox"]
+                class_label = self.cls_to_category(cls)
 
                 result = ObjectDetectionResultI(
                     score=1.0,
                     cls=cls,
-                    label=self.cls_to_category(cls),
+                    label=self.category_to_coco(class_label),
                     bbox=list(bbox),
                     image_hw=image.shape,
-                    attributes=[attributes]
+                    attributes=[attributes],
                 )
                 results.append(result)
 
             return (image, results, attributes, timestamp)
-        
+
         # Call the parent class constructor (no annotations_file argument)
-        super().__init__(annotations_file=None, img_dir=str(self.camera_img_dir), img_labels=self.img_labels, merge_transform=merge_transform,  **kwargs)
+        super().__init__(
+            annotations_file=None,
+            img_dir=str(self.camera_img_dir),
+            img_labels=self.img_labels,
+            merge_transform=merge_transform,
+            **kwargs,
+        )
 
     def __len__(self) -> int:
         return len(self.img_labels)
@@ -1020,7 +1095,9 @@ class WaymoDataset(ImageDataset):
     def __getitem__(self, idx: int) -> Dict:
         """Retrieve an image and its annotations."""
         if idx >= len(self.img_labels):
-            raise IndexError(f"Index {idx} out of range for dataset with {len(self.img_labels)} samples.")
+            raise IndexError(
+                f"Index {idx} out of range for dataset with {len(self.img_labels)} samples."
+            )
 
         img_data = self.img_labels[idx]
         img_bytes = img_data["image"]
@@ -1032,21 +1109,24 @@ class WaymoDataset(ImageDataset):
         image = transforms.ToTensor()(Image.open(io.BytesIO(img_bytes)))
 
         # Apply transformations if any
+
         if self.transform:
-            image = self.transform(image)
+            image, labels = self.transform(image, labels)
         if self.target_transform:
             labels = self.target_transform(labels)
         if self.merge_transform:
-                image, labels, attributes, timestamp = self.merge_transform(
-                    image, labels, attributes, timestamp
-                )
+            image, labels, attributes, timestamp = self.merge_transform(
+                image, labels, attributes, timestamp
+            )
 
+        
         return {
             "image": image,
             "labels": labels,
             "attributes": attributes,
             "timestamp": timestamp,
         }
+
 
 class WaymoDataset_seg(ImageDataset):
 
@@ -1079,12 +1159,10 @@ class WaymoDataset_seg(ImageDataset):
         "TYPE_SKY": 25,
         "TYPE_GROUND": 26,
         "TYPE_DYNAMIC": 27,
-        "TYPE_STATIC": 28
+        "TYPE_STATIC": 28,
     }
 
-
     _CLS_TO_CATEGORIES = {str(v): k for k, v in _CATEGORIES.items()}
-
 
     # See: https://github.com/waymo-research/waymo-open-dataset/blob/master/src/waymo_open_dataset/protos/camera_segmentation.proto
 
@@ -1095,32 +1173,44 @@ class WaymoDataset_seg(ImageDataset):
         return self._CLS_TO_CATEGORIES[str(cls)]
 
     def get_semantic_class(self, instance_map, semantic_map, instance_id):
-        mask = (instance_map == instance_id)
+        mask = instance_map == instance_id
         semantic_classes = semantic_map[mask]
         unique_semantic_classes = np.unique(semantic_classes)
         return unique_semantic_classes.tolist()
-    
-    def __init__(self, split: Union[Literal["training", "validation", "testing"]] = "training", **kwargs):
+
+    def __init__(
+        self,
+        split: Union[Literal["training", "validation", "testing"]] = "training",
+        **kwargs,
+    ):
         root_dir = project_root_dir() / "data" / "waymo"
         self.camera_img_dir = root_dir / f"{split}" / "camera_image"
         self.camera_box_dir = root_dir / f"{split}" / "camera_box"
 
         # Check if directories exist
-        if not os.path.exists(self.camera_img_dir) or not os.path.exists(self.camera_box_dir):
-            raise FileNotFoundError(f"Directories not found: {self.camera_img_dir}, {self.camera_box_dir}")
+        if not os.path.exists(self.camera_img_dir) or not os.path.exists(
+            self.camera_box_dir
+        ):
+            raise FileNotFoundError(
+                f"Directories not found: {self.camera_img_dir}, {self.camera_box_dir}"
+            )
 
         # Initialize img_labels
         self.img_labels = []
 
         # Get the camera image files in the directory
         camera_image_files = [
-            str(self.camera_img_dir / f) for f in os.listdir(self.camera_img_dir) if f.endswith(".parquet")
+            str(self.camera_img_dir / f)
+            for f in os.listdir(self.camera_img_dir)
+            if f.endswith(".parquet")
         ]
 
         # Check if image files are found
         if not camera_image_files:
-            raise FileNotFoundError(f"No parquet image files found in {self.camera_img_dir}")
-        
+            raise FileNotFoundError(
+                f"No parquet image files found in {self.camera_img_dir}"
+            )
+
         merged_dfs = []
         num_empty = 0
         for image_file in camera_image_files:
@@ -1138,7 +1228,11 @@ class WaymoDataset_seg(ImageDataset):
             merged_df = pd.merge(
                 image_df,
                 seg_df,
-                on=["key.segment_context_name", "key.frame_timestamp_micros", "key.camera_name"],
+                on=[
+                    "key.segment_context_name",
+                    "key.frame_timestamp_micros",
+                    "key.camera_name",
+                ],
                 how="inner",
             )
 
@@ -1147,12 +1241,18 @@ class WaymoDataset_seg(ImageDataset):
             else:
                 print(f"Merged DataFrame for {image_file}: {merged_df.shape}\n")
                 merged_dfs.append(merged_df)
-        
+
         print(f"{num_empty}/{len(camera_image_files)} are empty")
-        
+
         # Group dataframes by unique identifiers and process them
         for merged_df in merged_dfs:
-            grouped_df = merged_df.groupby(['key.segment_context_name', 'key.frame_timestamp_micros', 'key.camera_name'])
+            grouped_df = merged_df.groupby(
+                [
+                    "key.segment_context_name",
+                    "key.frame_timestamp_micros",
+                    "key.camera_name",
+                ]
+            )
 
             for group_name, group_data in grouped_df:
                 image_data = group_data.iloc[0]
@@ -1162,40 +1262,56 @@ class WaymoDataset_seg(ImageDataset):
                 labels = []
                 for _, row in group_data.iterrows():
 
-                    labels.append({
-                        "masks": row['[CameraSegmentationLabelComponent].panoptic_label'],
-                        "global_id": row['[CameraSegmentationLabelComponent].instance_id_to_global_id_mapping.global_instance_ids'],
-                        "instance_id": row['[CameraSegmentationLabelComponent].instance_id_to_global_id_mapping.local_instance_ids'],
-                        "divisor": row['[CameraSegmentationLabelComponent].panoptic_label_divisor']
-                    })
+                    labels.append(
+                        {
+                            "masks": row[
+                                "[CameraSegmentationLabelComponent].panoptic_label"
+                            ],
+                            "global_id": row[
+                                "[CameraSegmentationLabelComponent].instance_id_to_global_id_mapping.global_instance_ids"
+                            ],
+                            "instance_id": row[
+                                "[CameraSegmentationLabelComponent].instance_id_to_global_id_mapping.local_instance_ids"
+                            ],
+                            "divisor": row[
+                                "[CameraSegmentationLabelComponent].panoptic_label_divisor"
+                            ],
+                        }
+                    )
 
-                self.img_labels.append({
-                    "name": group_name,
-                    "image": img_bytes,
-                    "labels": labels,
-                    "attributes": {},  # empty for now, can adjust later to add more Waymo related attributes info
-                    "timestamp": str(frame_timestamp_micros)
-                })
+                self.img_labels.append(
+                    {
+                        "name": group_name,
+                        "image": img_bytes,
+                        "labels": labels,
+                        "attributes": {},  # empty for now, can adjust later to add more Waymo related attributes info
+                        "timestamp": str(frame_timestamp_micros),
+                    }
+                )
 
         if not self.img_labels:
-            raise ValueError(f"No valid data found in {self.camera_img_dir} and {self.camera_box_dir}")
+            raise ValueError(
+                f"No valid data found in {self.camera_img_dir} and {self.camera_box_dir}"
+            )
 
         def merge_transform(image, labels, attributes, timestamp):
-            masks_bytes = labels[0]['masks']
-            divisor = labels[0]['divisor']
-            instance_id = labels[0]['instance_id']
-            masks = transforms.ToTensor()(Image.open(io.BytesIO(masks_bytes)))            
+            masks_bytes = labels[0]["masks"]
+            divisor = labels[0]["divisor"]
+            instance_id = labels[0]["instance_id"]
+            masks = transforms.ToTensor()(Image.open(io.BytesIO(masks_bytes)))
             instance_masks = masks % divisor
             semantic_masks = masks // divisor
 
             results = []
             for i in instance_id:
                 semantic_id = self.get_semantic_class(instance_masks, semantic_masks, i)
-                class_id = semantic_id[0]    # see: https://github.com/waymo-research/waymo-open-dataset/issues/570 and page 6 of the original waymo paper: https://www.ecva.net/papers/eccv_2022/papers_ECCV/papers/136890052.pdf
+                class_id = semantic_id[
+                    0
+                ]  # see: https://github.com/waymo-research/waymo-open-dataset/issues/570 and page 6 of the original waymo paper: https://www.ecva.net/papers/eccv_2022/papers_ECCV/papers/136890052.pdf
                 instance_mask = instance_masks == i
                 result = InstanceSegmentationResultI(
-                    score=1.0, 
-                    cls=int(class_id), 
+                    score=1.0,
+                    cls=int(class_id),
                     label=self.cls_to_category(class_id),
                     instance_id=i,
                     image_hw=image.shape,
@@ -1204,8 +1320,15 @@ class WaymoDataset_seg(ImageDataset):
                 results.append(result)
 
             return image, results, attributes, timestamp
+
         # Call the parent class constructor (no annotations_file argument)
-        super().__init__(annotations_file=None, img_dir=str(self.camera_img_dir), img_labels=self.img_labels, merge_transform=merge_transform, **kwargs)
+        super().__init__(
+            annotations_file=None,
+            img_dir=str(self.camera_img_dir),
+            img_labels=self.img_labels,
+            merge_transform=merge_transform,
+            **kwargs,
+        )
 
     def __len__(self) -> int:
         return len(self.img_labels)
@@ -1213,7 +1336,9 @@ class WaymoDataset_seg(ImageDataset):
     def __getitem__(self, idx: int) -> Dict:
         """Retrieve an image and its annotations."""
         if idx >= len(self.img_labels):
-            raise IndexError(f"Index {idx} out of range for dataset with {len(self.img_labels)} samples.")
+            raise IndexError(
+                f"Index {idx} out of range for dataset with {len(self.img_labels)} samples."
+            )
 
         img_data = self.img_labels[idx]
         img_bytes = img_data["image"]
@@ -1239,5 +1364,3 @@ class WaymoDataset_seg(ImageDataset):
             "attributes": attributes,
             "timestamp": timestamp,
         }
-
-

@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from collections import defaultdict
 from enum import Enum
 from pathlib import Path
 from typing import Dict, Iterator, List, Optional, Tuple, Union
@@ -259,17 +258,17 @@ class ObjectDetectionUtils:
             pred_scores.append(pred.score)  # score is a float or tensor
             pred_classes.append(pred.cls)
 
-        pred_boxes = torch.cat(pred_boxes)
+        pred_boxes = torch.cat(pred_boxes) if pred_boxes else torch.Tensor([])
         pred_scores = (
             torch.tensor(pred_scores)
             if isinstance(pred_scores[0], float)
             else torch.cat(pred_scores)
-        )
+        ) if pred_scores else torch.Tensor([])
         pred_classes = (
             torch.tensor(pred_classes)
             if isinstance(pred_classes[0], int)
             else torch.cat(pred_classes)
-        )
+        ) if pred_classes else torch.Tensor([])
 
         preds: List[Dict[str, torch.Tensor]] = [
             dict(boxes=pred_boxes, labels=pred_classes, scores=pred_scores)
@@ -288,6 +287,48 @@ class ObjectDetectionUtils:
         image: Image, detections: List[ObjectDetectionResultI]
     ):
         from PIL import ImageDraw
+        copied_image = image.copy()
+        draw = ImageDraw.Draw(copied_image)
+
+        for detection in detections:
+            bbox = detection.as_xyxy()
+            if bbox.shape[0] > 1:
+                for i, box in enumerate(bbox):
+                    x1, y1, x2, y2 = (
+                        int(box[0].item()),
+                        int(box[1].item()),
+                        int(box[2].item()),
+                        int(box[3].item()),
+                    )
+                    score = detection.score[i].item()
+                    label = detection.label[i].item()
+                    draw.rectangle([x1, y1, x2, y2], outline="red", width=3)
+                    draw.text((x1, y1), f"{label}: {score:.2f}", fill="red")
+            else:
+                x1, y1, x2, y2 = (
+                    int(bbox[0][0].item()),
+                    int(bbox[0][1].item()),
+                    int(bbox[0][2].item()),
+                    int(bbox[0][3].item()),
+                )
+                score = detection.score
+                label = detection.label
+                if score > 0.8:
+                    box_color = "green"
+                elif score > 0.5:
+                    box_color = "yellow"
+                else:
+                    box_color = "red"
+                draw.rectangle([x1, y1, x2, y2], outline=box_color, width=2)
+                draw.text((x1, y1), f"{label}: {score:.2f}", fill="white")
+
+        copied_image.show()
+
+    def show_image_with_detections(
+        image: Image, detections: List[ObjectDetectionResultI]
+    ):
+        from PIL import ImageDraw
+
         copied_image = image.copy()
         draw = ImageDraw.Draw(copied_image)
 
