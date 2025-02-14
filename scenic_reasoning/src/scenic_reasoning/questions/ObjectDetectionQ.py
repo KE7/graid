@@ -332,7 +332,7 @@ class IsObjectCentered(Question):
 
 
 class WidthVsHeight(Question):
-    def __init__(self, threshold: float = 0.1) -> None:
+    def __init__(self, threshold: float = 0.15) -> None:
         super().__init__(
             question="Is the width of the {object_1} larger than the height?",
             variables=["object_1"],
@@ -533,8 +533,8 @@ class LargestAppearance(Question):
 
         # check if the largest detection is at least 30% larger than the second largest
         if not (
-            largest_detection.get_area()
-            > (1 + self.threshold) * second_largest_detection.get_area()
+            largest_detection.get_area().item()
+            > (1 + self.threshold) * second_largest_detection.get_area().item()
         ):
             logger.debug(
                 "Largest detection is not at least 30% larger than the second largest"
