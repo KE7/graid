@@ -117,6 +117,8 @@ class MMdetection_obj(ObjectDetectionModelI):
         device = "cpu"   # Using mps will error, see: https://github.com/open-mmlab/mmdetection/issues/11794
         self._model = init_detector(config_file, checkpoint_file, device=device)
 
+        # set class_agnostic to True to avoid overlaps: https://github.com/open-mmlab/mmdetection/issues/6254
+        self._model.test_cfg.rcnn.nms.class_agnostic=True
 
     def collect_env(self):
         """Collect the information of the running environments."""
