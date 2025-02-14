@@ -251,19 +251,19 @@ class MMdetection_seg(InstanceSegmentationModelI):
         image_list = [image[i].permute(1, 2, 0).cpu().numpy() for i in range(len(image))]
         predictions = inference_detector(self._model, image_list)
 
-        if debug:
-            # TODO: design a new visualizer
-            visualizer = VISUALIZERS.build(self._model.cfg.visualizer)
-            visualizer.dataset_meta = self._model.dataset_meta
-            for i in range(len(image_list)):
-                visualizer.add_datasample(
-                    'result',
-                    image_list[i],
-                    data_sample=predictions[i],
-                    draw_gt = None,
-                    wait_time=0
-                )
-                visualizer.show()
+        # if debug:
+        #     # TODO: design a new visualizer
+        #     visualizer = VISUALIZERS.build(self._model.cfg.visualizer)
+        #     visualizer.dataset_meta = self._model.dataset_meta
+        #     for i in range(len(image_list)):
+        #         visualizer.add_datasample(
+        #             'result',
+        #             image_list[i],
+        #             data_sample=predictions[i],
+        #             draw_gt = None,
+        #             wait_time=0
+        #         )
+        #         visualizer.show()
 
         all_instances = []
         for pred in predictions:

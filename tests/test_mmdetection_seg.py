@@ -3,7 +3,6 @@ from scenic_reasoning.models.MMDetection import MMdetection_seg
 from scenic_reasoning.measurements.InstanceSegmentation import InstanceSegmentationMeasurements
 
 from scenic_reasoning.utilities.common import get_default_device
-import torch
 from itertools import islice
 from ultralytics.data.augment import LetterBox
 
@@ -14,9 +13,6 @@ BATCH_SIZE = 1
 
 bdd = Bdd10kDataset(
     split="val", 
-    # YOLO requires images to be 640x640 or 768x1280, 
-    # but BDD100K images are 720x1280 so we need to resize
-    # transform=transform_image_for_yolo,  
 )
 
 waymo = WaymoDataset_seg(split="validation")
