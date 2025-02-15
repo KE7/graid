@@ -1,11 +1,7 @@
 from pathlib import Path
-<<<<<<< HEAD
 from torchvision.io import decode_image
-from typing import Iterator, List, Tuple
-=======
 from typing import Any, Dict, Iterator, List, Tuple
 
->>>>>>> main
 import cv2
 import numpy as np
 import torch
