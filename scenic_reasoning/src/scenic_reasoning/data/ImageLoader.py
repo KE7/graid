@@ -1,6 +1,7 @@
 import base64
 import io
 import json
+import logging
 import os
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
@@ -25,6 +26,8 @@ import torch
 from scenic_reasoning.utilities.common import convert_to_xyxy, read_image
 import base64
 from pycocotools import mask as cocomask
+
+logger = logging.getLogger(__name__)
 
 
 class ImageDataset(Dataset):
@@ -185,6 +188,8 @@ class Bdd10kDataset(ImageDataset):
             image, labels, timestamp = self.merge_transform(image, labels, timestamp)
 
         return {
+            "name": data["name"],
+            "path": img_path,
             "image": image,
             "labels": labels,
             "timestamp": timestamp,
@@ -261,6 +266,7 @@ class Bdd100kDataset(ImageDataset):
         "traffic light": 9,
         "traffic sign": 11,  # in COCO there is no traffic sign. closest is a stop sign
         "sidewalk": 0,  # in COCO there is no sidewalk so map to person
+        # TODO: test a COCO model on a trailer. try image 2357
     }
 
     _CATEGORIES = {
@@ -359,6 +365,21 @@ class Bdd100kDataset(ImageDataset):
             **kwargs,
         )
 
+        # finally, filter out following labels
+        #   'other person', 'other vehicle' and 'trail'
+        # because they are uncertain objects: https://github.com/bdd100k/bdd100k/blob/master/bdd100k/common/typing.py#L4
+        self.img_labels = [
+            label
+            for label in self.img_labels
+            if not any(
+                filter(
+                    lambda l: l["category"]
+                    in ["other person", "other vehicle", "trail", "trailer"],
+                    label["labels"],
+                )
+            )
+        ]
+
     def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
         img_path = os.path.join(self.img_dir, self.img_labels[idx]["name"])
         image = read_image(img_path)
@@ -372,6 +393,8 @@ class Bdd100kDataset(ImageDataset):
             image, labels, timestamp = self.merge_transform(image, labels, timestamp)
 
         return {
+            "name": self.img_labels[idx]["name"],
+            "path": img_path,
             "image": image,
             "labels": labels,
             "timestamp": timestamp,
@@ -632,6 +655,8 @@ class NuImagesDataset(ImageDataset):
             )
 
         return {
+            "name": img_filename,
+            "path": img_path,
             "image": image,
             "labels": labels,
             "attributes": attributes,
@@ -848,7 +873,6 @@ class NuImagesDataset_seg(ImageDataset):
         )
 
     def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
-        print(f"__getitem__ entered, {len(self.img_labels)}")
         img_filename = self.img_labels[idx]["filename"]
         labels = self.img_labels[idx]["labels"]
         timestamp = self.img_labels[idx]["timestamp"]
@@ -865,6 +889,8 @@ class NuImagesDataset_seg(ImageDataset):
             )
 
         return {
+            "name": img_filename,
+            "path": img_path,
             "image": image,
             "labels": labels,
             "attributes": attributes,
@@ -982,7 +1008,7 @@ class WaymoDataset(ImageDataset):
 
             # Check if the box file exists
             if not os.path.exists(box_path):
-                print(f"Box file not found for {image_file}: {box_path}")
+                logger.warning(f"Box file not found for {image_file}: {box_path}")
                 continue
 
             # Load the dataframes
@@ -1009,9 +1035,9 @@ class WaymoDataset(ImageDataset):
             )
 
             if merged_df.empty:
-                print(f"No matches found for {image_file} and {box_file}.")
+                logger.warning(f"No matches found for {image_file} and {box_file}.")
             else:
-                print(f"Merged DataFrame for {image_file}: {merged_df.shape}\n")
+                logger.debug(f"Merged DataFrame for {image_file}: {merged_df.shape}\n")
                 merged_dfs.append(merged_df)
 
         # Group dataframes by unique identifiers and process them
@@ -1047,6 +1073,7 @@ class WaymoDataset(ImageDataset):
                 self.img_labels.append(
                     {
                         "name": group_name,
+                        "path": image_path,
                         "image": img_bytes,
                         "labels": labels,
                         "attributes": {},  # empty for now, can adjust later to add more Waymo related attributes info
@@ -1121,6 +1148,8 @@ class WaymoDataset(ImageDataset):
 
         
         return {
+            "name": img_data["name"],
+            "path": img_data["path"],
             "image": image,
             "labels": labels,
             "attributes": attributes,
@@ -1237,12 +1266,12 @@ class WaymoDataset_seg(ImageDataset):
             )
 
             if merged_df.empty:
-                print(f"No matches found for {image_file} and {seg_file}.")
+                logger.warning(f"No matches found for {image_file} and {seg_file}.")
             else:
-                print(f"Merged DataFrame for {image_file}: {merged_df.shape}\n")
+                logger.debug(f"Merged DataFrame for {image_file}: {merged_df.shape}\n")
                 merged_dfs.append(merged_df)
 
-        print(f"{num_empty}/{len(camera_image_files)} are empty")
+        logger.debug(f"{num_empty}/{len(camera_image_files)} are empty")
 
         # Group dataframes by unique identifiers and process them
         for merged_df in merged_dfs:
@@ -1282,6 +1311,7 @@ class WaymoDataset_seg(ImageDataset):
                 self.img_labels.append(
                     {
                         "name": group_name,
+                        "path": image_path,
                         "image": img_bytes,
                         "labels": labels,
                         "attributes": {},  # empty for now, can adjust later to add more Waymo related attributes info
@@ -1359,6 +1389,8 @@ class WaymoDataset_seg(ImageDataset):
             )
 
         return {
+            "name": img_data["name"],
+            "path": img_data["path"],
             "image": image,
             "labels": labels,
             "attributes": attributes,

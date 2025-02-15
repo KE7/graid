@@ -1,7 +1,7 @@
 import logging
 import math
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import torch
 from PIL import Image
@@ -61,7 +61,7 @@ class Question(ABC):
             class_name = detection.label
             center_box = detection.get_center()  # shape == (# of boxes, 2)
             bbox = detection.as_xyxy()  # shape == (# of boxes, 4)
-            if type(class_name) == torch.Tensor:  # shape == (# of boxes,)
+            if type(class_name) is torch.Tensor:  # shape == (# of boxes,)
                 # find the right most bbox using the center of the bbox
                 n = class_name.shape[0]
                 for i in range(n):
@@ -207,7 +207,7 @@ class ObjectDetectionPredicates:
         counts = {}
         for detection in detections:
             class_name = detection.label
-            if type(class_name) == torch.Tensor:  # shape == (# of boxes,)
+            if type(class_name) is torch.Tensor:  # shape == (# of boxes,)
                 # need to iterate over the tensor to get the class names
                 for class_name in class_name:
                     counts[class_name] = counts.get(class_name, 0) + 1
@@ -223,10 +223,10 @@ class ObjectDetectionPredicates:
         counts = {}
         for detection in detections:
             class_name = detection.label
-            if type(class_name) == torch.Tensor:  # shape == (# of boxes,)
+            if type(class_name) is torch.Tensor:  # shape == (# of boxes,)
                 # need to iterate over the tensor to get the class names
-                for class_name in class_name:
-                    counts[class_name] = counts.get(class_name, 0) + 1
+                for single_class_name in class_name:
+                    counts[single_class_name] = counts.get(single_class_name, 0) + 1
             else:
                 counts[class_name] = counts.get(class_name, 0) + 1
 
@@ -253,7 +253,7 @@ class ObjectDetectionPredicates:
 class IsObjectCentered(Question):
     def __init__(self) -> None:
         super().__init__(
-            question="Is the {object_1} centered in the image, or is it off to the left or right?",
+            question="Divide the image into thirds. Is the {object_1} centered in the image, or is it off to the left or right?",
             variables=["object_1"],
             predicates=[
                 ObjectDetectionPredicates.at_least_one_single_detection,
@@ -271,7 +271,7 @@ class IsObjectCentered(Question):
         detection_counts = {}
         for detection in detections:
             class_name = detection.label
-            if type(class_name) == torch.Tensor:  # shape == (# of boxes,)
+            if type(class_name) is torch.Tensor:  # shape == (# of boxes,)
                 # need to iterate over the tensor to get the class names
                 for class_name in class_name:
                     detection_counts[class_name] = (
@@ -289,13 +289,13 @@ class IsObjectCentered(Question):
         object_positions = []
         for detection in detections:
             class_name = detection.label
-            if type(class_name) == torch.Tensor:  # shape == (# of boxes,)
+            if type(class_name) is torch.Tensor:  # shape == (# of boxes,)
                 # need to iterate over the tensor to get the class names
-                for class_name in class_name:
-                    if class_name in single_detections:
+                for single_class_name in class_name:
+                    if single_class_name in single_detections:
                         object_positions.append(
                             (
-                                class_name,
+                                single_class_name,
                                 detection.as_xyxy()[0][0],
                                 detection.as_xyxy()[0][2],
                             )
@@ -332,7 +332,8 @@ class IsObjectCentered(Question):
 
 
 class WidthVsHeight(Question):
-    def __init__(self) -> None:
+    # TODO: try a bunch of different thresholds for width vs height
+    def __init__(self, threshold: float = 0.15) -> None:
         super().__init__(
             question="Is the width of the {object_1} larger than the height?",
             variables=["object_1"],
@@ -340,17 +341,18 @@ class WidthVsHeight(Question):
                 ObjectDetectionPredicates.at_least_one_single_detection,
             ],
         )
+        self.threshold = threshold
 
     def _question_answer(
         self, class_name: str, detection: ObjectDetectionResultI
     ) -> Optional[Tuple[str, str]]:
-        width = detection.as_xyxy()[0][2] - detection.as_xyxy()[0][0]
-        height = detection.as_xyxy()[0][3] - detection.as_xyxy()[0][1]
+        width = detection.as_xywh().squeeze()[2].item()
+        height = detection.as_xywh().squeeze()[3].item()
         question = self.question.format(object_1=class_name)
         # TODO: verify this design decision manually
         # if the image is roughly square (within 10% of each other), return None
         # TODO: should we check for a minimum width or height?
-        if abs(width - height) / width < 0.1:
+        if abs(width - height) / width < self.threshold:
             return None
         answer = "yes" if width > height else "no"
         return (question, answer)
@@ -366,11 +368,11 @@ class WidthVsHeight(Question):
         detection_counts = {}
         for detection in detections:
             class_name = detection.label
-            if type(class_name) == torch.Tensor:  # shape == (# of boxes,)
+            if type(class_name) is torch.Tensor:  # shape == (# of boxes,)
                 # need to iterate over the tensor to get the class names
-                for class_name in class_name:
-                    detection_counts[class_name] = (
-                        detection_counts.get(class_name, 0) + 1
+                for single_class_name in class_name:
+                    detection_counts[single_class_name] = (
+                        detection_counts.get(single_class_name, 0) + 1
                     )
             else:
                 detection_counts[class_name] = detection_counts.get(class_name, 0) + 1
@@ -382,12 +384,12 @@ class WidthVsHeight(Question):
         question_answer_pairs = []
         for detection in detections:
             class_name = detection.label
-            if type(class_name) == torch.Tensor:  # shape == (# of boxes,)
+            if type(class_name) is torch.Tensor:  # shape == (# of boxes,)
                 # need to iterate over the tensor to get the class names
-                for class_name in class_name:
-                    if class_name in single_detections:
+                for single_class_name in class_name:
+                    if single_class_name in single_detections:
                         question_answer_pair = self._question_answer(
-                            class_name, detection
+                            single_class_name, detection
                         )
                         if question_answer_pair is not None:
                             question_answer_pairs.append(question_answer_pair)
@@ -464,11 +466,11 @@ class Quadrants(Question):
         detection_counts = {}
         for detection in detections:
             class_name = detection.label
-            if type(class_name) == torch.Tensor:  # shape == (# of boxes,)
+            if type(class_name) is torch.Tensor:  # shape == (# of boxes,)
                 # need to iterate over the tensor to get the class names
-                for class_name in class_name:
-                    detection_counts[class_name] = (
-                        detection_counts.get(class_name, 0) + 1
+                for single_class_name in class_name:
+                    detection_counts[single_class_name] = (
+                        detection_counts.get(single_class_name, 0) + 1
                     )
             else:
                 detection_counts[class_name] = detection_counts.get(class_name, 0) + 1
@@ -480,12 +482,12 @@ class Quadrants(Question):
         question_answer_pairs = []
         for detection in detections:
             class_name = detection.label
-            if type(class_name) == torch.Tensor:  # shape == (# of boxes,)
+            if type(class_name) is torch.Tensor:  # shape == (# of boxes,)
                 # need to iterate over the tensor to get the class names
-                for class_name in class_name:
-                    if class_name in single_detections:
+                for single_class_name in class_name:
+                    if single_class_name in single_detections:
                         question_answer_pair = self._question_answer(
-                            image, class_name, detection
+                            image, single_class_name, detection
                         )
                         if question_answer_pair is not None:
                             question_answer_pairs.append(question_answer_pair)
@@ -501,7 +503,7 @@ class Quadrants(Question):
 
 
 class LargestAppearance(Question):
-    def __init__(self) -> None:
+    def __init__(self, threshold: float = 0.3) -> None:
         super().__init__(
             question="Which kind of object appears the largest in the image?",
             variables=[],
@@ -511,6 +513,7 @@ class LargestAppearance(Question):
                 ),
             ],
         )
+        self.threshold = threshold
 
     def apply(
         self,
@@ -527,6 +530,19 @@ class LargestAppearance(Question):
         # the same logic should apply here regardless of detections being a tensor or not
         areas = [detection.get_area() for detection in detections]
         largest_detection = detections[torch.argmax(torch.stack(areas))]
+        second_largest_detection = detections[
+            torch.argsort(torch.stack(areas).squeeze())[-2]
+        ]
+
+        # check if the largest detection is at least 30% larger than the second largest
+        if not (
+            largest_detection.get_area().item()
+            > (1 + self.threshold) * second_largest_detection.get_area().item()
+        ):
+            logger.debug(
+                f"Largest detection is not at least {self.threshold:.2%} larger than the second largest"
+            )
+            return []
 
         question = self.question
         answer = str(largest_detection.label)
@@ -559,11 +575,11 @@ class MostAppearance(Question):
         detections_counts = {}
         for detection in detections:
             class_name = detection.label
-            if type(class_name) == torch.Tensor:  # shape == (# of boxes,)
+            if type(class_name) is torch.Tensor:  # shape == (# of boxes,)
                 # need to iterate over the tensor to get the class names
-                for class_name in class_name:
-                    detections_counts[class_name] = (
-                        detections_counts.get(class_name, 0) + 1
+                for single_class_name in class_name:
+                    detections_counts[single_class_name] = (
+                        detections_counts.get(single_class_name, 0) + 1
                     )
             else:
                 detections_counts[class_name] = detections_counts.get(class_name, 0) + 1
@@ -607,11 +623,11 @@ class LeastAppearance(Question):
         detections_counts = {}
         for detection in detections:
             class_name = detection.label
-            if type(class_name) == torch.Tensor:  # shape == (# of boxes,)
+            if type(class_name) is torch.Tensor:  # shape == (# of boxes,)
                 # need to iterate over the tensor to get the class names
-                for class_name in class_name:
-                    detections_counts[class_name] = (
-                        detections_counts.get(class_name, 0) + 1
+                for single_class_name in class_name:
+                    detections_counts[single_class_name] = (
+                        detections_counts.get(single_class_name, 0) + 1
                     )
             else:
                 detections_counts[class_name] = detections_counts.get(class_name, 0) + 1
@@ -726,7 +742,7 @@ class RightOf(Question):
 
                 # check if the right most detection of obj_1 is to the right
                 # of the left most detection of obj_2
-                if not (left_most_bbox[2] < right_most_bbox[0]):  # not (x2 < x1)
+                if not (right_most_bbox[2] < left_most_bbox[0]):  # not (x2 < x1)
                     continue
 
                 # and non-overlapping
@@ -806,7 +822,7 @@ class LeftMost(Question):
         flattened_detections = []
         for detection in detections:
             curr_bbox = detection.as_xyxy().squeeze(0)
-            if type(detection.label) == torch.Tensor:
+            if type(detection.label) is torch.Tensor:
                 for i in range(detection.label.shape[0]):
                     label = detection.label[i]
                     curr_bbox = curr_bbox[i]
@@ -891,7 +907,7 @@ class RightMost(Question):
         flattened_detections = []
         for detection in detections:
             curr_bbox = detection.as_xyxy().squeeze(0)
-            if type(detection.label) == torch.Tensor:
+            if type(detection.label) is torch.Tensor:
                 for i in range(detection.label.shape[0]):
                     label = detection.label[i]
                     curr_bbox = curr_bbox[i]
@@ -957,11 +973,11 @@ class HowMany(Question):
         detection_counts = {}
         for detection in detections:
             class_name = detection.label
-            if type(class_name) == torch.Tensor:  # shape == (# of boxes,)
+            if type(class_name) is torch.Tensor:  # shape == (# of boxes,)
                 # need to iterate over the tensor to get the class names
-                for class_name in class_name:
-                    detection_counts[class_name] = (
-                        detection_counts.get(class_name, 0) + 1
+                for single_class_name in class_name:
+                    detection_counts[single_class_name] = (
+                        detection_counts.get(single_class_name, 0) + 1
                     )
             else:
                 detection_counts[class_name] = detection_counts.get(class_name, 0) + 1

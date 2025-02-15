@@ -1,3 +1,5 @@
+import logging
+
 import torchvision.transforms as transforms
 from scenic_reasoning.data.ImageLoader import (
     Bdd100kDataset,
@@ -25,6 +27,13 @@ from scenic_reasoning.utilities.common import (
     yolo_waymo_transform,
 )
 
+# Configure logging
+logging.basicConfig(
+    filename="test_questions.log",
+    level=logging.DEBUG,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+
 NUM_EXAMPLES_TO_SHOW = 3
 BATCH_SIZE = 1
 
@@ -35,16 +44,28 @@ bdd = Bdd100kDataset(
     use_original_categories=False,
     use_extended_annotations=False,
 )
+bdd_original = Bdd100kDataset(
+    split="val",
+    use_original_categories=True,
+    use_extended_annotations=False,
+)
 
 niu = NuImagesDataset(
-    split="test", transform=lambda i, l: yolo_nuscene_transform(i, l, (768, 1280))
+    split="val", transform=lambda i, l: yolo_nuscene_transform(i, l, (768, 1280))
+)
+niu_original = NuImagesDataset(
+    split="val",
 )
 
 waymo = WaymoDataset(
-    split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, stride=32)
+    split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, (640, 1333))
+)
+waymo_original = WaymoDataset(
+    split="validation",
 )
 
-my_dataset = bdd
+my_dataset = waymo
+original_dataset = waymo_original
 
 q_list = [
     Quadrants(2, 2),
@@ -65,12 +86,17 @@ for i in range(10):
     image = data["image"]
     image = transforms.ToPILImage()(image)
     labels = data["labels"]
+    # let's filter out labels that are really small.
+    # say anything with area less than 1000 pixels
+    threshold = 500
+    print("Num labels before filtering: ", len(labels))
+    labels = list(filter(lambda x: x.get_area().item() > threshold, labels))
+    print("Num labels after filtering: ", len(labels))
     at_least_one_was_applicable = False
     for q in q_list:
         if q.is_applicable(image, labels):
             qa_list = q.apply(image, labels)
             if len(qa_list) == 0:
-
                 print(str(q) + "\tIs applicable but no questions\n")
                 continue
 
@@ -80,6 +106,18 @@ for i in range(10):
         else:
             print(q, "Not applicable")
     if at_least_one_was_applicable:
-        ObjectDetectionUtils.show_image_with_detections(image, labels)
+        og_data = original_dataset[i]
+        og_image = og_data["image"]
+        og_image = transforms.ToPILImage()(og_image)
+        og_labels = og_data["labels"]
+
+        # ObjectDetectionUtils.show_image_with_detections(
+        #     og_image,
+        #     og_labels,
+        # )
+        # ObjectDetectionUtils.show_image_with_detections(
+        #     image,
+        #     labels,
+        # )
 
     print("==================================================================")
