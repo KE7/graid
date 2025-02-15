@@ -57,23 +57,23 @@ def convert_to_xyxy(center_x: int, center_y: int, width: int, height: int):
     return x1, y1, x2, y2
 
 
-def yolo_waymo_transform(image, labels, stride=32):
-    orig_H, orig_W = image.shape[1:]
+# def yolo_waymo_transform(image, labels, stride=32):
+#     orig_H, orig_W = image.shape[1:]
 
-    C, H, W = image.shape
-    new_H = (H + stride - 1) // stride * stride
-    new_W = (W + stride - 1) // stride * stride
-    image = image.permute(1, 2, 0).cpu().numpy()
-    resized_image = cv2.resize(image, (new_W, new_H), interpolation=cv2.INTER_LINEAR)
-    resized_image = torch.from_numpy(resized_image).permute(2, 0, 1).float()
+#     C, H, W = image.shape
+#     new_H = (H + stride - 1) // stride * stride
+#     new_W = (W + stride - 1) // stride * stride
+#     image = image.permute(1, 2, 0).cpu().numpy()
+#     resized_image = cv2.resize(image, (new_W, new_H), interpolation=cv2.INTER_LINEAR)
+#     resized_image = torch.from_numpy(resized_image).permute(2, 0, 1).float()
 
-    scale_x = new_W / orig_W
-    scale_y = new_H / orig_H
-    for label in labels:
-        x1, y1, x2, y2 = label["bbox"]
-        label["bbox"] = (x1 * scale_x, y1 * scale_y, x2 * scale_x, y2 * scale_y)
+#     scale_x = new_W / orig_W
+#     scale_y = new_H / orig_H
+#     for label in labels:
+#         x1, y1, x2, y2 = label["bbox"]
+#         label["bbox"] = (x1 * scale_x, y1 * scale_y, x2 * scale_x, y2 * scale_y)
 
-    return resized_image, labels
+#     return resized_image, labels
 
 
 def _get_bbox(label: Dict[str, Any], box_key: str) -> List[float]:
@@ -111,6 +111,7 @@ def yolo_transform(
     labels: List[Dict[str, Any]],
     new_shape: Tuple[int, int],
     box_key: str,
+    scale: float = 1.0,
 ) -> Tuple[torch.Tensor, List[Dict[str, Any]]]:
     """
     A unified transform function that applies a letterbox transform to the image
@@ -145,7 +146,7 @@ def yolo_transform(
 
     # Convert back to torch, scale to [0,1] range
     image_out = (
-        torch.tensor(updated_labels["img"]).permute(2, 0, 1).to(torch.float32) / 255.0
+        torch.tensor(updated_labels["img"]).permute(2, 0, 1).to(torch.float32) / scale
     )
 
     # Update label bounding boxes based on the new ratio and padding
@@ -165,10 +166,16 @@ def yolo_transform(
 def yolo_bdd_transform(
     image: torch.Tensor, labels: List[dict], new_shape: Tuple[int, int]
 ):
-    return yolo_transform(image, labels, new_shape, "box2d")
+    return yolo_transform(image, labels, new_shape, "box2d", scale=255.0)
 
 
 def yolo_nuscene_transform(
     image: torch.Tensor, labels: List[dict], new_shape: Tuple[int, int]
 ):
-    return yolo_transform(image, labels, new_shape, "bbox")
+    return yolo_transform(image, labels, new_shape, "bbox", scale=255.0)
+
+
+def yolo_waymo_transform(
+    image: torch.Tensor, labels: List[dict], new_shape: Tuple[int, int]
+):
+    return yolo_transform(image, labels, new_shape, "bbox", scale=1.0)

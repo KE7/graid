@@ -1,6 +1,7 @@
 import base64
 import io
 import json
+import logging
 import os
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
@@ -22,6 +23,8 @@ from torch import Tensor
 from torch.utils.data import Dataset
 from torchvision import transforms
 from torchvision.io import decode_image
+
+logger = logging.getLogger(__name__)
 
 
 class ImageDataset(Dataset):
@@ -866,7 +869,6 @@ class NuImagesDataset_seg(ImageDataset):
         )
 
     def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
-        print(f"__getitem__ entered, {len(self.img_labels)}")
         img_filename = self.img_labels[idx]["filename"]
         labels = self.img_labels[idx]["labels"]
         timestamp = self.img_labels[idx]["timestamp"]
@@ -1002,7 +1004,7 @@ class WaymoDataset(ImageDataset):
 
             # Check if the box file exists
             if not os.path.exists(box_path):
-                print(f"Box file not found for {image_file}: {box_path}")
+                logger.warning(f"Box file not found for {image_file}: {box_path}")
                 continue
 
             # Load the dataframes
@@ -1029,9 +1031,9 @@ class WaymoDataset(ImageDataset):
             )
 
             if merged_df.empty:
-                print(f"No matches found for {image_file} and {box_file}.")
+                logger.warning(f"No matches found for {image_file} and {box_file}.")
             else:
-                print(f"Merged DataFrame for {image_file}: {merged_df.shape}\n")
+                logger.debug(f"Merged DataFrame for {image_file}: {merged_df.shape}\n")
                 merged_dfs.append(merged_df)
 
         # Group dataframes by unique identifiers and process them
@@ -1258,12 +1260,12 @@ class WaymoDataset_seg(ImageDataset):
             )
 
             if merged_df.empty:
-                print(f"No matches found for {image_file} and {seg_file}.")
+                logger.warning(f"No matches found for {image_file} and {seg_file}.")
             else:
-                print(f"Merged DataFrame for {image_file}: {merged_df.shape}\n")
+                logger.debug(f"Merged DataFrame for {image_file}: {merged_df.shape}\n")
                 merged_dfs.append(merged_df)
 
-        print(f"{num_empty}/{len(camera_image_files)} are empty")
+        logger.debug(f"{num_empty}/{len(camera_image_files)} are empty")
 
         # Group dataframes by unique identifiers and process them
         for merged_df in merged_dfs:
