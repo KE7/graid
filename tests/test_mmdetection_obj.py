@@ -31,7 +31,7 @@ bdd = Bdd100kDataset(
 niu = NuImagesDataset(split='test')
 
 waymo = WaymoDataset(
-    split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, stride=32)
+    split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, (640, 1333))
 )
 
 config_file = '../install/mmdetection/configs/mask_rcnn/mask-rcnn_r50-caffe_fpn_ms-poly-3x_coco.py'

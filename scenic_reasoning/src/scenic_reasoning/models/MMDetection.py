@@ -156,6 +156,9 @@ class MMdetection_obj(ObjectDetectionModelI):
         image_hw = image_list[0].shape[:-1]
         predictions = inference_detector(self._model, image_list)
 
+        import pdb
+        pdb.set_trace()
+
         all_objects = []
 
         for pred in predictions:
@@ -228,6 +231,9 @@ class MMdetection_seg(InstanceSegmentationModelI):
     def __init__(self, config_file: str, checkpoint_file, **kwargs) -> None:
         device = "cpu"   # Using mps will error, see: https://github.com/open-mmlab/mmdetection/issues/11794
         self._model = init_detector(config_file, checkpoint_file, device=device)
+
+        # set class_agnostic to True to avoid overlaps: https://github.com/open-mmlab/mmdetection/issues/6254
+        self._model.test_cfg.rcnn.nms.class_agnostic=True
 
     def identify_for_image(
         self,

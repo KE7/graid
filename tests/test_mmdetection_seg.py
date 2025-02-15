@@ -9,14 +9,14 @@ from ultralytics.data.augment import LetterBox
 shape_transform = LetterBox(new_shape=(768, 1280))
 
 NUM_EXAMPLES_TO_SHOW = 3
-BATCH_SIZE = 1
+BATCH_SIZE = 2
 
 bdd = Bdd10kDataset(
     split="val", 
 )
 
 waymo = WaymoDataset_seg(
-    split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, stride=32)
+    split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, (640, 1333))
 )
 
 nuscene = NuImagesDataset_seg(
@@ -42,4 +42,5 @@ for d in [bdd]:
             extended_summary=True,
             ), 
         NUM_EXAMPLES_TO_SHOW):
+        print(results)
         print("")
