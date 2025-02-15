@@ -1075,6 +1075,7 @@ class WaymoDataset(ImageDataset):
                     bbox=list(bbox),
                     image_hw=image.shape,
                     attributes=[attributes],
+                    bbox_format=BBox_Format.XYXY,
                 )
                 results.append(result)
 
@@ -1109,6 +1110,8 @@ class WaymoDataset(ImageDataset):
         image = transforms.ToTensor()(Image.open(io.BytesIO(img_bytes)))
 
         # Apply transformations if any
+
+        print("!!!!!!!!!!!!!!!!!!", image.shape)
 
         if self.transform:
             image, labels = self.transform(image, labels)

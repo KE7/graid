@@ -42,7 +42,7 @@ checkpoint_file = '../install/mmdetection/checkpoints/mask_rcnn_r50_caffe_fpn_ms
 model = MMdetection_obj(config_file, checkpoint_file)
 
 
-for d in [bdd, niu, waymo]:
+for d in [waymo]:
         
     measurements = ObjectDetectionMeasurements(model, d, batch_size=BATCH_SIZE, collate_fn=lambda x: x) # hacky way to avoid RuntimeError: each element in list of batch should be of equal size
 

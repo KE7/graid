@@ -27,6 +27,7 @@ bdd = Bdd100kDataset(
 nu = NuImagesDataset(split="test", transform=lambda i, l: yolo_nuscene_transform(i, l, new_shape=(768, 1280)))
 
 waymo = WaymoDataset(split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, stride=32))
+# waymo = WaymoDataset(split="validation")
 
 # https://docs.ultralytics.com/models/yolov5/#performance-metrics
 model = Yolo(model="yolo11n.pt")
