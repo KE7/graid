@@ -2,7 +2,7 @@ from scenic_reasoning.data.ImageLoader import Bdd10kDataset, NuImagesDataset_seg
 from scenic_reasoning.models.MMDetection import MMdetection_seg
 from scenic_reasoning.measurements.InstanceSegmentation import InstanceSegmentationMeasurements
 
-from scenic_reasoning.utilities.common import get_default_device
+from scenic_reasoning.utilities.common import get_default_device, yolo_waymo_transform
 from itertools import islice
 from ultralytics.data.augment import LetterBox
 
@@ -15,7 +15,9 @@ bdd = Bdd10kDataset(
     split="val", 
 )
 
-waymo = WaymoDataset_seg(split="validation")
+waymo = WaymoDataset_seg(
+    split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, stride=32)
+)
 
 nuscene = NuImagesDataset_seg(
     split="test"
