@@ -119,7 +119,7 @@ def yolo_transform(
     """
     # Example: shape_transform is a letterbox transform that expects
     #   updated_labels["img"], updated_labels["instances"].bboxes, etc.
-    shape_transform = LetterBox(new_shape=new_shape)
+    shape_transform = LetterBox(new_shape=new_shape, scaleup=False)
 
     # Original image dimensions
     orig_H, orig_W = image.shape[1:]

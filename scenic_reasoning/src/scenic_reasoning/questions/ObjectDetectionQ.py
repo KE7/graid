@@ -332,6 +332,7 @@ class IsObjectCentered(Question):
 
 
 class WidthVsHeight(Question):
+    # TODO: try a bunch of different thresholds for width vs height
     def __init__(self, threshold: float = 0.15) -> None:
         super().__init__(
             question="Is the width of the {object_1} larger than the height?",
@@ -345,8 +346,8 @@ class WidthVsHeight(Question):
     def _question_answer(
         self, class_name: str, detection: ObjectDetectionResultI
     ) -> Optional[Tuple[str, str]]:
-        width = detection.as_xyxy()[0][2] - detection.as_xyxy()[0][0]
-        height = detection.as_xyxy()[0][3] - detection.as_xyxy()[0][1]
+        width = detection.as_xywh().squeeze()[2].item()
+        height = detection.as_xywh().squeeze()[3].item()
         question = self.question.format(object_1=class_name)
         # TODO: verify this design decision manually
         # if the image is roughly square (within 10% of each other), return None
@@ -529,7 +530,7 @@ class LargestAppearance(Question):
         # the same logic should apply here regardless of detections being a tensor or not
         areas = [detection.get_area() for detection in detections]
         largest_detection = detections[torch.argmax(torch.stack(areas))]
-        second_largest_detection = detections[torch.argsort(torch.stack(areas))[-2]]
+        second_largest_detection = detections[torch.argsort(torch.stack(areas).squeeze())[-2]]
 
         # check if the largest detection is at least 30% larger than the second largest
         if not (
@@ -537,7 +538,7 @@ class LargestAppearance(Question):
             > (1 + self.threshold) * second_largest_detection.get_area().item()
         ):
             logger.debug(
-                "Largest detection is not at least 30% larger than the second largest"
+                f"Largest detection is not at least {self.threshold:.2%} larger than the second largest"
             )
             return []
 
