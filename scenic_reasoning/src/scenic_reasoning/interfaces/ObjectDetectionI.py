@@ -3,6 +3,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Dict, Iterator, List, Optional, Tuple, Union
 
+import cv2
 import numpy as np
 import torch
 from detectron2.structures.boxes import Boxes as Detectron2Boxes
@@ -283,47 +284,84 @@ class ObjectDetectionUtils:
 
         return metric.compute()
 
-    def show_image_with_detections(
-        image: Image, detections: List[ObjectDetectionResultI]
-    ):
-        from PIL import ImageDraw
+    def show_image_with_detections(image, detections):
+        # Convert PIL image to a NumPy array in OpenCV's BGR format
+        cv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
 
-        copied_image = image.copy()
-        draw = ImageDraw.Draw(copied_image)
+        # Make a copy to draw bounding boxes on
+        cv_image_with_boxes = cv_image.copy()
 
+        # Draw bounding boxes and labels on the copy
         for detection in detections:
             bbox = detection.as_xyxy()
+
+            # Handle cases where bbox might have multiple boxes
             if bbox.shape[0] > 1:
                 for i, box in enumerate(bbox):
-                    x1, y1, x2, y2 = (
-                        int(box[0].item()),
-                        int(box[1].item()),
-                        int(box[2].item()),
-                        int(box[3].item()),
-                    )
+                    x1, y1, x2, y2 = map(int, box)
                     score = detection.score[i].item()
-                    label = detection.label[i].item()
-                    draw.rectangle([x1, y1, x2, y2], outline="red", width=3)
-                    draw.text((x1, y1), f"{label}: {score:.2f}", fill="red")
-            else:
-                x1, y1, x2, y2 = (
-                    int(bbox[0][0].item()),
-                    int(bbox[0][1].item()),
-                    int(bbox[0][2].item()),
-                    int(bbox[0][3].item()),
-                )
-                score = detection.score
-                label = detection.label
-                if score > 0.8:
-                    box_color = "green"
-                elif score > 0.5:
-                    box_color = "yellow"
-                else:
-                    box_color = "red"
-                draw.rectangle([x1, y1, x2, y2], outline=box_color, width=2)
-                draw.text((x1, y1), f"{label}: {score:.2f}", fill="white")
+                    label = str(detection.label[i].item())
 
-        copied_image.show()
+                    # Choose a color and draw rectangle
+                    color = (0, 0, 255)  # BGR red
+                    cv2.rectangle(cv_image_with_boxes, (x1, y1), (x2, y2), color, 2)
+
+                    # Put label text above the box
+                    cv2.putText(
+                        cv_image_with_boxes,
+                        f"{label}: {score:.2f}",
+                        (x1, max(y1 - 5, 15)),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5,
+                        color,
+                        1,
+                    )
+            else:
+                x1, y1, x2, y2 = map(int, bbox[0])
+                score = detection.score
+                label = str(detection.label)
+
+                # Pick a color based on the score
+                if score > 0.8:
+                    color = (0, 255, 0)  # green
+                elif score > 0.5:
+                    color = (0, 255, 255)  # yellow
+                else:
+                    color = (0, 0, 255)  # red
+
+                # Draw bounding box
+                cv2.rectangle(cv_image_with_boxes, (x1, y1), (x2, y2), color, 2)
+                # Put label text above the box
+                cv2.putText(
+                    cv_image_with_boxes,
+                    f"{label}: {score:.2f}",
+                    (x1, max(y1 - 5, 15)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (255, 255, 255),
+                    1,
+                )
+
+        # Flag to track whether we show boxes or not
+        show_boxes = True
+
+        while True:
+            # Display the appropriate image
+            if show_boxes:
+                cv2.imshow("Detections", cv_image_with_boxes)
+            else:
+                cv2.imshow("Detections", cv_image)
+
+            key = cv2.waitKey(1) & 0xFF
+
+            if key == 27:  # ESC
+                # Close window
+                break
+            elif key == 32:  # space
+                # Toggle showing bounding boxes
+                show_boxes = not show_boxes
+
+        cv2.destroyAllWindows()
 
 
 class ObjectDetectionModelI(ABC):
