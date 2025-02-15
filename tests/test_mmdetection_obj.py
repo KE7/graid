@@ -2,7 +2,7 @@ from itertools import islice
 from scenic_reasoning.data.ImageLoader import Bdd100kDataset, NuImagesDataset, WaymoDataset
 from scenic_reasoning.models.MMDetection import MMdetection_obj
 from scenic_reasoning.measurements.ObjectDetection import ObjectDetectionMeasurements
-from scenic_reasoning.utilities.common import get_default_device, yolo_transform, maskrcnn_waymo_transform
+from scenic_reasoning.utilities.common import yolo_waymo_transform
 import torch
 from ultralytics.data.augment import LetterBox
 
@@ -24,17 +24,15 @@ def transform_image_for_yolo(image : torch.Tensor):
 
 bdd = Bdd100kDataset(
     split="val", 
-    # YOLO requires images to be 640x640 or 768x1280, 
-    # but BDD100K images are 720x1280 so we need to resize
-    # transform=transform_image_for_yolo,  
     use_original_categories=False,
     use_extended_annotations=False,
 )
 
 niu = NuImagesDataset(split='test')
 
-# waymo = WaymoDataset(split="validation", transform=lambda i, l: maskrcnn_waymo_transform(i, l, new_shape=(1333, 640)))
-waymo = WaymoDataset(split="validation", transform=lambda i, l: maskrcnn_waymo_transform(i, l, (640, 1333), "bbox"))
+waymo = WaymoDataset(
+    split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, stride=32)
+)
 
 config_file = '../install/mmdetection/configs/mask_rcnn/mask-rcnn_r50-caffe_fpn_ms-poly-3x_coco.py'
 checkpoint_file = '../install/mmdetection/checkpoints/mask_rcnn_r50_caffe_fpn_mstrain-poly_3x_coco_bbox_mAP-0.408__segm_mAP-0.37_20200504_163245-42aa3d00.pth'
