@@ -187,4 +187,4 @@ def yolo_nuscene_transform(
 def yolo_waymo_transform(
     image: torch.Tensor, labels: List[dict], new_shape: Tuple[int, int]
 ):
-    return yolo_transform(image, labels, new_shape, "bbox", scale=1.0)
+    return yolo_transform(image, labels, new_shape, "bbox", scale=(1.0 / 255.0))

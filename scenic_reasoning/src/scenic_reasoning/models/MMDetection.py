@@ -16,15 +16,11 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
     ObjectDetectionResultI,
     ObjectDetectionUtils
 )
-from scenic_reasoning.utilities.common import get_default_device
-from ultralytics import YOLO
 from mmdet.apis import DetInferencer, init_detector, inference_detector
 from mmengine.utils import get_git_hash
 from mmengine.utils.dl_utils import collect_env as collect_base_env
 from mmdet.registry import VISUALIZERS
 import mmdet
-import mmcv
-import mmengine
 
 # https://github.com/HumanSignal/label-studio/blob/develop/docs/source/tutorials/object-detector.md
 coco_label = {
@@ -150,14 +146,8 @@ class MMdetection_obj(ObjectDetectionModelI):
 
         # image is batched input. MMdetection only supports Union[InputType, Sequence[InputType]], where InputType = Union[str, np.ndarray]
         image_list = [image[i].permute(1, 2, 0).cpu().numpy() for i in range(len(image))]
-
-        if image_list[0].dtype == np.float32:
-            image_list = [i * 255 for i in image_list]
         image_hw = image_list[0].shape[:-1]
         predictions = inference_detector(self._model, image_list)
-
-        import pdb
-        pdb.set_trace()
 
         all_objects = []
 

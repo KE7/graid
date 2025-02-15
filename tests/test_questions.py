@@ -111,13 +111,13 @@ for i in range(10):
         og_image = transforms.ToPILImage()(og_image)
         og_labels = og_data["labels"]
 
-        # ObjectDetectionUtils.show_image_with_detections(
-        #     og_image,
-        #     og_labels,
-        # )
-        # ObjectDetectionUtils.show_image_with_detections(
-        #     image,
-        #     labels,
-        # )
+        ObjectDetectionUtils.show_image_with_detections(
+            og_image,
+            og_labels,
+        )
+        ObjectDetectionUtils.show_image_with_detections(
+            image,
+            labels,
+        )
 
     print("==================================================================")

@@ -1,7 +1,7 @@
 import tempfile
-from itertools import islice
+import numpy as np
 from typing import Callable, Dict, Iterator, List, Optional, Tuple, Union
-
+from PIL import Image
 import torch
 from scenic_reasoning.data.ImageLoader import Bdd100kDataset, ImageDataset
 from scenic_reasoning.interfaces.ObjectDetectionI import (
@@ -10,6 +10,7 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
     ObjectDetectionUtils,
 )
 from scenic_reasoning.models.UltralyticsYolo import Yolo
+from scenic_reasoning.models.MMDetection import MMdetection_obj
 from scenic_reasoning.utilities.common import get_default_device
 from torch.utils.data import DataLoader
 from ultralytics.engine.results import Results
@@ -79,6 +80,9 @@ class ObjectDetectionMeasurements:
                 # https://github.com/ultralytics/ultralytics/issues/9912
                 x = x[:, [2, 1, 0], ...]
                 prediction = self.model.identify_for_image(x, debug=debug, **kwargs)
+            # elif isinstance(self.model, MMdetection_obj):
+            #     x = x[:, [2, 1, 0], ...]
+            #     prediction = self.model.identify_for_image(x, debug=debug, **kwargs)
             else:
                 self.model.to(device=get_default_device())
                 prediction = self.model.identify_for_image(x, debug=debug)
@@ -128,16 +132,12 @@ class ObjectDetectionMeasurements:
             boxes.append(torch.tensor(box))
 
         boxes = torch.stack(boxes)
-
-        im = Results(
-            orig_img=image.unsqueeze(0),  # Add batch dimension
-            path=tempfile.mktemp(suffix=".jpg"),
-            names=names,
-            boxes=boxes,
+        ObjectDetectionUtils.show_image_with_detections(
+            Image.fromarray((image.permute(1, 2, 0).cpu().numpy()).astype(np.uint8)),
+            gt,
         )
-        im.show()
 
-        return im
+        return None
 
     def _calculate_measurements(
         self,
