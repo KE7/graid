@@ -116,11 +116,13 @@ class ObjDectDatasetBuilder(Dataset):
                             self.dataset[table_name][batch_paths[j]] = {
                                 "questions": qa_list,
                                 "split": self.split,
+                                "num of labels": len(lbl),
                             }
                         else:
                             self.dataset[table_name][batch_paths[j]] = {
                                 "questions": "Question not applicable",
                                 "split": self.split,
+                                "num of labels": len(lbl),
                             }
 
                     for table_name in self.dataset:
