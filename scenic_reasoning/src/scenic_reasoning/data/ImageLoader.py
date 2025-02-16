@@ -26,6 +26,7 @@ import torch
 from scenic_reasoning.utilities.common import convert_to_xyxy, read_image
 import base64
 from pycocotools import mask as cocomask
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -542,18 +543,18 @@ class NuImagesDataset(ImageDataset):
 
     def __init__(
         self,
-        split: Union[Literal["train", "val", "test"]] = "train",
-        size: Union[Literal["mini", "full"]] = "mini",
+        split: Union[Literal["train", "val", "test", "mini"]] = "val",
+        size: Union[Literal["mini", "full"]] = "full",
         **kwargs,
     ):
         from nuimages import NuImages
 
         root_dir = project_root_dir() / "data" / "nuimages" / size
         img_dir = root_dir
-        obj_annotations_file = root_dir / f"v1.0-{size}" / "object_ann.json"
-        categories_file = root_dir / f"v1.0-{size}" / "category.json"
-        sample_data_labels_file = root_dir / f"v1.0-{size}" / "sample_data.json"
-        attributes_file = root_dir / f"v1.0-{size}" / "attribute.json"
+        obj_annotations_file = root_dir / f"v1.0-{split}" / "object_ann.json"
+        categories_file = root_dir / f"v1.0-{split}" / "category.json"
+        sample_data_labels_file = root_dir / f"v1.0-{split}" / "sample_data.json"
+        attributes_file = root_dir / f"v1.0-{split}" / "attribute.json"
 
         self.sample_data_labels = json.load(open(sample_data_labels_file))
         self.attribute_labels = json.load(open(attributes_file))
@@ -561,16 +562,20 @@ class NuImagesDataset(ImageDataset):
         self.obj_annotations = json.load(open(obj_annotations_file))
 
         self.nuim = NuImages(
-            dataroot=img_dir, version=f"v1.0-{size}", verbose=True, lazy=True
+            dataroot=img_dir, version=f"v1.0-{split}", verbose=False, lazy=True  #verbose off to avoid excessive print statement
         )
 
+        empty_count = 0
         img_labels = []
-        for i in range(len(self.nuim.sample)):
+        for i in tqdm(range(len(self.nuim.sample)), desc="Processing NuImage dataset..."):
             # see: https://www.nuscenes.org/tutorials/nuimages_tutorial.html
             sample = self.nuim.sample[i]
             sample_token = sample["token"]
             key_camera_token = sample["key_camera_token"]
-            object_tokens, surface_tokens = self.nuim.list_anns(sample_token)
+            object_tokens, surface_tokens = self.nuim.list_anns(sample_token, verbose=False)   #verbose off to avoid excessive print statement
+            if object_tokens == []:
+                empty_count += 1
+                continue
 
             object_data = []
             for object_token in object_tokens:
@@ -599,7 +604,9 @@ class NuImagesDataset(ImageDataset):
             )
 
             # TODO: add error catching logic in case of empty token or token mismatch.
-
+        
+        print(f"{split} has {empty_count} out of {len(self.nuim.sample)} empty samples.")
+        
         def merge_transform(
             image: Tensor, labels: List[Dict[str, Any]], timestamp: str
         ) -> Tuple[

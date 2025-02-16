@@ -14,6 +14,7 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
     BBox_Format,
     ObjectDetectionModelI,
     ObjectDetectionResultI,
+    ObjectDetectionUtils
 )
 from scenic_reasoning.utilities.common import get_default_device
 from ultralytics import YOLO
@@ -57,9 +58,6 @@ class Yolo(ObjectDetectionModelI):
             boxes = y_hat.boxes
             names = y_hat.names
 
-            if debug:
-                y_hat.show()
-
             if boxes is None or len(boxes) == 0:
                 formatted_results.append(None)
                 continue
@@ -77,6 +75,14 @@ class Yolo(ObjectDetectionModelI):
                 result_for_image.append(odr)
 
             formatted_results.append(result_for_image)
+        
+        if debug:
+            image_list = [image[i].permute(1, 2, 0).cpu().numpy() for i in range(len(image))]
+            for i in range(len(image_list)):
+                curr_img = image_list[i]
+                if curr_img.dtype == np.float32:
+                    curr_img = curr_img.astype(np.uint8)
+                ObjectDetectionUtils.show_image_with_detections(Image.fromarray(curr_img), formatted_results[i])
 
         return formatted_results
 

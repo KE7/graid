@@ -24,7 +24,7 @@ bdd = Bdd100kDataset(
     use_extended_annotations=False,
 )
 
-nu = NuImagesDataset(split="test", transform=lambda i, l: yolo_nuscene_transform(i, l, new_shape=(768, 1280)))
+nu = NuImagesDataset(split="val", size="full", transform=lambda i, l: yolo_nuscene_transform(i, l, new_shape=(768, 1280)))
 
 waymo = WaymoDataset(split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, stride=32))
 # waymo = WaymoDataset(split="validation")
@@ -32,7 +32,7 @@ waymo = WaymoDataset(split="validation", transform=lambda i, l: yolo_waymo_trans
 # https://docs.ultralytics.com/models/yolov5/#performance-metrics
 model = Yolo(model="yolo11n.pt")
 
-for d in [waymo]:
+for d in [nu]:
 
     measurements = ObjectDetectionMeasurements(
         model, d, batch_size=BATCH_SIZE, collate_fn=lambda x: x
