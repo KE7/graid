@@ -343,6 +343,9 @@ class WidthVsHeight(Question):
         )
         self.threshold = threshold
 
+    def __repr__(self):
+        return f"Question: {self.question} (threshold: {self.threshold})"
+
     def _question_answer(
         self, class_name: str, detection: ObjectDetectionResultI
     ) -> Optional[Tuple[str, str]]:
@@ -420,8 +423,6 @@ class Quadrants(Question):
             ],
         )
 
-        # self.question = self.question.format(N=N, M=M)
-
     def _question_answer(
         self, image: Image.Image, class_name: str, detection: ObjectDetectionResultI
     ) -> Optional[Tuple[str, str]]:
@@ -451,7 +452,11 @@ class Quadrants(Question):
             return None
         quadrant = row * self.cols + col + 1
 
-        question = self.question.format(N=self.rows, M=self.cols, object_1=class_name)
+        question = self.question.format(
+            object_1=class_name,
+            N=self.rows,
+            M=self.cols,
+        )
         answer = str(quadrant)
         return (question, answer)
 
@@ -514,6 +519,9 @@ class LargestAppearance(Question):
             ],
         )
         self.threshold = threshold
+
+    def __repr__(self):
+        return f"Question: {self.question} (threshold: {self.threshold})"
 
     def apply(
         self,
@@ -994,7 +1002,6 @@ class HowMany(Question):
 ALL_QUESTIONS = [
     IsObjectCentered,
     WidthVsHeight,
-    Quadrants,
     LargestAppearance,
     MostAppearance,
     LeastAppearance,

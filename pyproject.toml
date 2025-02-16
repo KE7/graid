@@ -16,6 +16,7 @@ transformers = "^4.45.2"
 ultralytics = "^8.3.21"
 opencv-python = "^4.10.0.84"
 torchmetrics = "^1.6.0"
+sqlitedict = "^2.1.0"
 
 
 [tool.poetry.scripts]
