@@ -23,13 +23,12 @@ class ObjDectDatasetBuilder(Dataset):
         "..",
         "data",
         "databases",
-        "object_detection_questions.db",
     )
 
     def __init__(
         self,
         split: list[str] = ["train", "val", "test"],
-        db_path: str = str(DEFAULT_DB_PATH),
+        db_name: str = "object_detection_questions_from_ground_truth",
     ):
         self.split = split
         self.questions = ALL_QUESTIONS
@@ -39,6 +38,7 @@ class ObjDectDatasetBuilder(Dataset):
         self.questions.append(Quadrants(3, 3))
 
         self.dataset = {}
+        db_path = os.path.join(self.DEFAULT_DB_PATH, db_name, ".db")
         for question in self.questions:
             table_name = str(question)
             self.dataset[table_name] = SqliteDict(

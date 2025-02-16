@@ -212,12 +212,12 @@ def _merge_chunks(
             os.remove(chunk_path)
 
 
-def _download_file(url: str, dest_path: str, num_threads: int = 10) -> None:
+def _download_file(url: str, dest_path: str, num_threads: int = 10) -> bool:
     response = requests.head(url)
     file_size = int(response.headers["Content-Length"])
 
     if os.path.exists(dest_path) and os.path.getsize(dest_path) == file_size:
-        return
+        return True
 
     chunk_size = (file_size + num_threads - 1) // num_threads
 
@@ -245,7 +245,7 @@ def _download_file(url: str, dest_path: str, num_threads: int = 10) -> None:
         _merge_chunks(temp_dir, dest_path, num_threads, file_size)
 
     print(f"Download completed: {dest_path}")
-    return
+    return True
 
 
 def _check_md5(file_path: str, expected_md5: str) -> bool:
@@ -372,8 +372,8 @@ def download_bdd(task: Optional[str] = None, split: Optional[str] = None) -> Non
 
     with concurrent.futures.ThreadPoolExecutor() as executor:
         futures = [
-            executor.submit(cleanup, [file_name, file_name + ".md5"])
-            for file_name in files_to_download
+            executor.submit(cleanup, [file_path, file_path + ".md5"])
+            for _, file_path in files_to_download
         ]
         for future in concurrent.futures.as_completed(futures):
             future.result()
@@ -386,7 +386,7 @@ def download_nuscenes(split: Optional[str] = None) -> None:
     if split is None:
         parser = argparse.ArgumentParser()
         parser.add_argument(
-            "--split", type=str, default="mini", help="mini or full", required=True
+            "--split", type=str, help="mini or full", required=True
         )
 
         args = parser.parse_args()
