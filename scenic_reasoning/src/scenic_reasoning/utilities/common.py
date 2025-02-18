@@ -175,7 +175,7 @@ def yolo_transform(
 def yolo_bdd_transform(
     image: torch.Tensor, labels: List[dict], new_shape: Tuple[int, int]
 ):
-    return yolo_transform(image, labels, new_shape, "box2d", scale=255.0)
+    return yolo_transform(image, labels, new_shape, "box2d", scale=1.0)
 
 
 def yolo_nuscene_transform(

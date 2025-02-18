@@ -781,7 +781,7 @@ class NuImagesDataset_seg(ImageDataset):
 
     def __init__(
         self,
-        split: Union[Literal["train", "val", "test"]] = "train",
+        split: Union[Literal["train", "val", "test", "mini"]] = "val",
         size: Union[Literal["mini", "full"]] = "mini",
         **kwargs,
     ):
@@ -790,13 +790,13 @@ class NuImagesDataset_seg(ImageDataset):
 
         root_dir = project_root_dir() / "data" / "nuimages" / size
         img_dir = root_dir
-        mask_annotations_file = root_dir / f"v1.0-{size}" / "object_ann.json"
-        categories_file = root_dir / f"v1.0-{size}" / "category.json"
-        sample_data_labels_file = root_dir / f"v1.0-{size}" / "sample_data.json"
-        attributes_file = root_dir / f"v1.0-{size}" / "attribute.json"
+        mask_annotations_file = root_dir / f"v1.0-{split}" / "object_ann.json"
+        categories_file = root_dir / f"v1.0-{split}" / "category.json"
+        sample_data_labels_file = root_dir / f"v1.0-{split}" / "sample_data.json"
+        attributes_file = root_dir / f"v1.0-{split}" / "attribute.json"
 
         self.nuim = NuImages(
-            dataroot=img_dir, version=f"v1.0-{size}", verbose=True, lazy=True
+            dataroot=img_dir, version=f"v1.0-{split}", verbose=False, lazy=True
         )
 
         self.sample_data_labels = json.load(open(sample_data_labels_file))
@@ -810,7 +810,9 @@ class NuImagesDataset_seg(ImageDataset):
             sample = self.nuim.sample[i]
             sample_token = sample["token"]
             key_camera_token = sample["key_camera_token"]
-            object_tokens, surface_tokens = self.nuim.list_anns(sample_token)
+            object_tokens, surface_tokens = self.nuim.list_anns(sample_token, verbose=False)
+            if object_tokens == []:
+                continue
 
             object_data = []
             for object_token in object_tokens:

@@ -16,7 +16,7 @@ bdd = Bdd10kDataset(
 )
 
 waymo = WaymoDataset_seg(
-    split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, (640, 1333))
+    split="validation", size="full", transform=lambda i, l: yolo_waymo_transform(i, l, (640, 1333))
 )
 
 nuscene = NuImagesDataset_seg(
@@ -29,7 +29,7 @@ checkpoint_file = '../install/mmdetection/checkpoints/mask_rcnn_r50_caffe_fpn_ms
 
 model = MMdetection_seg(config_file, checkpoint_file)
 
-for d in [bdd]:
+for d in [bdd, nuscene, bdd]:
     # https://docs.ultralytics.com/models/yolov5/#performance-metrics
     measurements = InstanceSegmentationMeasurements(model, d, batch_size=BATCH_SIZE, collate_fn=lambda x: x)
     # WARNING ⚠️ imgsz=[720, 1280] must be multiple of max stride 64, updating to [768, 1280]

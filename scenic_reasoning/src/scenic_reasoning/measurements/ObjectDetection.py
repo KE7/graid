@@ -128,6 +128,7 @@ class ObjectDetectionMeasurements:
             boxes.append(torch.tensor(box))
 
         boxes = torch.stack(boxes)
+
         ObjectDetectionUtils.show_image_with_detections(
             Image.fromarray((image.permute(1, 2, 0).cpu().numpy()).astype(np.uint8)),
             gt,
