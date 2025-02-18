@@ -3,6 +3,7 @@ import concurrent.futures
 import hashlib
 import os
 import platform
+import shutil
 import subprocess
 import tempfile
 import zipfile
@@ -285,6 +286,12 @@ def download_and_check_md5(
 def unzip_file(zip_path: str, extract_to: str) -> None:
     print(f"Extracting {zip_path} to {os.path.abspath(extract_to)}")
     with zipfile.ZipFile(zip_path, "r") as zip_ref:
+        for member in zip_ref.namelist():
+            extracted_path = os.path.join(extract_to, member)
+            if os.path.isdir(extracted_path):
+                shutil.rmtree(extracted_path, ignore_errors=True)
+            elif os.path.isfile(extracted_path):
+                os.remove(extracted_path)
         zip_ref.extractall(extract_to)
 
 
