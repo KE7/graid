@@ -21,7 +21,7 @@ BATCH_SIZE = 1
 
 bdd = Bdd10kDataset(split="val", transform=lambda i, l: yolo_bdd_transform(i, l, new_shape=(768, 1280)))
 
-waymo = WaymoDataset_seg(split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, stride=32))
+waymo = WaymoDataset_seg(split="validation", transform=lambda i, l: yolo_waymo_transform(i, l))
 
 nuscene = NuImagesDataset_seg(split="test", transform=lambda i, l: yolo_nuscene_transform(i, l, new_shape=(768, 1280)))
 

@@ -21,6 +21,7 @@ from mmdet.apis import DetInferencer, init_detector, inference_detector
 from mmengine.utils import get_git_hash
 from mmengine.utils.dl_utils import collect_env as collect_base_env
 from mmdet.registry import VISUALIZERS
+from scenic_reasoning.utilities.common import get_default_device
 import mmdet
 
 
@@ -28,6 +29,9 @@ import mmdet
 class MMdetection_obj(ObjectDetectionModelI):
     def __init__(self, config_file: str, checkpoint_file, **kwargs) -> None:
         device = "cpu"   # Using mps will error, see: https://github.com/open-mmlab/mmdetection/issues/11794
+        if torch.cuda.is_available():
+            device = "cuda"
+
         self._model = init_detector(config_file, checkpoint_file, device=device)
 
         # set class_agnostic to True to avoid overlaps: https://github.com/open-mmlab/mmdetection/issues/6254
@@ -137,6 +141,8 @@ class MMdetection_obj(ObjectDetectionModelI):
 class MMdetection_seg(InstanceSegmentationModelI):
     def __init__(self, config_file: str, checkpoint_file, **kwargs) -> None:
         device = "cpu"   # Using mps will error, see: https://github.com/open-mmlab/mmdetection/issues/11794
+        if torch.cuda.is_available():
+            device = "cuda"
         self._model = init_detector(config_file, checkpoint_file, device=device)
 
         # set class_agnostic to True to avoid overlaps: https://github.com/open-mmlab/mmdetection/issues/6254
