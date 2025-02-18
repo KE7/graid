@@ -10,7 +10,8 @@ from scenic_reasoning.measurements.InstanceSegmentation import (
     InstanceSegmentationMeasurements,
 )
 from scenic_reasoning.models.UltralyticsYolo import Yolo_seg
-from scenic_reasoning.utilities.common import get_default_device, yolo_transform
+from scenic_reasoning.utilities.common import get_default_device, yolo_bdd_transform, yolo_nuscene_transform, yolo_waymo_transform
+
 from ultralytics.data.augment import LetterBox
 
 shape_transform = LetterBox(new_shape=(768, 1280))
@@ -18,11 +19,11 @@ shape_transform = LetterBox(new_shape=(768, 1280))
 NUM_EXAMPLES_TO_SHOW = 3
 BATCH_SIZE = 1
 
-bdd = Bdd10kDataset(split="val", transform=yolo_transform)
+bdd = Bdd10kDataset(split="val", transform=lambda i, l: yolo_bdd_transform(i, l, new_shape=(768, 1280)))
 
-waymo = WaymoDataset_seg(split="validation", transform=yolo_transform)
+waymo = WaymoDataset_seg(split="validation", transform=lambda i, l: yolo_waymo_transform(i, l))
 
-nuscene = NuImagesDataset_seg(split="test", transform=yolo_transform)
+nuscene = NuImagesDataset_seg(split="test", transform=lambda i, l: yolo_nuscene_transform(i, l, new_shape=(768, 1280)))
 
 model = Yolo_seg(model="yolo11n-seg.pt")
 for d in [bdd, nuscene, waymo]:
