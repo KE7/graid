@@ -45,14 +45,15 @@ class ObjDectDatasetBuilder(Dataset):
                 str(db_path), tablename=table_name, autocommit=False
             )
 
-        self.bdd = Bdd100kDataset(split=self.split)
+        # self.bdd = Bdd100kDataset(split=self.split)
         self.nu_images = NuImagesDataset(split=self.split, size="full")
-        if self.split == "val":
-            self.waymo = WaymoDataset(split="validation")
-        else:
-            self.waymo = WaymoDataset(split=self.split + "ing")
+        # if self.split == "val":
+        #     self.waymo = WaymoDataset(split="validation")
+        # else:
+        #     self.waymo = WaymoDataset(split=self.split + "ing")
 
-        self.all_sets = [self.bdd, self.nu_images, self.waymo]
+        # self.all_sets = [self.bdd, self.nu_images, self.waymo]
+        self.all_sets = [self.nu_images]
 
         db_total = sum(len(self.dataset[str(q)]) for q in self.questions)
         expected_total = sum(len(d) for d in self.all_sets)
