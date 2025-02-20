@@ -48,13 +48,17 @@ class ObjDectDatasetBuilder(Dataset):
             )
 
         self.bdd = Bdd100kDataset(split=self.split)
-        self.nu_images = NuImagesDataset(split=self.split, size="full")
+        # self.nu_images = NuImagesDataset(split=self.split, size="full")
         if self.split == "val":
             self.waymo = WaymoDataset(split="validation")
         else:
             self.waymo = WaymoDataset(split=self.split + "ing")
 
-        self.all_sets = [self.bdd, self.nu_images, self.waymo]
+        self.all_sets = [
+            self.bdd, 
+            # self.nu_images, 
+            self.waymo
+        ]
 
         db_total = sum(len(self.dataset[str(q)]) for q in self.questions)
         expected_total = sum(len(d) for d in self.all_sets)
@@ -95,7 +99,7 @@ class ObjDectDatasetBuilder(Dataset):
             ):
                 batch_images = dataset[i : i + batch_size]["image"]
                 batch_images = [transforms.ToTensor()(img) for img in batch_images]
-                batch_paths = dataset[i : i + batch_size]["path"]
+                batch_names = dataset[i : i + batch_size]["name"]
 
                 if model is not None:
                     labels = model.identify_for_image_as_tensor(
@@ -115,13 +119,13 @@ class ObjDectDatasetBuilder(Dataset):
                             # was modified in RAM. You'll need to explicitly 
                             # assign the mutated object back to SqliteDict:
                             # https://github.com/piskvorky/sqlitedict
-                            self.dataset[table_name][batch_paths[j]] = {
+                            self.dataset[table_name][batch_names[j]] = {
                                 "questions": qa_list,
                                 "split": self.split,
                                 "num of labels": len(lbl),
                             }
                         else:
-                            self.dataset[table_name][batch_paths[j]] = {
+                            self.dataset[table_name][batch_names[j]] = {
                                 "questions": "Question not applicable",
                                 "split": self.split,
                                 "num of labels": len(lbl),
