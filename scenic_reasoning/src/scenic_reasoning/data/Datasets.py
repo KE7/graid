@@ -39,6 +39,8 @@ class ObjDectDatasetBuilder(Dataset):
 
         self.dataset = {}
         db_path = os.path.join(self.DEFAULT_DB_PATH, db_name, ".db")
+        if not os.path.exists(db_path):
+            os.makedirs(os.path.dirname(db_path), exist_ok=True)
         for question in self.questions:
             table_name = str(question)
             self.dataset[table_name] = SqliteDict(

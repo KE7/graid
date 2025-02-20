@@ -224,7 +224,7 @@ def _download_file(url: str, dest_path: str, num_threads: int = 10) -> bool:
 
     print(
         f"Downloading {url} to {os.path.abspath(dest_path)} using "
-        f"{num_threads} threads."
+        f"{num_threads} thread(s)."
     )
 
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -362,12 +362,18 @@ def download_bdd(task: Optional[str] = None, split: Optional[str] = None) -> Non
             future.result()
 
     # label files don't have an md5 so we download them separately
-    if split != "test":
+    if split != "test": # test split doesn't have labels
         label_file = task_map[task][1]
         if not _download_file(
             source_url + label_file, root_dir + data_dir + "/" + label_file
         ):
             raise RuntimeError(f"Failed to download file {label_file}.")
+
+        # after downloading the label file, unzip it so 
+        # add it to the list of files to unzip and cleanup 
+        files_to_download.append(
+            (source_url + label_file, root_dir + data_dir + "/" + label_file)
+        )
 
     with concurrent.futures.ThreadPoolExecutor() as executor:
         futures = [
@@ -461,13 +467,13 @@ def download_nuimages(split: Optional[str] = None) -> None:
 
         # extract all
         for location in locations:
-            subprocess.run(
-                ["tar", "-xf", location.split("/")[-1], "-C", "data/nuimages/all"]
-            )
+            print(f"Extracting {location.split('/')[-1]}... to data/nuimages/all")
+            subprocess.run(["tar", "-xvf", location.split("/")[-1], "-C", "data/nuimages/all"])
+            print(f"Finished extracting {location.split('/')[-1]}.")
 
         # remove all downloaded files
-        # for location in locations:
-        #     subprocess.run(["rm", location.split("/")[-1]])
+        for location in locations:
+            subprocess.run(["rm", location.split("/")[-1]])
 
     elif split == "mini":
         location = "https://d36yt3mvayqw5m.cloudfront.net/public/nuimages-v1.0/nuimages-v1.0-mini.tgz"
