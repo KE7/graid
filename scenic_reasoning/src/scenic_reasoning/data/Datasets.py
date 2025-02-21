@@ -39,7 +39,7 @@ class ObjDectDatasetBuilder(Dataset):
         for question in self.questions:
             table_name = str(question)
             self.dataset[table_name] = SqliteDict(
-                str(db_path), tablename=table_name, autocommit=False
+                str(db_path), tablename=table_name, autocommit=True
             )
             self.dataset[table_name].commit()
 
@@ -132,11 +132,6 @@ class ObjDectDatasetBuilder(Dataset):
                                 "split": self.split,
                                 "num of labels": len(lbl),
                             }
-
-                        for table_name in self.dataset:
-                            if not self.dataset[table_name]:
-                                continue
-                            self.dataset[table_name].commit()
         
         for table_name in self.dataset:
             if not self.dataset[table_name]:
