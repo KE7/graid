@@ -1000,14 +1000,14 @@ class HowMany(Question):
 
 
 ALL_QUESTIONS = [
-    IsObjectCentered,
-    WidthVsHeight,
-    LargestAppearance,
-    MostAppearance,
-    LeastAppearance,
-    LeftOf,
-    RightOf,
-    LeftMost,
-    RightMost,
-    HowMany,
+    IsObjectCentered(),
+    WidthVsHeight(),
+    LargestAppearance(),
+    MostAppearance(),
+    LeastAppearance(),
+    LeftOf(),
+    RightOf(),
+    LeftMost(),
+    RightMost(),
+    HowMany(),
 ]

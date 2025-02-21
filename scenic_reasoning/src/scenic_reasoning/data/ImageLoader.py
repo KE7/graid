@@ -567,7 +567,7 @@ class NuImagesDataset(ImageDataset):
 
         empty_count = 0
         img_labels = []
-        for i in tqdm(range(len(self.nuim.sample)), desc="Processing NuImage dataset..."):
+        for i in tqdm(range(10), desc="Processing NuImage dataset..."):
             # see: https://www.nuscenes.org/tutorials/nuimages_tutorial.html
             sample = self.nuim.sample[i]
             sample_token = sample["token"]
@@ -646,9 +646,15 @@ class NuImagesDataset(ImageDataset):
         )
 
     def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
+        # if isinstance(idx, slice):
+        #     img_filename = self.img_labels[idx][0]["filename"]
+        #     labels = self.img_labels[idx][0]["labels"]
+        #     timestamp = self.img_labels[idx][0]["timestamp"]
+        # else:
         img_filename = self.img_labels[idx]["filename"]
         labels = self.img_labels[idx]["labels"]
         timestamp = self.img_labels[idx]["timestamp"]
+
         img_path = os.path.join(self.img_dir, img_filename)
         image = read_image(img_path)
 

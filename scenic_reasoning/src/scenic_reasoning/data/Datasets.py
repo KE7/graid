@@ -1,6 +1,6 @@
 import os
 from typing import Optional
-
+from PIL import Image
 import torch
 import torchvision.transforms as transforms
 from scenic_reasoning.data.ImageLoader import (
@@ -11,7 +11,7 @@ from scenic_reasoning.data.ImageLoader import (
 from scenic_reasoning.interfaces.ObjectDetectionI import ObjectDetectionModelI
 from scenic_reasoning.questions.ObjectDetectionQ import ALL_QUESTIONS, Quadrants
 from sqlitedict import SqliteDict
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
 
@@ -97,41 +97,50 @@ class ObjDectDatasetBuilder(Dataset):
             return
 
         for dataset in tqdm(self.all_sets, desc="Datasets"):
-            for i in tqdm(
-                range(0, len(dataset), batch_size),
-                desc=f"Processing {dataset.__class__.__name__}",
-                leave=False,
-            ):
-                batch_images = dataset[i : i + batch_size]["image"]
-                batch_images = [transforms.ToTensor()(img) for img in batch_images]
-                batch_names = dataset[i : i + batch_size]["name"]
+            data_loader = DataLoader(
+                dataset, batch_size=batch_size, shuffle=False, collate_fn=lambda x: x
+            )
+            # for i in tqdm(
+            #     range(0, len(dataset), batch_size),
+            #     desc=f"Processing {dataset.__class__.__name__}",
+            #     leave=False,
+            # ):
+            for batch in data_loader:
+                # batch_images = dataset[i : i + batch_size]["image"]
+                # batch_images = [transforms.ToTensor()(img) for img in batch_images]
+                # batch_names = dataset[i : i + batch_size]["name"]
+                batch_images = torch.stack([sample["image"] for sample in batch])
+                batch_names = [sample['name'] for sample in batch]
 
                 if model is not None:
                     labels = model.identify_for_image_as_tensor(
                         torch.stack(batch_images)
                     )
                 else:
-                    labels = dataset[i : i + batch_size]["labels"]
+                    labels = [sample["labels"] for sample in batch]
 
                 for j, lbl in enumerate(labels):
+                    image = batch_images[j].permute(1, 2, 0).numpy()
+                    image = Image.fromarray(image)
+                    name = batch_names[j]
                     for question in self.questions:
                         table_name = str(question)
 
-                        if question.is_applicable(batch_images[j], lbl):
-                            qa_list = question.apply(batch_images[j], lbl)
+                        if question.is_applicable(image, lbl):
+                            qa_list = question.apply(image, lbl)
                             # because of Python semantics, sqlitedict cannot 
                             # know when a mutable SqliteDict-backed entry 
                             # was modified in RAM. You'll need to explicitly 
                             # assign the mutated object back to SqliteDict:
                             # https://github.com/piskvorky/sqlitedict
-                            self.dataset[table_name][batch_names[j]] = {
-                                "questions": qa_list,
+                            self.dataset[table_name][name] = {
+                                "qa_list": qa_list,
                                 "split": self.split,
                                 "num of labels": len(lbl),
                             }
                         else:
-                            self.dataset[table_name][batch_names[j]] = {
-                                "questions": "Question not applicable",
+                            self.dataset[table_name][name] = {
+                                "qa_list": "Question not applicable",
                                 "split": self.split,
                                 "num of labels": len(lbl),
                             }
