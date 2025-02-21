@@ -2,7 +2,6 @@ import os
 from typing import Optional
 from PIL import Image
 import torch
-import torchvision.transforms as transforms
 from scenic_reasoning.data.ImageLoader import (
     Bdd100kDataset,
     NuImagesDataset,
@@ -13,23 +12,17 @@ from scenic_reasoning.questions.ObjectDetectionQ import ALL_QUESTIONS, Quadrants
 from sqlitedict import SqliteDict
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
+from pathlib import Path
 
 
 class ObjDectDatasetBuilder(Dataset):
-    DEFAULT_DB_PATH = os.path.join(
-        os.path.dirname(__file__),
-        "..",
-        "..",
-        "..",
-        "data",
-        "databases",
-    )
+    DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent.parent / "databases"
 
     def __init__(
         self,
         split: list[str] = ["train", "val", "test"],
         dataset: list[str] = ["waymo", "nuimage", "bdd", "all"],
-        db_name: str = "object_detection_questions_from_ground_truth",
+        db_name: str = "object_detection_questions_from_gt",
     ):
         self.split = split
         self.questions = ALL_QUESTIONS
@@ -39,7 +32,8 @@ class ObjDectDatasetBuilder(Dataset):
         self.questions.append(Quadrants(3, 3))
 
         self.dataset = {}
-        db_path = os.path.join(self.DEFAULT_DB_PATH, db_name, ".db")
+        db_path = self.DEFAULT_DB_PATH / f"{db_name}.sqlite"
+        print("DB path: ", db_path)
         if not os.path.exists(db_path):
             os.makedirs(os.path.dirname(db_path), exist_ok=True)
         for question in self.questions:
@@ -47,6 +41,7 @@ class ObjDectDatasetBuilder(Dataset):
             self.dataset[table_name] = SqliteDict(
                 str(db_path), tablename=table_name, autocommit=False
             )
+            self.dataset[table_name].commit()
 
         self.all_sets = []
         if dataset == "bdd":
@@ -96,19 +91,12 @@ class ObjDectDatasetBuilder(Dataset):
             print("Dataset has already been built.")
             return
 
-        for dataset in tqdm(self.all_sets, desc="Datasets"):
+        for dataset in self.all_sets:
+            print("Generating dataset...")
             data_loader = DataLoader(
                 dataset, batch_size=batch_size, shuffle=False, collate_fn=lambda x: x
             )
-            # for i in tqdm(
-            #     range(0, len(dataset), batch_size),
-            #     desc=f"Processing {dataset.__class__.__name__}",
-            #     leave=False,
-            # ):
-            for batch in data_loader:
-                # batch_images = dataset[i : i + batch_size]["image"]
-                # batch_images = [transforms.ToTensor()(img) for img in batch_images]
-                # batch_names = dataset[i : i + batch_size]["name"]
+            for batch in tqdm(data_loader):
                 batch_images = torch.stack([sample["image"] for sample in batch])
                 batch_names = [sample['name'] for sample in batch]
 
@@ -145,7 +133,14 @@ class ObjDectDatasetBuilder(Dataset):
                                 "num of labels": len(lbl),
                             }
 
-                    for table_name in self.dataset:
-                        self.dataset[table_name].commit()
+                        for table_name in self.dataset:
+                            if not self.dataset[table_name]:
+                                continue
+                            self.dataset[table_name].commit()
+        
+        for table_name in self.dataset:
+            if not self.dataset[table_name]:
+                continue
+            self.dataset[table_name].close()
 
         self.has_been_built = True
