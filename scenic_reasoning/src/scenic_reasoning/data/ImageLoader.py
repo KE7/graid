@@ -22,7 +22,10 @@ from scenic_reasoning.utilities.common import convert_to_xyxy, project_root_dir
 from torch import Tensor
 from torch.utils.data import Dataset
 from torchvision import transforms
-from torchvision.io import decode_image
+import torch
+from scenic_reasoning.utilities.common import convert_to_xyxy, read_image
+import base64
+from pycocotools import mask as cocomask
 from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
@@ -176,7 +179,7 @@ class Bdd10kDataset(ImageDataset):
         img_path = os.path.join(self.img_dir, data["name"])
         labels = data["labels"]
         timestamp = data["timestamp"]
-        image = decode_image(img_path)
+        image = read_image(img_path)
 
         if self.transform:
             image = self.transform(image)
@@ -380,7 +383,8 @@ class Bdd100kDataset(ImageDataset):
 
     def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
         img_path = os.path.join(self.img_dir, self.img_labels[idx]["name"])
-        image = decode_image(img_path)
+        image = read_image(img_path)
+
         labels = self.img_labels[idx]["labels"]
         timestamp = self.img_labels[idx]["timestamp"]
 
@@ -539,8 +543,8 @@ class NuImagesDataset(ImageDataset):
 
     def __init__(
         self,
-        split: Union[Literal["train", "val", "test"]] = "train",
-        size: Union[Literal["mini", "full"]] = "mini",
+        split: Union[Literal["train", "val", "test", "mini"]] = "val",
+        size: Union[Literal["mini", "full"]] = "full",
         **kwargs,
     ):
         from nuimages import NuImages
@@ -558,16 +562,20 @@ class NuImagesDataset(ImageDataset):
         self.obj_annotations = json.load(open(obj_annotations_file))
 
         self.nuim = NuImages(
-            dataroot=img_dir, version=f"v1.0-{split}", verbose=True, lazy=True
+            dataroot=img_dir, version=f"v1.0-{split}", verbose=False, lazy=True  #verbose off to avoid excessive print statement
         )
 
+        empty_count = 0
         img_labels = []
-        for i in tqdm(range(len(self.nuim.sample))):
+        for i in tqdm(range(len(self.nuim.sample)), desc="Processing NuImage dataset..."):
             # see: https://www.nuscenes.org/tutorials/nuimages_tutorial.html
             sample = self.nuim.sample[i]
             sample_token = sample["token"]
             key_camera_token = sample["key_camera_token"]
-            object_tokens, surface_tokens = self.nuim.list_anns(sample_token)
+            object_tokens, surface_tokens = self.nuim.list_anns(sample_token, verbose=False)   #verbose off to avoid excessive print statement
+            if object_tokens == []:
+                empty_count += 1
+                continue
 
             object_data = []
             for object_token in object_tokens:
@@ -596,7 +604,9 @@ class NuImagesDataset(ImageDataset):
             )
 
             # TODO: add error catching logic in case of empty token or token mismatch.
-
+        
+        print(f"{split} has {empty_count} out of {len(self.nuim.sample)} empty samples.")
+        
         def merge_transform(
             image: Tensor, labels: List[Dict[str, Any]], timestamp: str
         ) -> Tuple[
@@ -640,7 +650,7 @@ class NuImagesDataset(ImageDataset):
         labels = self.img_labels[idx]["labels"]
         timestamp = self.img_labels[idx]["timestamp"]
         img_path = os.path.join(self.img_dir, img_filename)
-        image = decode_image(img_path)
+        image = read_image(img_path)
 
         if self.transform:
             image, labels = self.transform(image, labels)
@@ -771,7 +781,7 @@ class NuImagesDataset_seg(ImageDataset):
 
     def __init__(
         self,
-        split: Union[Literal["train", "val", "test"]] = "train",
+        split: Union[Literal["train", "val", "test", "mini"]] = "val",
         size: Union[Literal["mini", "full"]] = "mini",
         **kwargs,
     ):
@@ -780,13 +790,13 @@ class NuImagesDataset_seg(ImageDataset):
 
         root_dir = project_root_dir() / "data" / "nuimages" / size
         img_dir = root_dir
-        mask_annotations_file = root_dir / f"v1.0-{size}" / "object_ann.json"
-        categories_file = root_dir / f"v1.0-{size}" / "category.json"
-        sample_data_labels_file = root_dir / f"v1.0-{size}" / "sample_data.json"
-        attributes_file = root_dir / f"v1.0-{size}" / "attribute.json"
+        mask_annotations_file = root_dir / f"v1.0-{split}" / "object_ann.json"
+        categories_file = root_dir / f"v1.0-{split}" / "category.json"
+        sample_data_labels_file = root_dir / f"v1.0-{split}" / "sample_data.json"
+        attributes_file = root_dir / f"v1.0-{split}" / "attribute.json"
 
         self.nuim = NuImages(
-            dataroot=img_dir, version=f"v1.0-{size}", verbose=True, lazy=True
+            dataroot=img_dir, version=f"v1.0-{split}", verbose=False, lazy=True
         )
 
         self.sample_data_labels = json.load(open(sample_data_labels_file))
@@ -800,7 +810,9 @@ class NuImagesDataset_seg(ImageDataset):
             sample = self.nuim.sample[i]
             sample_token = sample["token"]
             key_camera_token = sample["key_camera_token"]
-            object_tokens, surface_tokens = self.nuim.list_anns(sample_token)
+            object_tokens, surface_tokens = self.nuim.list_anns(sample_token, verbose=False)
+            if object_tokens == []:
+                continue
 
             object_data = []
             for object_token in object_tokens:
@@ -874,7 +886,7 @@ class NuImagesDataset_seg(ImageDataset):
         labels = self.img_labels[idx]["labels"]
         timestamp = self.img_labels[idx]["timestamp"]
         img_path = os.path.join(self.img_dir, img_filename)
-        image = decode_image(img_path)
+        image = read_image(img_path)
 
         if self.transform:
             image = self.transform(image)
@@ -1099,6 +1111,7 @@ class WaymoDataset(ImageDataset):
                     bbox=list(bbox),
                     image_hw=image.shape,
                     attributes=[attributes],
+                    bbox_format=BBox_Format.XYXY,
                 )
                 results.append(result)
 
@@ -1142,6 +1155,7 @@ class WaymoDataset(ImageDataset):
                 image, labels, attributes, timestamp
             )
 
+        
         return {
             "name": img_data["name"],
             "path": img_data["path"],

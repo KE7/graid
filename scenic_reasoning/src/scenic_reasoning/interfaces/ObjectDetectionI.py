@@ -259,17 +259,17 @@ class ObjectDetectionUtils:
             pred_scores.append(pred.score)  # score is a float or tensor
             pred_classes.append(pred.cls)
 
-        pred_boxes = torch.cat(pred_boxes)
+        pred_boxes = torch.cat(pred_boxes) if pred_boxes else torch.Tensor([])
         pred_scores = (
             torch.tensor(pred_scores)
             if isinstance(pred_scores[0], float)
             else torch.cat(pred_scores)
-        )
+        ) if pred_scores else torch.Tensor([])
         pred_classes = (
             torch.tensor(pred_classes)
             if isinstance(pred_classes[0], int)
             else torch.cat(pred_classes)
-        )
+        ) if pred_classes else torch.Tensor([])
 
         preds: List[Dict[str, torch.Tensor]] = [
             dict(boxes=pred_boxes, labels=pred_classes, scores=pred_scores)

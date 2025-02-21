@@ -1,5 +1,5 @@
-from copy import deepcopy
 from pathlib import Path
+from torchvision.io import decode_image
 from typing import Any, Dict, Iterator, List, Tuple
 
 import cv2
@@ -56,6 +56,15 @@ def convert_to_xyxy(center_x: int, center_y: int, width: int, height: int):
     y2 = center_y + height / 2
     return x1, y1, x2, y2
 
+def read_image(img_path):
+    try:
+        image = decode_image(img_path)
+    except Exception as e:
+        print(e)
+        print("switching to cv2 ...")
+        image = cv2.imread(img_path)
+        image = torch.from_numpy(image).permute(2, 0, 1)
+    return image
 
 # def yolo_waymo_transform(image, labels, stride=32):
 #     orig_H, orig_W = image.shape[1:]
@@ -166,16 +175,16 @@ def yolo_transform(
 def yolo_bdd_transform(
     image: torch.Tensor, labels: List[dict], new_shape: Tuple[int, int]
 ):
-    return yolo_transform(image, labels, new_shape, "box2d", scale=255.0)
+    return yolo_transform(image, labels, new_shape, "box2d", scale=1.0)
 
 
 def yolo_nuscene_transform(
     image: torch.Tensor, labels: List[dict], new_shape: Tuple[int, int]
 ):
-    return yolo_transform(image, labels, new_shape, "bbox", scale=255.0)
+    return yolo_transform(image, labels, new_shape, "bbox", scale=1.0)
 
 
 def yolo_waymo_transform(
     image: torch.Tensor, labels: List[dict], new_shape: Tuple[int, int]
 ):
-    return yolo_transform(image, labels, new_shape, "bbox", scale=1.0)
+    return yolo_transform(image, labels, new_shape, "bbox", scale=(1.0 / 255.0))

@@ -19,19 +19,20 @@ BATCH_SIZE = 1
 
 bdd = Bdd100kDataset(
     split="val",
-    transform=yolo_bdd_transform,
+    transform=lambda i, l: yolo_bdd_transform(i, l, new_shape=(768, 1280)),
     use_original_categories=False,
     use_extended_annotations=False,
 )
 
-nu = NuImagesDataset(split="test", transform=yolo_nuscene_transform)
+nu = NuImagesDataset(split="test", size="full", transform=lambda i, l: yolo_nuscene_transform(i, l, new_shape=(768, 1280)))
 
-waymo = WaymoDataset(split="validation", transform=yolo_waymo_transform)
+waymo = WaymoDataset(split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, (768, 1280)))
+# waymo = WaymoDataset(split="validation")
 
 # https://docs.ultralytics.com/models/yolov5/#performance-metrics
 model = Yolo(model="yolo11n.pt")
 
-for d in [bdd, nu, waymo]:
+for d in [bdd, waymo]:
 
     measurements = ObjectDetectionMeasurements(
         model, d, batch_size=BATCH_SIZE, collate_fn=lambda x: x
