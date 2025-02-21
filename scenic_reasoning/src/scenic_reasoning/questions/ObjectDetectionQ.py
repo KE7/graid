@@ -333,9 +333,9 @@ class IsObjectCentered(Question):
 
 class WidthVsHeight(Question):
     # TODO: try a bunch of different thresholds for width vs height
-    def __init__(self, threshold: float = 0.15) -> None:
+    def __init__(self, threshold: float = 0.30) -> None:
         super().__init__(
-            question="Is the width of the {object_1} larger than the height?",
+            question="Is the width of the {object_1} appear to be larger than the height?",
             variables=["object_1"],
             predicates=[
                 ObjectDetectionPredicates.at_least_one_single_detection,

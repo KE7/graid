@@ -23,6 +23,7 @@ from torch import Tensor
 from torch.utils.data import Dataset
 from torchvision import transforms
 from torchvision.io import decode_image
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -546,10 +547,10 @@ class NuImagesDataset(ImageDataset):
 
         root_dir = project_root_dir() / "data" / "nuimages" / size
         img_dir = root_dir
-        obj_annotations_file = root_dir / f"v1.0-{size}" / "object_ann.json"
-        categories_file = root_dir / f"v1.0-{size}" / "category.json"
-        sample_data_labels_file = root_dir / f"v1.0-{size}" / "sample_data.json"
-        attributes_file = root_dir / f"v1.0-{size}" / "attribute.json"
+        obj_annotations_file = root_dir / f"v1.0-{split}" / "object_ann.json"
+        categories_file = root_dir / f"v1.0-{split}" / "category.json"
+        sample_data_labels_file = root_dir / f"v1.0-{split}" / "sample_data.json"
+        attributes_file = root_dir / f"v1.0-{split}" / "attribute.json"
 
         self.sample_data_labels = json.load(open(sample_data_labels_file))
         self.attribute_labels = json.load(open(attributes_file))
@@ -557,11 +558,11 @@ class NuImagesDataset(ImageDataset):
         self.obj_annotations = json.load(open(obj_annotations_file))
 
         self.nuim = NuImages(
-            dataroot=img_dir, version=f"v1.0-{size}", verbose=True, lazy=True
+            dataroot=img_dir, version=f"v1.0-{split}", verbose=True, lazy=True
         )
 
         img_labels = []
-        for i in range(len(self.nuim.sample)):
+        for i in tqdm(range(len(self.nuim.sample))):
             # see: https://www.nuscenes.org/tutorials/nuimages_tutorial.html
             sample = self.nuim.sample[i]
             sample_token = sample["token"]

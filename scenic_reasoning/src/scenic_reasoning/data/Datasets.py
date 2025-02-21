@@ -28,6 +28,7 @@ class ObjDectDatasetBuilder(Dataset):
     def __init__(
         self,
         split: list[str] = ["train", "val", "test"],
+        dataset: list[str] = ["waymo", "nuimage", "bdd", "all"],
         db_name: str = "object_detection_questions_from_ground_truth",
     ):
         self.split = split
@@ -47,15 +48,22 @@ class ObjDectDatasetBuilder(Dataset):
                 str(db_path), tablename=table_name, autocommit=False
             )
 
-        # self.bdd = Bdd100kDataset(split=self.split)
-        self.nu_images = NuImagesDataset(split=self.split, size="full")
-        # if self.split == "val":
-        #     self.waymo = WaymoDataset(split="validation")
-        # else:
-        #     self.waymo = WaymoDataset(split=self.split + "ing")
-
-        # self.all_sets = [self.bdd, self.nu_images, self.waymo]
-        self.all_sets = [self.nu_images]
+        self.all_sets = []
+        if dataset == "bdd":
+            self.bdd = Bdd100kDataset(split=self.split)
+            self.all_sets.append(self.bdd)
+        elif dataset == "nuimages":
+            self.nu_images = NuImagesDataset(split=self.split, size="full")
+            self.all_sets.append(self.nu_images)
+        elif dataset == "waymo":
+            if self.split == "val":
+                self.waymo = WaymoDataset(split="validation")
+            else:
+                self.waymo = WaymoDataset(split=self.split + "ing")
+            
+            self.all_sets.append(self.waymo)
+        else:
+            print("invalid dataset combination")
 
         db_total = sum(len(self.dataset[str(q)]) for q in self.questions)
         expected_total = sum(len(d) for d in self.all_sets)
