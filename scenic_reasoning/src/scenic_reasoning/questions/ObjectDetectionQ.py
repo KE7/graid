@@ -316,16 +316,19 @@ class IsObjectCentered(Question):
 
             # TODO: verify this design decision manually
             # edge case: if the object is big enough to cover more than 1/3rd
-            # the answer should be left or right
-            if x_min < image_width / 3 and x_max < 2 * image_width / 3:
+            # then it's ambiguous so we will not answer
+            if x_min < image_width / 3 and x_max < image_width / 3:
                 answer = "left"
             elif x_min > image_width / 3 and x_max < 2 * image_width / 3:
                 answer = "centered"
-            elif x_min > image_width / 3 and x_max > 2 * image_width / 3:
+            elif x_min > 2 * image_width / 3 and x_max > 2 * image_width / 3:
                 answer = "right"
             else:
-                # x_min < image_width / 3 and x_max > 2 * image_width / 3
-                answer = "centered"
+                # object is too big to be centered so skip
+                logger.debug(
+                    "Object is too big to be left, right or centered. Skipping question."
+                )
+                continue
             question_answer_pairs.append((question, answer))
 
         return question_answer_pairs
