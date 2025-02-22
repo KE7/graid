@@ -13,6 +13,7 @@ from sqlitedict import SqliteDict
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 from pathlib import Path
+import numpy as np
 
 
 class ObjDectDatasetBuilder(Dataset):
@@ -23,6 +24,7 @@ class ObjDectDatasetBuilder(Dataset):
         split: list[str] = ["train", "val", "test"],
         dataset: list[str] = ["waymo", "nuimage", "bdd", "all"],
         db_name: str = "object_detection_questions_from_gt",
+        transform = None
     ):
         self.split = split
         self.questions = ALL_QUESTIONS
@@ -45,16 +47,16 @@ class ObjDectDatasetBuilder(Dataset):
 
         self.all_sets = []
         if dataset == "bdd":
-            self.bdd = Bdd100kDataset(split=self.split)
+            self.bdd = Bdd100kDataset(split=self.split, transform=transform)
             self.all_sets.append(self.bdd)
         elif dataset == "nuimages":
-            self.nu_images = NuImagesDataset(split=self.split, size="full")
+            self.nu_images = NuImagesDataset(split=self.split, size="full", transform=transform)
             self.all_sets.append(self.nu_images)
         elif dataset == "waymo":
             if self.split == "val":
-                self.waymo = WaymoDataset(split="validation")
+                self.waymo = WaymoDataset(split="validation", transform=transform)
             else:
-                self.waymo = WaymoDataset(split=self.split + "ing")
+                self.waymo = WaymoDataset(split=self.split + "ing", transform=transform)
             
             self.all_sets.append(self.waymo)
         else:
@@ -101,15 +103,16 @@ class ObjDectDatasetBuilder(Dataset):
                 batch_names = [sample['name'] for sample in batch]
 
                 if model is not None:
-                    labels = model.identify_for_image_as_tensor(
-                        torch.stack(batch_images)
-                    )
+                    # labels = model.identify_for_image_as_tensor(batch_images)
+                    labels = model.identify_for_image(batch_images)
+                    if labels == [None]:
+                        continue
                 else:
                     labels = [sample["labels"] for sample in batch]
 
                 for j, lbl in enumerate(labels):
                     image = batch_images[j].permute(1, 2, 0).numpy()
-                    image = Image.fromarray(image)
+                    image = Image.fromarray(image.astype(np.uint8))
                     name = batch_names[j]
                     for question in self.questions:
                         table_name = str(question)
