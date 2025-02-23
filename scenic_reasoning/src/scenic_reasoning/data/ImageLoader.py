@@ -4,7 +4,6 @@ import json
 import logging
 import os
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
-
 import numpy as np
 import pandas as pd
 import torch
@@ -19,6 +18,7 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
     ObjectDetectionResultI,
 )
 from scenic_reasoning.utilities.common import convert_to_xyxy, project_root_dir
+from scenic_reasoning.utilities.coco import coco_label, inverse_coco_label
 from torch import Tensor
 from torch.utils.data import Dataset
 from torchvision import transforms
@@ -499,35 +499,37 @@ class NuImagesDataset(ImageDataset):
     }
 
     _CATEGORIES_TO_COCO = {
-        "animal": "animal",
-        "flat.driveable_surface": "driveable_surface",  # ??
-        "human.pedestrian.adult": "pedestrian",
-        "human.pedestrian.child": "pedestrian",
-        "human.pedestrian.construction_worker": "pedestrian",
-        "human.pedestrian.personal_mobility": "pedestrian",
-        "human.pedestrian.police_officer": "pedestrian",
-        "human.pedestrian.stroller": "pedestrian",
-        "human.pedestrian.wheelchair": "pedestrian",
-        "movable_object.barrier": "barrier",  # ??
-        "movable_object.debris": "debris",  # ??
-        "movable_object.pushable_pullable": "pushable_pullable",  # ??
-        "movable_object.trafficcone": "traffic sign",
-        "static_object.bicycle_rack": "bicycle_rack",  # ??
+        "animal": "undefined",
+        "flat.driveable_surface": "undefined",
+        "human.pedestrian.adult": "person",
+        "human.pedestrian.child": "person",
+        "human.pedestrian.construction_worker": "person",
+        "human.pedestrian.personal_mobility": "person",
+        "human.pedestrian.police_officer": "person",
+        "human.pedestrian.stroller": "person",
+        "human.pedestrian.wheelchair": "person",
+        "movable_object.barrier": "undefined",
+        "movable_object.debris": "undefined", 
+        "movable_object.pushable_pullable": "undefined",
+        "movable_object.trafficcone": "undefined",
+        "static_object.bicycle_rack": "undefined",
         "vehicle.bicycle": "bicycle",
         "vehicle.bus.bendy": "bus",
         "vehicle.bus.rigid": "bus",
         "vehicle.car": "car",
-        "vehicle.construction": "construction",  # ??
-        "vehicle.ego": "ego",  # ??
-        "vehicle.emergency.ambulance": "ambulance",  # ??
-        "vehicle.emergency.police": "police",  # ??
+        "vehicle.construction": "undefined", 
+        "vehicle.ego": "undefined",
+        "vehicle.emergency.ambulance": "undefined", 
+        "vehicle.emergency.police": "person",  
         "vehicle.motorcycle": "motorcycle",
         "vehicle.trailer": "truck",
         "vehicle.truck": "truck",
     }
 
+    inverse_coco_label
+
     def category_to_cls(self, category: str) -> int:
-        return self._CATEGORIES[category]
+        return inverse_coco_label[category]
 
     def category_to_coco(self, category: str):
         return self._CATEGORIES_TO_COCO[category]
@@ -622,12 +624,14 @@ class NuImagesDataset(ImageDataset):
                 _, height, width = image.shape
                 obj_category = obj_label["category"]
                 obj_attributes = obj_label["attributes"]
+                label = self.category_to_coco(obj_category)
+                cls = self.category_to_cls(label)
 
                 results.append(
                     ObjectDetectionResultI(
                         score=1.0,
-                        cls=self.category_to_cls(obj_category),
-                        label=self.category_to_coco(obj_category),
+                        cls=cls,
+                        label=label,
                         bbox=obj_label["bbox"],
                         image_hw=(height, width),
                         bbox_format=BBox_Format.XYXY,
@@ -1054,6 +1058,9 @@ class WaymoDataset(ImageDataset):
             else:
                 logger.debug(f"Merged DataFrame for {image_file}: {merged_df.shape}\n")
                 merged_dfs.append(merged_df)
+
+        import pdb
+        pdb.set_trace()
 
         # Group dataframes by unique identifiers and process them
         for merged_df in merged_dfs:

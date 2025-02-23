@@ -231,10 +231,17 @@ class ObjectDetectionUtils:
         debug: bool = False,
         image: Optional[Image.Image] = None,
     ) -> Dict[str, float]:
+        
+        gt_classes_set = set([truth.cls for truth in ground_truth])
+        pred_classes_set = set([pred.cls for pred in predictions])
+        intersection_classes = gt_classes_set.intersection(pred_classes_set)
+
         boxes = []
         scores = []
         classes = []
         for truth in ground_truth:
+            if truth.cls not in intersection_classes:
+                continue
             boxes.append(truth.as_xyxy())
             scores.append(truth.score)  # score is a float or tensor
             classes.append(truth.cls)
@@ -255,6 +262,8 @@ class ObjectDetectionUtils:
         pred_scores = []
         pred_classes = []
         for pred in predictions:
+            if pred.cls not in intersection_classes:
+                continue
             pred_boxes.append(pred.as_xyxy())
             pred_scores.append(pred.score)  # score is a float or tensor
             pred_classes.append(pred.cls)
@@ -282,7 +291,14 @@ class ObjectDetectionUtils:
 
         metric.update(targets, preds)
 
-        return metric.compute()
+        ret = metric.compute()
+
+        print(ret)
+
+        import pdb
+        pdb.set_trace()
+
+        return ret
 
     def show_image_with_detections(image, detections):
         # Convert PIL image to a NumPy array in OpenCV's BGR format
