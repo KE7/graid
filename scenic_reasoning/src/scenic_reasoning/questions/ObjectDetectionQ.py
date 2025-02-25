@@ -196,7 +196,11 @@ class Question(ABC):
         pass
 
     def __repr__(self):
-        return f"Question: {self.question}"
+        representation = f"Question: {self.question}\n"
+        if self.other_question is not None:
+            representation += f"Other Question: {self.other_question}\n"
+
+        return representation
 
 
 class ObjectDetectionPredicates:
@@ -204,6 +208,13 @@ class ObjectDetectionPredicates:
     def at_least_one_single_detection(
         image: Image, detections: List[ObjectDetectionResultI]
     ) -> bool:
+        if len(detections) == 0:
+            return False
+        if len(detections) == 1:
+            # if there is only one detection, we can just return True
+            return True
+
+        # check if there is at least one detection with a single class
         counts = {}
         for detection in detections:
             class_name = detection.label
@@ -342,25 +353,39 @@ class WidthVsHeight(Question):
             ],
         )
         self.threshold = threshold
+        self.other_question = "Is the height of the {object_1} larger than the width?"
 
     def _question_answer(
-        self, class_name: str, detection: ObjectDetectionResultI
+        self, class_name: str, detection: ObjectDetectionResultI, reverse: bool = False
     ) -> Optional[Tuple[str, str]]:
         width = detection.as_xywh().squeeze()[2].item()
         height = detection.as_xywh().squeeze()[3].item()
-        question = self.question.format(object_1=class_name)
-        # TODO: verify this design decision manually
-        # if the image is roughly square (within 10% of each other), return None
         # TODO: should we check for a minimum width or height?
         if abs(width - height) / width < self.threshold:
+            logger.debug(
+                "Width and height are roughly equal so can't ask WidthVsHeight"
+            )
             return None
-        answer = "yes" if width > height else "no"
+        if width > height:
+            answer = "yes"
+            other_answer = "no"
+        else:
+            answer = "no"
+            other_answer = "yes"
+
+        if reverse:
+            question = self.other_question.format(object_1=class_name)
+            answer = other_answer
+        else:
+            question = self.question.format(object_1=class_name)
+
         return (question, answer)
 
     def apply(
         self,
         image: Image.Image,
         detections: List[ObjectDetectionResultI],
+        reverse: bool = False,
     ) -> List[Tuple[str, str]]:
         # @precondition: at_least_one_single_detection(image, detections) == True
 
@@ -389,13 +414,15 @@ class WidthVsHeight(Question):
                 for single_class_name in class_name:
                     if single_class_name in single_detections:
                         question_answer_pair = self._question_answer(
-                            single_class_name, detection
+                            single_class_name, detection, reverse=reverse
                         )
                         if question_answer_pair is not None:
                             question_answer_pairs.append(question_answer_pair)
             else:
                 if class_name in single_detections:
-                    question_answer_pair = self._question_answer(class_name, detection)
+                    question_answer_pair = self._question_answer(
+                        class_name, detection, reverse=reverse
+                    )
                     if question_answer_pair is not None:
                         question_answer_pairs.append(question_answer_pair)
 
@@ -784,9 +811,7 @@ class LeftMost(Question):
             question="What is the leftmost object in the image?",
             variables=[],
             predicates=[
-                lambda image, detections: ObjectDetectionPredicates.at_least_one_single_detection(
-                    image, detections
-                ),
+                ObjectDetectionPredicates.at_least_one_single_detection,
             ],
         )
 
@@ -869,9 +894,7 @@ class RightMost(Question):
             question="What is the rightmost object in the image?",
             variables=[],
             predicates=[
-                lambda image, detections: ObjectDetectionPredicates.at_least_one_single_detection(
-                    image, detections
-                ),
+                ObjectDetectionPredicates.at_least_one_single_detection,
             ],
         )
 
@@ -991,6 +1014,201 @@ class HowMany(Question):
         return question_answer_pairs
 
 
+class LeftMostWidthVsHeight(WidthVsHeight):
+    def __init__(self, threshold: float = 0.3) -> None:
+        super().__init__(threshold=threshold)
+        self.question = (
+            "Does the leftmost object in the image appear to be wider than it is tall?"
+        )
+        self.other_question = (
+            "Does the leftmost object in the image appear to be taller than it is wide?"
+        )
+
+    def apply(
+        self,
+        image: Image.Image,
+        detections: List[ObjectDetectionResultI],
+        reverse: bool = False,
+    ) -> List[Tuple[str, str]]:
+        # @precondition: at_least_one_single_detection(image, detections) == True
+        im_width, im_height = image.size
+
+        if len(detections) == 0:
+            return []
+
+        flattened_detections = [
+            box for detection in detections for box in detection.flatten()
+        ]
+        detection_counts = {}
+        for detection in flattened_detections:
+            class_name = detection.label
+            detection_counts[class_name] = detection_counts.get(class_name, 0) + 1
+
+        single_detections = [
+            class_name for class_name, count in detection_counts.items() if count == 1
+        ]
+        if len(single_detections) == 0:
+            return []
+
+        sorted_detections = sorted(
+            flattened_detections, key=lambda x: x.as_xyxy()[0][0]
+        )  # sort by x1 coordinate
+        leftmost_detection = None
+        second_leftmost_detection = None
+        for i, detection in enumerate(sorted_detections):
+            if detection.label in single_detections:
+                is_on_left = (
+                    detection.as_xyxy()[0][0] < im_width / 2
+                    and detection.as_xyxy()[0][2] < im_width / 2
+                )
+                if not is_on_left:
+                    # no point in continuing if the leftmost detection is not on the left side of the image
+                    logger.debug(
+                        "LeftMostWidthVsHeight question not ask-able due to not being on the left side of the image"
+                    )
+                    return []
+                leftmost_detection = detection
+                if i + 1 < len(sorted_detections):
+                    second_leftmost_detection = sorted_detections[i + 1]
+                break
+
+        if leftmost_detection is None:
+            logger.debug("No leftmost detection found")
+            return []
+        if second_leftmost_detection is not None:
+            # check if the leftmost detection is overlapping with the second leftmost detection
+            x1_inter = max(
+                leftmost_detection.as_xyxy()[0][0],
+                second_leftmost_detection.as_xyxy()[0][0],
+            )
+            x2_inter = min(
+                leftmost_detection.as_xyxy()[0][2],
+                second_leftmost_detection.as_xyxy()[0][2],
+            )
+            y1_inter = max(
+                leftmost_detection.as_xyxy()[0][1],
+                second_leftmost_detection.as_xyxy()[0][1],
+            )
+            y2_inter = min(
+                leftmost_detection.as_xyxy()[0][3],
+                second_leftmost_detection.as_xyxy()[0][3],
+            )
+            inter_width = max(0, x2_inter - x1_inter + 1)
+            inter_height = max(0, y2_inter - y1_inter + 1)
+            inter_area = inter_width * inter_height
+
+            if inter_area > 0:  # overlapping
+                logger.debug(
+                    "LeftMostWidthVsHeight question not ask-able due to overlapping detections"
+                )
+                return []
+
+        # check if the leftmost detection is at least threshold % larger than the second largest
+        possible_qa = self._question_answer(
+            leftmost_detection.label,
+            leftmost_detection,
+            reverse=reverse,
+        )
+        if possible_qa is None:
+            logger.debug(
+                "LeftMostWidthVsHeight question not ask-able due to width and height being roughly equal"
+            )
+            return []
+        return possible_qa
+
+
+class RightMostWidthVsHeight(WidthVsHeight):
+    def __init__(self, threshold: float = 0.3) -> None:
+        super().__init__(threshold=threshold)
+        self.question = (
+            "Does the rightmost object in the image appear to be wider than it is tall?"
+        )
+
+    def apply(
+        self,
+        image: Image.Image,
+        detections: List[ObjectDetectionResultI],
+    ) -> List[Tuple[str, str]]:
+        # @precondition: at_least_one_single_detection(image, detections) == True
+        im_width, im_height = image.size
+
+        if len(detections) == 0:
+            return []
+
+        flattened_detections = [
+            box for detection in detections for box in detection.flatten()
+        ]
+        detection_counts = {}
+        for detection in flattened_detections:
+            class_name = detection.label
+            detection_counts[class_name] = detection_counts.get(class_name, 0) + 1
+
+        single_detections = [
+            class_name for class_name, count in detection_counts.items() if count == 1
+        ]
+        if len(single_detections) == 0:
+            return []
+
+        sorted_detections = sorted(
+            flattened_detections, key=lambda x: x.as_xyxy()[0][2], reverse=True
+        )  # sort by x2 coordinate
+        rightmost_detection = None
+        second_rightmost_detection = None
+        for i, detection in enumerate(sorted_detections):
+            if detection.label in single_detections:
+                is_on_right = (
+                    detection.as_xyxy()[0][0] > im_width / 2
+                    and detection.as_xyxy()[0][2] > im_width / 2
+                )
+                if not is_on_right:
+                    # no point in continuing if the rightmost detection is not on the right side of the image
+                    logger.debug(
+                        "RightMostWidthVsHeight question not ask-able due to not being on the right side of the image"
+                    )
+                    return []
+                rightmost_detection = detection
+                if i + 1 < len(sorted_detections):
+                    second_rightmost_detection = sorted_detections[i + 1]
+                break
+
+        if rightmost_detection is None:
+            logger.debug("No rightmost detection found")
+            return []
+
+        if second_rightmost_detection is not None:
+            # check if the rightmost detection is overlapping with the second rightmost detection
+            x1_inter = max(
+                rightmost_detection.as_xyxy()[0][0],
+                second_rightmost_detection.as_xyxy()[0][0],
+            )
+            x2_inter = min(
+                rightmost_detection.as_xyxy()[0][2],
+                second_rightmost_detection.as_xyxy()[0][2],
+            )
+            y1_inter = max(
+                rightmost_detection.as_xyxy()[0][1],
+                second_rightmost_detection.as_xyxy()[0][1],
+            )
+            y2_inter = min(
+                rightmost_detection.as_xyxy()[0][3],
+                second_rightmost_detection.as_xyxy()[0][3],
+            )
+            inter_width = max(0, x2_inter - x1_inter + 1)
+            inter_height = max(0, y2_inter - y1_inter + 1)
+            inter_area = inter_width * inter_height
+
+            if inter_area > 0:
+                logger.debug(
+                    "RightMostWidthVsHeight question not ask-able due to overlapping detections"
+                )
+                return []
+        # check if the rightmost detection is at least threshold % larger than the second largest
+        return self._question_answer(
+            rightmost_detection.label,
+            rightmost_detection,
+        )
+
+
 ALL_QUESTIONS = [
     IsObjectCentered,
     WidthVsHeight,
@@ -1003,4 +1221,6 @@ ALL_QUESTIONS = [
     LeftMost,
     RightMost,
     HowMany,
+    LeftMostWidthVsHeight,
+    RightMostWidthVsHeight,
 ]
