@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Iterator, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 
 import cv2
 import numpy as np
@@ -132,6 +132,70 @@ class ObjectDetectionResultI:
     def as_xywhn(self) -> torch.Tensor:
         return self._ultra_boxes.xywhn
 
+    def flatten(self) -> List["ObjectDetectionResultI"]:
+        """
+        If the current detection result is a single instance, it returns itself
+        Otherwise, it returns a list of detection results based on the n boxes 
+        that were in the original detection result.
+        """
+        if isinstance(self._score, float):
+            return [self]
+        elif isinstance(self._score, torch.Tensor):
+            return [
+                ObjectDetectionResultI(
+                    score=self._score[i],
+                    cls=self._class[i],
+                    label=self._label[i],
+                    bbox=self._ultra_boxes.xyxy[i],
+                    image_hw=self._ultra_boxes.orig_shape,
+                )
+                for i in range(self._score.shape[0])
+            ]
+        else:
+            raise NotImplementedError(
+                f"{type(self._score)} not supported for flattening DetectionResult"
+            )
+
+    def flatten_to_boxes(
+        self, bbox_format: BBox_Format = BBox_Format.XYXY
+    ) -> List[Tuple[str, int, float, torch.Tensor]]:
+        """
+        Flattens the bounding boxes (which can be shape (N, 4)
+        into a list of tuples of the form (label, class, score, box).
+        Each tuple corresponds to a single bounding box.
+        """
+        if bbox_format == BBox_Format.XYXY:
+            boxes = self.as_xyxy()
+        elif bbox_format == BBox_Format.XYWH:
+            boxes = self.as_xywh()
+        elif bbox_format == BBox_Format.XYWHN:
+            boxes = self.as_xywhn()
+        elif bbox_format == BBox_Format.XYXYN:
+            boxes = self.as_xyxyn()
+        else:
+            raise NotImplementedError(
+                f"{bbox_format} not supported for flattening DetectionResult"
+            )
+
+        # Flatten the boxes
+        flattened_boxes = []
+        for i in range(boxes.shape[0]):
+            box = boxes[i]
+            label = (
+                self.label[i].item()
+                if isinstance(self.label, torch.Tensor)
+                else self.label
+            )
+            cls = self.cls[i].item() if isinstance(self.cls, torch.Tensor) else self.cls
+            score = (
+                self.score[i].item()
+                if isinstance(self.score, torch.Tensor)
+                else self.score
+            )
+            flattened_boxes.append((label, cls, score, box))
+
+        return flattened_boxes
+
     def _check_self_consistency(self):
         # if the scores are a float, then the class and label should be too
         # and the bbox should have shape (4,)
@@ -261,15 +325,23 @@ class ObjectDetectionUtils:
 
         pred_boxes = torch.cat(pred_boxes) if pred_boxes else torch.Tensor([])
         pred_scores = (
-            torch.tensor(pred_scores)
-            if isinstance(pred_scores[0], float)
-            else torch.cat(pred_scores)
-        ) if pred_scores else torch.Tensor([])
+            (
+                torch.tensor(pred_scores)
+                if isinstance(pred_scores[0], float)
+                else torch.cat(pred_scores)
+            )
+            if pred_scores
+            else torch.Tensor([])
+        )
         pred_classes = (
-            torch.tensor(pred_classes)
-            if isinstance(pred_classes[0], int)
-            else torch.cat(pred_classes)
-        ) if pred_classes else torch.Tensor([])
+            (
+                torch.tensor(pred_classes)
+                if isinstance(pred_classes[0], int)
+                else torch.cat(pred_classes)
+            )
+            if pred_classes
+            else torch.Tensor([])
+        )
 
         preds: List[Dict[str, torch.Tensor]] = [
             dict(boxes=pred_boxes, labels=pred_classes, scores=pred_scores)
