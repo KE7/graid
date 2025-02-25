@@ -1,7 +1,11 @@
+import json
 import os
+from pathlib import Path
 from typing import Optional
-from PIL import Image
+
+import numpy as np
 import torch
+from PIL import Image
 from scenic_reasoning.data.ImageLoader import (
     Bdd100kDataset,
     NuImagesDataset,
@@ -10,10 +14,8 @@ from scenic_reasoning.data.ImageLoader import (
 from scenic_reasoning.interfaces.ObjectDetectionI import ObjectDetectionModelI
 from scenic_reasoning.questions.ObjectDetectionQ import ALL_QUESTIONS, Quadrants
 from sqlitedict import SqliteDict
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
-from pathlib import Path
-import numpy as np
 
 
 class ObjDectDatasetBuilder(Dataset):
@@ -24,7 +26,7 @@ class ObjDectDatasetBuilder(Dataset):
         split: list[str] = ["train", "val", "test"],
         dataset: list[str] = ["waymo", "nuimage", "bdd", "all"],
         db_name: str = "object_detection_questions_from_gt",
-        transform = None
+        transform=None,
     ):
         self.split = split
         self.questions = ALL_QUESTIONS
@@ -41,7 +43,11 @@ class ObjDectDatasetBuilder(Dataset):
         for question in self.questions:
             table_name = str(question)
             self.dataset[table_name] = SqliteDict(
-                str(db_path), tablename=table_name, autocommit=True
+                str(db_path),
+                tablename=table_name,
+                autocommit=True,
+                encode=json.dumps,
+                decode=json.loads,
             )
             self.dataset[table_name].commit()
 
@@ -50,14 +56,16 @@ class ObjDectDatasetBuilder(Dataset):
             self.bdd = Bdd100kDataset(split=self.split, transform=transform)
             self.all_sets.append(self.bdd)
         elif dataset == "nuimages":
-            self.nu_images = NuImagesDataset(split=self.split, size="full", transform=transform)
+            self.nu_images = NuImagesDataset(
+                split=self.split, size="full", transform=transform
+            )
             self.all_sets.append(self.nu_images)
         elif dataset == "waymo":
             if self.split == "val":
                 self.waymo = WaymoDataset(split="validation", transform=transform)
             else:
                 self.waymo = WaymoDataset(split=self.split + "ing", transform=transform)
-            
+
             self.all_sets.append(self.waymo)
         else:
             print("invalid dataset combination")
@@ -100,7 +108,7 @@ class ObjDectDatasetBuilder(Dataset):
             )
             for batch in tqdm(data_loader):
                 batch_images = torch.stack([sample["image"] for sample in batch])
-                batch_names = [sample['name'] for sample in batch]
+                batch_names = [sample["name"] for sample in batch]
 
                 if model is not None:
                     # labels = model.identify_for_image_as_tensor(batch_images)
@@ -119,9 +127,9 @@ class ObjDectDatasetBuilder(Dataset):
 
                         if question.is_applicable(image, lbl):
                             qa_list = question.apply(image, lbl)
-                            # because of Python semantics, sqlitedict cannot 
-                            # know when a mutable SqliteDict-backed entry 
-                            # was modified in RAM. You'll need to explicitly 
+                            # because of Python semantics, sqlitedict cannot
+                            # know when a mutable SqliteDict-backed entry
+                            # was modified in RAM. You'll need to explicitly
                             # assign the mutated object back to SqliteDict:
                             # https://github.com/piskvorky/sqlitedict
                             self.dataset[table_name][name] = {
@@ -135,7 +143,7 @@ class ObjDectDatasetBuilder(Dataset):
                                 "split": self.split,
                                 "num of labels": len(lbl),
                             }
-        
+
         for table_name in self.dataset:
             if not self.dataset[table_name]:
                 continue
