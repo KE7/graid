@@ -18,14 +18,14 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
     BBox_Format,
     ObjectDetectionResultI,
 )
-from scenic_reasoning.utilities.common import convert_to_xyxy, project_root_dir
+from scenic_reasoning.utilities.common import (
+    convert_to_xyxy,
+    project_root_dir,
+    read_image,
+)
 from torch import Tensor
 from torch.utils.data import Dataset
 from torchvision import transforms
-import torch
-from scenic_reasoning.utilities.common import convert_to_xyxy, read_image
-import base64
-from pycocotools import mask as cocomask
 from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
@@ -562,17 +562,24 @@ class NuImagesDataset(ImageDataset):
         self.obj_annotations = json.load(open(obj_annotations_file))
 
         self.nuim = NuImages(
-            dataroot=img_dir, version=f"v1.0-{split}", verbose=False, lazy=True  #verbose off to avoid excessive print statement
+            dataroot=img_dir,
+            version=f"v1.0-{split}",
+            verbose=False,
+            lazy=True,  # verbose off to avoid excessive print statement
         )
 
         empty_count = 0
         img_labels = []
-        for i in tqdm(range(len(self.nuim.sample)), desc="Processing NuImage dataset..."):
+        for i in tqdm(
+            range(len(self.nuim.sample)), desc="Processing NuImage dataset..."
+        ):
             # see: https://www.nuscenes.org/tutorials/nuimages_tutorial.html
             sample = self.nuim.sample[i]
             sample_token = sample["token"]
             key_camera_token = sample["key_camera_token"]
-            object_tokens, surface_tokens = self.nuim.list_anns(sample_token, verbose=False)   #verbose off to avoid excessive print statement
+            object_tokens, surface_tokens = self.nuim.list_anns(
+                sample_token, verbose=False
+            )  # verbose off to avoid excessive print statement
             if object_tokens == []:
                 empty_count += 1
                 continue
@@ -604,9 +611,11 @@ class NuImagesDataset(ImageDataset):
             )
 
             # TODO: add error catching logic in case of empty token or token mismatch.
-        
-        print(f"{split} has {empty_count} out of {len(self.nuim.sample)} empty samples.")
-        
+
+        print(
+            f"{split} has {empty_count} out of {len(self.nuim.sample)} empty samples."
+        )
+
         def merge_transform(
             image: Tensor, labels: List[Dict[str, Any]], timestamp: str
         ) -> Tuple[
@@ -810,7 +819,9 @@ class NuImagesDataset_seg(ImageDataset):
             sample = self.nuim.sample[i]
             sample_token = sample["token"]
             key_camera_token = sample["key_camera_token"]
-            object_tokens, surface_tokens = self.nuim.list_anns(sample_token, verbose=False)
+            object_tokens, surface_tokens = self.nuim.list_anns(
+                sample_token, verbose=False
+            )
             if object_tokens == []:
                 continue
 
@@ -1155,7 +1166,6 @@ class WaymoDataset(ImageDataset):
                 image, labels, attributes, timestamp
             )
 
-        
         return {
             "name": img_data["name"],
             "path": img_data["path"],

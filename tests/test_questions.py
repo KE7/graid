@@ -13,10 +13,12 @@ from scenic_reasoning.questions.ObjectDetectionQ import (
     LargestAppearance,
     LeastAppearance,
     LeftMost,
+    LeftMostWidthVsHeight,
     LeftOf,
     MostAppearance,
     Quadrants,
     RightMost,
+    RightMostWidthVsHeight,
     RightOf,
     WidthVsHeight,
 )
@@ -51,14 +53,17 @@ bdd_original = Bdd100kDataset(
 )
 
 niu = NuImagesDataset(
-    split="val", transform=lambda i, l: yolo_nuscene_transform(i, l, (768, 1280))
+    split="val", transform=lambda i, l: yolo_nuscene_transform(i, l, (768, 1280)), size="mini"
 )
 niu_original = NuImagesDataset(
     split="val",
+    size="mini",
 )
 
 waymo = WaymoDataset(
-    split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, (640, 1333))
+    split="validation",
+    # TODO: I think yolo_waymo_transform is broken now 
+    # transform=lambda i, l: yolo_waymo_transform(i, l, (640, 1333))
 )
 waymo_original = WaymoDataset(
     split="validation",
@@ -79,6 +84,8 @@ q_list = [
     LeftMost(),
     RightMost(),
     HowMany(),
+    LeftMostWidthVsHeight(),
+    RightMostWidthVsHeight(),
 ]
 for i in range(10):
     print(i)
