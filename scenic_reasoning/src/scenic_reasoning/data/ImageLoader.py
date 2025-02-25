@@ -20,9 +20,9 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
 from scenic_reasoning.utilities.common import (
     convert_to_xyxy,
     project_root_dir,
-    read_image,
-    inverse_coco_label
+    read_image
 )
+from scenic_reasoning.utilities.coco import inverse_coco_label
 from torch import Tensor
 from torch.utils.data import Dataset
 from torchvision import transforms
