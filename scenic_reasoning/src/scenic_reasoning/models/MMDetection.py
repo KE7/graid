@@ -1,9 +1,13 @@
-from itertools import islice
 from pathlib import Path
 from typing import Iterator, List, Optional, Union
-import os
+
+import mmdet
 import numpy as np
 import torch
+from mmdet.apis import DetInferencer, inference_detector, init_detector
+from mmdet.registry import VISUALIZERS
+from mmengine.utils import get_git_hash
+from mmengine.utils.dl_utils import collect_env as collect_base_env
 from PIL import Image
 from scenic_reasoning.interfaces.InstanceSegmentationI import (
     InstanceSegmentationModelI,
@@ -14,33 +18,27 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
     BBox_Format,
     ObjectDetectionModelI,
     ObjectDetectionResultI,
-    ObjectDetectionUtils
+    ObjectDetectionUtils,
 )
 from scenic_reasoning.utilities.coco import coco_label
-from mmdet.apis import DetInferencer, init_detector, inference_detector
-from mmengine.utils import get_git_hash
-from mmengine.utils.dl_utils import collect_env as collect_base_env
-from mmdet.registry import VISUALIZERS
 from scenic_reasoning.utilities.common import get_default_device
-import mmdet
-
 
 
 class MMdetection_obj(ObjectDetectionModelI):
     def __init__(self, config_file: str, checkpoint_file, **kwargs) -> None:
-        device = "cpu"   # Using mps will error, see: https://github.com/open-mmlab/mmdetection/issues/11794
+        device = "cpu"  # Using mps will error, see: https://github.com/open-mmlab/mmdetection/issues/11794
         if torch.cuda.is_available():
             device = "cuda"
 
         self._model = init_detector(config_file, checkpoint_file, device=device)
 
         # set class_agnostic to True to avoid overlaps: https://github.com/open-mmlab/mmdetection/issues/6254
-        self._model.test_cfg.rcnn.nms.class_agnostic=True
+        self._model.test_cfg.rcnn.nms.class_agnostic = True
 
     def collect_env(self):
         """Collect the information of the running environments."""
         env_info = collect_base_env()
-        env_info['MMDetection'] = f'{mmdet.__version__}+{get_git_hash()[:7]}'
+        env_info["MMDetection"] = f"{mmdet.__version__}+{get_git_hash()[:7]}"
         return env_info
 
     def identify_for_image(
@@ -49,7 +47,7 @@ class MMdetection_obj(ObjectDetectionModelI):
             str, Path, int, Image.Image, list, tuple, np.ndarray, torch.Tensor
         ],
         debug: bool = False,
-        **kwargs
+        **kwargs,
     ) -> List[List[Optional[ObjectDetectionResultI]]]:
         """
         Run object detection on an image or a batch of images.
@@ -66,7 +64,9 @@ class MMdetection_obj(ObjectDetectionModelI):
         """
 
         # image is batched input. MMdetection only supports Union[InputType, Sequence[InputType]], where InputType = Union[str, np.ndarray]
-        image_list = [image[i].permute(1, 2, 0).cpu().numpy() for i in range(len(image))]
+        image_list = [
+            image[i].permute(1, 2, 0).cpu().numpy() for i in range(len(image))
+        ]
         image_hw = image_list[0].shape[:-1]
         predictions = inference_detector(self._model, image_list)
 
@@ -76,7 +76,7 @@ class MMdetection_obj(ObjectDetectionModelI):
             bboxes = pred.pred_instances.bboxes.tolist()
             labels = pred.pred_instances.labels
             scores = pred.pred_instances.scores
-            image_hw = pred.pad_shape   #TODO: should I use pad_shape or img_shape?
+            image_hw = pred.pad_shape  # TODO: should I use pad_shape or img_shape?
             objects = []
 
             for i in range(len(labels)):
@@ -85,13 +85,13 @@ class MMdetection_obj(ObjectDetectionModelI):
                 bbox = bboxes[i]
 
                 odr = ObjectDetectionResultI(
-                        score=score,
-                        cls=cls_id,
-                        label=coco_label[cls_id],
-                        bbox=bbox,
-                        image_hw=image_hw,
-                        bbox_format=BBox_Format.XYXY,
-                    )
+                    score=score,
+                    cls=cls_id,
+                    label=coco_label[cls_id],
+                    bbox=bbox,
+                    image_hw=image_hw,
+                    bbox_format=BBox_Format.XYXY,
+                )
                 objects.append(odr)
             all_objects.append(objects)
 
@@ -100,7 +100,9 @@ class MMdetection_obj(ObjectDetectionModelI):
                 curr_img = image_list[i]
                 if image_list[i].dtype == np.float32:
                     curr_img = curr_img.astype(np.uint8)
-                ObjectDetectionUtils.show_image_with_detections(Image.fromarray(curr_img), all_objects[i])
+                ObjectDetectionUtils.show_image_with_detections(
+                    Image.fromarray(curr_img), all_objects[i]
+                )
 
         return all_objects
 
@@ -110,7 +112,7 @@ class MMdetection_obj(ObjectDetectionModelI):
             str, Path, int, Image.Image, list, tuple, np.ndarray, torch.Tensor
         ],
         debug: bool = False,
-        **kwargs
+        **kwargs,
     ) -> List[Optional[ObjectDetectionResultI]]:
         """
         Run object detection on an image or a batch of images.
@@ -140,13 +142,13 @@ class MMdetection_obj(ObjectDetectionModelI):
 
 class MMdetection_seg(InstanceSegmentationModelI):
     def __init__(self, config_file: str, checkpoint_file, **kwargs) -> None:
-        device = "cpu"   # Using mps will error, see: https://github.com/open-mmlab/mmdetection/issues/11794
+        device = "cpu"  # Using mps will error, see: https://github.com/open-mmlab/mmdetection/issues/11794
         if torch.cuda.is_available():
             device = "cuda"
         self._model = init_detector(config_file, checkpoint_file, device=device)
 
         # set class_agnostic to True to avoid overlaps: https://github.com/open-mmlab/mmdetection/issues/6254
-        self._model.test_cfg.rcnn.nms.class_agnostic=True
+        self._model.test_cfg.rcnn.nms.class_agnostic = True
 
     def identify_for_image(
         self,
@@ -154,7 +156,7 @@ class MMdetection_seg(InstanceSegmentationModelI):
             str, Path, int, Image.Image, list, tuple, np.ndarray, torch.Tensor
         ],
         debug: bool = False,
-        **kwargs
+        **kwargs,
     ) -> List[List[Optional[InstanceSegmentationResultI]]]:
         """
         Run instance segmentation on an image or a batch of images.
@@ -169,7 +171,9 @@ class MMdetection_seg(InstanceSegmentationModelI):
             represents the batch of images, and the inner list represents the
             detections in a particular image.
         """
-        image_list = [image[i].permute(1, 2, 0).cpu().numpy() for i in range(len(image))]
+        image_list = [
+            image[i].permute(1, 2, 0).cpu().numpy() for i in range(len(image))
+        ]
         predictions = inference_detector(self._model, image_list)
 
         # if debug:
@@ -191,7 +195,7 @@ class MMdetection_seg(InstanceSegmentationModelI):
             masks = pred.pred_instances.masks
             labels = pred.pred_instances.labels
             scores = pred.pred_instances.scores
-            image_hw = pred.pad_shape   #TODO: should I use pad_shape or img_shape?
+            image_hw = pred.pad_shape  # TODO: should I use pad_shape or img_shape?
             instances = []
             for i in range(len(labels)):
                 cls_id = labels[i].item()
@@ -218,7 +222,7 @@ class MMdetection_seg(InstanceSegmentationModelI):
             str, Path, int, Image.Image, list, tuple, np.ndarray, torch.Tensor
         ],
         debug: bool = False,
-        **kwargs
+        **kwargs,
     ) -> List[Optional[InstanceSegmentationResultI]]:
         """Run instance segmentation on an image or a batch of images.
         Args:

@@ -1,9 +1,9 @@
-import tempfile
-import numpy as np
 from typing import Callable, Dict, Iterator, List, Optional, Tuple, Union
-from PIL import Image
+
+import numpy as np
 import torch
-from scenic_reasoning.data.ImageLoader import Bdd100kDataset, ImageDataset
+from PIL import Image
+from scenic_reasoning.data.ImageLoader import ImageDataset
 from scenic_reasoning.interfaces.ObjectDetectionI import (
     ObjectDetectionModelI,
     ObjectDetectionResultI,
