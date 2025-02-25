@@ -80,7 +80,7 @@ coco_label = {
     76: "scissors",
     77: "teddy bear",
     78: "hair drier",
-    79: "toothbrush"
+    79: "toothbrush",
 }
 
 inverse_coco_label = {v: k for k, v in coco_label.items()}

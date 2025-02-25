@@ -1,6 +1,8 @@
 import difflib
-import openai
 import re
+
+import openai
+
 
 class PromptingStrategy:
     """Base class for different prompting strategies."""
@@ -9,13 +11,17 @@ class PromptingStrategy:
         """Abstract method to be implemented by subclasses."""
         raise NotImplementedError("Each subclass must implement this method.")
 
+
 class ZeroShotPrompt(PromptingStrategy):
     """Zero-shot prompting method."""
+
     def generate_prompt(self, query):
         return f"Answer the question based on the image: {query}"
 
+
 class FewShotPrompt(PromptingStrategy):
     """Few-shot prompting method."""
+
     def __init__(self, examples):
         """
         Args:
@@ -26,7 +32,7 @@ class FewShotPrompt(PromptingStrategy):
     def generate_prompt(self, query):
         if not self.examples:
             raise ValueError("Few-shot examples are required but not provided.")
-        
+
         prompt = "Here are some examples:\n"
         for i, (inp, out) in enumerate(self.examples):
             prompt += f"Example {i+1}:\nInput: {inp}\nOutput: {out}\n\n"
@@ -34,8 +40,10 @@ class FewShotPrompt(PromptingStrategy):
         prompt += f"Now, answer the following question:\n{query}"
         return prompt
 
+
 class SetOfMarkPrompt(PromptingStrategy):
     """Set-of-mark prompting method."""
+
     def __init__(self, set_of_mark):
         """
         Args:
@@ -51,20 +59,26 @@ class SetOfMarkPrompt(PromptingStrategy):
         return f"Ensure the response follows these constraints:\n{constraints}\n\nQuestion: {query}"
 
 
-
 class EvaluationMetric:
     """Base class for different evaluation metrics."""
+
     def evaluate(self, prediction, ground_truth=None):
         """Abstract method to be implemented by subclasses."""
         raise NotImplementedError("Each subclass must implement this method.")
 
+
 class ExactMatchMetric(EvaluationMetric):
     """Exact match metric."""
+
     def evaluate(self, prediction, ground_truth):
-        return 1.0 if prediction.strip().lower() == ground_truth.strip().lower() else 0.0
+        return (
+            1.0 if prediction.strip().lower() == ground_truth.strip().lower() else 0.0
+        )
+
 
 class LLMJudgeMetric(EvaluationMetric):
     """LLM-as-a-judge evaluation metric."""
+
     def __init__(self, llm_model="gpt-4"):
         self.llm_model = llm_model
 
@@ -81,8 +95,13 @@ class LLMJudgeMetric(EvaluationMetric):
 
         response = openai.ChatCompletion.create(
             model=self.llm_model,
-            messages=[{"role": "system", "content": "You are a fair evaluator of AI-generated text."},
-                      {"role": "user", "content": prompt}]
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a fair evaluator of AI-generated text.",
+                },
+                {"role": "user", "content": prompt},
+            ],
         )
 
         score_text = response["choices"][0]["message"]["content"]
@@ -90,8 +109,10 @@ class LLMJudgeMetric(EvaluationMetric):
 
         return max(0.0, min(1.0, score))  # Ensure score is between 0 and 1
 
+
 class ConstraintDecodingMetric(EvaluationMetric):
     """Constraint decoding metric."""
+
     def __init__(self, constraint_rules):
         self.constraint_rules = constraint_rules
 
