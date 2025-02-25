@@ -26,9 +26,9 @@ jobs:
       - name: Ensure check.ch exists and is executable
         run: |
           cd $GITHUB_WORKSPACE
-          if [ -f check.ch ]; then
+            if [ -f check.ch ]; then
             chmod +x check.ch
-            ./check.ch
+            ./check.ch || exit 1
           else
             echo "File check.ch does not exist. Listing files in the directory:"
             ls -la
