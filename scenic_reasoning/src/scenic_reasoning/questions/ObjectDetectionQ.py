@@ -366,7 +366,7 @@ class WidthVsHeight(Question):
                 "Width and height are roughly equal (within threshold) so can't ask WidthVsHeight"
             )
             return None
-        
+
         if width > height:
             answer = "yes"
             other_answer = "no"
@@ -1124,9 +1124,7 @@ class RightMostWidthVsHeight(WidthVsHeight):
         self.question = (
             "Does the rightmost object in the image appear to be wider than it is tall?"
         )
-        self.other_question = (
-            "Does the rightmost object in the image appear to be taller than it is wide?"
-        )
+        self.other_question = "Does the rightmost object in the image appear to be taller than it is wide?"
 
     def apply(
         self,
