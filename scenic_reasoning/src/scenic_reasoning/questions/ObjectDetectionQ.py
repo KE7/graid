@@ -363,9 +363,10 @@ class WidthVsHeight(Question):
         # TODO: should we check for a minimum width or height?
         if abs(width - height) / width < self.threshold:
             logger.debug(
-                "Width and height are roughly equal so can't ask WidthVsHeight"
+                "Width and height are roughly equal (within threshold) so can't ask WidthVsHeight"
             )
             return None
+        
         if width > height:
             answer = "yes"
             other_answer = "no"
@@ -1104,17 +1105,17 @@ class LeftMostWidthVsHeight(WidthVsHeight):
                 return []
 
         # check if the leftmost detection is at least threshold % larger than the second largest
-        possible_qa = self._question_answer(
+        question_answer_pair = self._question_answer(
             leftmost_detection.label,
             leftmost_detection,
             reverse=reverse,
         )
-        if possible_qa is None:
+        if question_answer_pair is None:
             logger.debug(
                 "LeftMostWidthVsHeight question not ask-able due to width and height being roughly equal"
             )
             return []
-        return possible_qa
+        return question_answer_pair
 
 
 class RightMostWidthVsHeight(WidthVsHeight):
@@ -1123,11 +1124,15 @@ class RightMostWidthVsHeight(WidthVsHeight):
         self.question = (
             "Does the rightmost object in the image appear to be wider than it is tall?"
         )
+        self.other_question = (
+            "Does the rightmost object in the image appear to be taller than it is wide?"
+        )
 
     def apply(
         self,
         image: Image.Image,
         detections: List[ObjectDetectionResultI],
+        reverse: bool = False,
     ) -> List[Tuple[str, str]]:
         # @precondition: at_least_one_single_detection(image, detections) == True
         im_width, im_height = image.size
@@ -1203,10 +1208,17 @@ class RightMostWidthVsHeight(WidthVsHeight):
                 )
                 return []
         # check if the rightmost detection is at least threshold % larger than the second largest
-        return self._question_answer(
+        question_answer_pair = self._question_answer(
             rightmost_detection.label,
             rightmost_detection,
+            reverse=reverse,
         )
+        if question_answer_pair is None:
+            logger.debug(
+                "RightMostWidthVsHeight question not ask-able due to width and height being roughly equal"
+            )
+            return []
+        return question_answer_pair
 
 
 ALL_QUESTIONS = [
