@@ -135,7 +135,7 @@ class ObjectDetectionResultI:
     def flatten(self) -> List["ObjectDetectionResultI"]:
         """
         If the current detection result is a single instance, it returns itself
-        Otherwise, it returns a list of detection results based on the n boxes 
+        Otherwise, it returns a list of detection results based on the n boxes
         that were in the original detection result.
         """
         if isinstance(self._score, float):
