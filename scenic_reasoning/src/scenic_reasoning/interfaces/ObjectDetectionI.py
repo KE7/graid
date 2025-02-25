@@ -229,7 +229,7 @@ class ObjectDetectionUtils:
         class_metrics: bool = False,
         extended_summary: bool = False,
         debug: bool = False,
-        image: Optional[Image.Image] = None,
+        image: Optional[torch.Tensor] = None,
     ) -> Dict[str, float]:
         
         gt_classes_set = set([truth.cls for truth in ground_truth])
@@ -246,27 +246,41 @@ class ObjectDetectionUtils:
             scores.append(truth.score)  # score is a float or tensor
             classes.append(truth.cls)
 
-        boxes = torch.cat(boxes)  # shape: (num_boxes, 4)
+        boxes = torch.cat(boxes) if boxes else torch.Tensor([])  # shape: (num_boxes, 4)
         scores = (
             torch.tensor(scores) if isinstance(scores[0], float) else torch.cat(scores)
-        )
+        ) if scores else torch.Tensor([])
         classes = (
             torch.tensor(classes) if isinstance(classes[0], int) else torch.cat(classes)
-        )
+        ) if classes else torch.Tensor([])
+
 
         targets: List[Dict[str, torch.Tensor]] = [
-            dict(boxes=boxes.squeeze(1), labels=classes, scores=scores)
+            dict(boxes=boxes, labels=classes, scores=scores)
         ]
 
         pred_boxes = []
         pred_scores = []
         pred_classes = []
+
         for pred in predictions:
             if pred.cls not in intersection_classes:
                 continue
             pred_boxes.append(pred.as_xyxy())
             pred_scores.append(pred.score)  # score is a float or tensor
             pred_classes.append(pred.cls)
+
+        if debug:
+            ObjectDetectionUtils.show_image_with_detections(
+                Image.fromarray((image.permute(1, 2, 0).cpu().numpy()).astype(np.uint8)),
+                [pred for pred in predictions if pred.cls in intersection_classes],
+            )
+
+            ObjectDetectionUtils.show_image_with_detections(
+                Image.fromarray((image.permute(1, 2, 0).cpu().numpy()).astype(np.uint8)),
+                [truth for truth in ground_truth if truth.cls in intersection_classes],
+            )
+
 
         pred_boxes = torch.cat(pred_boxes) if pred_boxes else torch.Tensor([])
         pred_scores = (
@@ -287,18 +301,13 @@ class ObjectDetectionUtils:
         metric = MeanAveragePrecision(
             class_metrics=class_metrics,
             extended_summary=extended_summary,
+            iou_thresholds=[0.25],
+            iou_type='bbox'
         )
-
-        metric.update(targets, preds)
-
-        ret = metric.compute()
-
-        print(ret)
-
-        import pdb
-        pdb.set_trace()
-
-        return ret
+        
+        metric.update(target=targets, preds=preds)
+        
+        return metric.compute()
 
     def show_image_with_detections(image, detections):
         # Convert PIL image to a NumPy array in OpenCV's BGR format

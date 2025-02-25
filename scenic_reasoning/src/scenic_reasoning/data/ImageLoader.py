@@ -499,7 +499,7 @@ class NuImagesDataset(ImageDataset):
     }
 
     _CATEGORIES_TO_COCO = {
-        "animal": "undefined",
+        "animal": "undefined",   #TODO: change this to include speicfic animals
         "flat.driveable_surface": "undefined",
         "human.pedestrian.adult": "person",
         "human.pedestrian.child": "person",
@@ -517,12 +517,12 @@ class NuImagesDataset(ImageDataset):
         "vehicle.bus.bendy": "bus",
         "vehicle.bus.rigid": "bus",
         "vehicle.car": "car",
-        "vehicle.construction": "undefined", 
+        "vehicle.construction": "truck", 
         "vehicle.ego": "undefined",
         "vehicle.emergency.ambulance": "undefined", 
         "vehicle.emergency.police": "person",  
         "vehicle.motorcycle": "motorcycle",
-        "vehicle.trailer": "truck",
+        "vehicle.trailer": "undefined",
         "vehicle.truck": "truck",
     }
 

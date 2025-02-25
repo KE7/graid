@@ -14,7 +14,7 @@ from scenic_reasoning.utilities.common import (
     yolo_waymo_transform,
 )
 
-NUM_EXAMPLES_TO_SHOW = 3
+NUM_EXAMPLES_TO_SHOW = 20
 BATCH_SIZE = 1
 
 bdd = Bdd100kDataset(
@@ -24,31 +24,38 @@ bdd = Bdd100kDataset(
     use_extended_annotations=False,
 )
 
-nu = NuImagesDataset(split="test", size="full", transform=lambda i, l: yolo_nuscene_transform(i, l, new_shape=(768, 1280)))
+nu = NuImagesDataset(split="mini", size="mini", transform=lambda i, l: yolo_nuscene_transform(i, l, new_shape=(768, 1280)))
 
-waymo = WaymoDataset(split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, (768, 1280)))
-# waymo = WaymoDataset(split="validation")
+# waymo = WaymoDataset(split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, (768, 1280)))
 
 # https://docs.ultralytics.com/models/yolov5/#performance-metrics
 model = Yolo(model="yolo11n.pt")
 
-for d in [bdd, waymo]:
+for d in [nu]:
 
     measurements = ObjectDetectionMeasurements(
         model, d, batch_size=BATCH_SIZE, collate_fn=lambda x: x
     )  # hacky way to avoid RuntimeError: each element in list of batch should be of equal size
 
     # WARNING ⚠️ imgsz=[720, 1280] must be multiple of max stride 64, updating to [768, 1280]
-    for results, ims in islice(
+    for results in islice(
         measurements.iter_measurements(
             # device=get_default_device(),
             imgsz=[768, 1280],
             bbox_offset=24,
-            debug=True,
+            debug=False,
             conf=0.1,
             class_metrics=True,
             extended_summary=True,
         ),
         NUM_EXAMPLES_TO_SHOW,
     ):
-        print("")
+        print("global map", results[0]['map'])
+        print("map 50", results[0]['map_50'])
+        print("map 75", results[0]['map_75'])
+        print("map_small", results[0]['map_small'])
+        print("map_medium", results[0]['map_medium'])
+        print("map_large", results[0]['map_large'])
+        print("mar_small", results[0]['mar_small'])
+        print("mar_medium", results[0]['mar_medium'])
+        print("mar_large", results[0]['mar_large'])
