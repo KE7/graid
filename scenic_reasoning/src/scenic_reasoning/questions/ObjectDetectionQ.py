@@ -196,9 +196,10 @@ class Question(ABC):
         pass
 
     def __repr__(self):
-        representation = f"Question: {self.question}\n"
-        if self.other_question is not None:
-            representation += f"Other Question: {self.other_question}\n"
+        representation = f"Question: {self.question}"
+        # Safely check if 'other_question' is defined and not None
+        if getattr(self, "other_question", None) is not None:
+            representation += f"\nOther Question: {self.other_question}"
 
         return representation
 
