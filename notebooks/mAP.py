@@ -6,6 +6,14 @@ from scenic_reasoning.utilities.common import get_default_device, yolo_bdd_trans
 from scenic_reasoning.utilities.coco import coco_label
 from torch.utils.data import DataLoader
 
+from detectron2.engine import DefaultPredictor
+from detectron2.config import get_cfg
+from detectron2 import model_zoo
+from detectron2.evaluation import COCOEvaluator, inference_on_dataset
+from scenic_reasoning.utilities.common import get_default_device
+
+
+'''
 j = [{
     "file_name": "demo/1.jpg",
     "height": 120,
@@ -33,10 +41,13 @@ j = [{
     ],
 } ]
 
+'''
+
+# Script for generating the annotation.json file
 # data = []
 # bdd = Bdd100kDataset(
 #     split="val",
-#     transform=lambda i, l: yolo_bdd_transform(i, l, new_shape=(768, 1280)),
+#     # transform=lambda i, l: yolo_bdd_transform(i, l, new_shape=(768, 1280)),
 #     use_original_categories=False,
 #     use_extended_annotations=False,
 # )
@@ -58,10 +69,14 @@ j = [{
 #         })
 #     # labels = [l.as_xyxy().tolist()[0] for l in labels]
     
+#     # import pdb
+#     # pdb.set_trace()
+#     h, w = batch[0]["image"].shape[1:]
+
 #     data.append({
 #         "file_name": batch[0]["path"],
-#         "height": 120,
-#         "width": 120,
+#         "height": h,
+#         "width": w,
 #         "image_id": 1,
 #         "annotations": annotations
 #     })
@@ -70,48 +85,40 @@ j = [{
 #     with open("/Users/harry/Desktop/Nothing/sky/scenic-reasoning/notebooks/annotation.json", "w") as f:
 #         json.dump(data, f, indent=4)
 
-
 def my_dataset_function():
     with open("/Users/harry/Desktop/Nothing/sky/scenic-reasoning/notebooks/annotation.json") as f:
         annotations = json.load(f)
 
     return annotations
 
-
-DatasetCatalog.register("my_dataset", my_dataset_function)
-MetadataCatalog.get("my_dataset").set(thing_classes=list(coco_label.values()))
-d = DatasetCatalog.get("my_dataset")
-
-print(d)
-
-
 # from detectron2.data.datasets import register_coco_instances
 # register_coco_instances("my_dataset", {}, "/Users/harry/Desktop/Nothing/sky/scenic-reasoning/notebooks/annotation.json", "/Users/harry/Desktop/Nothing/sky/scenic-reasoning/demo")
 
-from detectron2.engine import DefaultPredictor
-from detectron2.config import get_cfg
-from detectron2 import model_zoo
-from detectron2.evaluation import COCOEvaluator, inference_on_dataset
-from scenic_reasoning.utilities.common import get_default_device
 
-config_file = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
-weights_file = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
-cfg = get_cfg()
-cfg.MODEL.DEVICE = str(get_default_device())
-cfg.merge_from_file(model_zoo.get_config_file(config_file))
-cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url(weights_file)
-cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.1
+if __name__ == "__main__":
 
-predictor = DefaultPredictor(cfg)
-evaluator = COCOEvaluator("my_dataset", output_dir="../output")
-print("????????")
+    DatasetCatalog.register("my_dataset", my_dataset_function)
+    MetadataCatalog.get("my_dataset").set(thing_classes=list(coco_label.values()))
+    d = DatasetCatalog.get("my_dataset")
 
-val_loader = build_detection_test_loader(cfg, "my_dataset", batch_size = 1, num_workers = 1)
-for i in val_loader:
-    print(i)
-    break
+    print(d)
 
-print(inference_on_dataset(predictor.model, val_loader, evaluator))
+    config_file = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
+    weights_file = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
+    cfg = get_cfg()
+    cfg.MODEL.DEVICE = str(get_default_device())
+    cfg.merge_from_file(model_zoo.get_config_file(config_file))
+    cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url(weights_file)
+    cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.1
+
+    predictor = DefaultPredictor(cfg)
+    evaluator = COCOEvaluator("my_dataset", output_dir="../output")
+
+    val_loader = build_detection_test_loader(cfg, "my_dataset", batch_size = 1, num_workers = 0)
+
+    print("loaded up")
+
+    print(inference_on_dataset(predictor.model, val_loader, evaluator))
 
 
 # reference notebook: https://colab.research.google.com/drive/16jcaJoc6bCFAQ96jDe2HwtXj7BMD_-m5#scrollTo=h9tECBQCvMv3
