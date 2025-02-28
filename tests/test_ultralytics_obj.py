@@ -15,7 +15,7 @@ from scenic_reasoning.utilities.common import (
 )
 
 NUM_EXAMPLES_TO_SHOW = 20
-BATCH_SIZE = 1
+BATCH_SIZE = 2
 
 bdd = Bdd100kDataset(
     split="val",
@@ -50,12 +50,14 @@ for d in [nu]:
         ),
         NUM_EXAMPLES_TO_SHOW,
     ):
-        print("global map", results[0]['map'])
-        print("map 50", results[0]['map_50'])
-        print("map 75", results[0]['map_75'])
-        print("map_small", results[0]['map_small'])
-        print("map_medium", results[0]['map_medium'])
-        print("map_large", results[0]['map_large'])
-        print("mar_small", results[0]['mar_small'])
-        print("mar_medium", results[0]['mar_medium'])
-        print("mar_large", results[0]['mar_large'])
+        for i in range(len(results)):
+            print(f"{i}th image")
+            print("global map", results[i]['map'])
+            print("map 50", results[i]['map_50'])
+            print("map 75", results[i]['map_75'])
+            print("map_small", results[i]['map_small'])
+            print("map_medium", results[i]['map_medium'])
+            print("map_large", results[i]['map_large'])
+            print("mar_small", results[i]['mar_small'])
+            print("mar_medium", results[i]['mar_medium'])
+            print("mar_large", results[i]['mar_large'])

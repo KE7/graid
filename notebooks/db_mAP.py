@@ -1,0 +1,73 @@
+
+from detectron2.data import build_detection_test_loader, MetadataCatalog, DatasetCatalog
+from detectron2.structures import BoxMode
+import json
+
+
+j = [{
+    "file_name": "demo/demo.jpg",
+    "height": 120,
+    "width": 120,
+    "image_id": 1,
+    "annotations": [
+        {
+            "bbox": [876.8, 447.2, 1003.2, 520.8],
+            "bbox_mode": BoxMode.XYXY_ABS,
+            "category_id": 2,
+            "iscrowd": 0
+        },
+        {
+            "bbox": [776.0, 445.6, 824.0, 479.2],
+            "bbox_mode": BoxMode.XYXY_ABS,
+            "category_id": 1,
+            "iscrowd": 0
+        },
+        {
+            "bbox": [1008.0, 420.0, 1232.8, 560.8],
+            "bbox_mode": BoxMode.XYXY_ABS,
+            "category_id": 1,
+            "iscrowd": 0
+        }
+    ],
+}]
+
+
+def my_dataset_function():
+    with open("/Users/harry/Desktop/Nothing/sky/scenic-reasoning/notebooks/annotation.json") as f:
+        annotations = json.load(f)
+
+    return j
+
+
+DatasetCatalog.register("my_dataset", my_dataset_function)
+MetadataCatalog.get("my_dataset").set(thing_classes=["car", "person", "bicycle"])
+data = DatasetCatalog.get("my_dataset")
+
+print(data)
+
+
+# from detectron2.data.datasets import register_coco_instances
+# register_coco_instances("my_dataset", {}, "/Users/harry/Desktop/Nothing/sky/scenic-reasoning/notebooks/annotation.json", "/Users/harry/Desktop/Nothing/sky/scenic-reasoning/demo")
+
+from detectron2.engine import DefaultPredictor
+from detectron2.config import get_cfg
+from detectron2 import model_zoo
+from detectron2.evaluation import COCOEvaluator, inference_on_dataset
+from scenic_reasoning.utilities.common import get_default_device
+
+config_file = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
+weights_file = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
+cfg = get_cfg()
+cfg.MODEL.DEVICE = str(get_default_device())
+cfg.merge_from_file(model_zoo.get_config_file(config_file))
+cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url(weights_file)
+cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.1
+
+predictor = DefaultPredictor(cfg)
+
+evaluator = COCOEvaluator("my_dataset", output_dir="../output")
+print("????????")
+# evaluator.evaluate()
+val_loader = build_detection_test_loader(cfg, "my_dataset")
+
+print(inference_on_dataset(predictor.model, val_loader, evaluator))
