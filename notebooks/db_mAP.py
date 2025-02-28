@@ -1,11 +1,113 @@
-
 from detectron2.data import build_detection_test_loader, MetadataCatalog, DatasetCatalog
 from detectron2.structures import BoxMode
 import json
-
+from scenic_reasoning.data.ImageLoader import Bdd100kDataset
+from scenic_reasoning.utilities.common import get_default_device, yolo_bdd_transform, yolo_nuscene_transform
+from scenic_reasoning.utilities.coco import coco_label
+from torch.utils.data import DataLoader
 
 j = [{
-    "file_name": "demo/demo.jpg",
+    "file_name": "demo/1.jpg",
+    "height": 120,
+    "width": 120,
+    "image_id": 1,
+    "annotations": [
+        {
+            "bbox": [876.8, 447.2, 1003.2, 520.8],
+            "bbox_mode": BoxMode.XYXY_ABS,
+            "category_id": 2,
+            "iscrowd": 0
+        },
+        {
+            "bbox": [776.0, 445.6, 824.0, 479.2],
+            "bbox_mode": BoxMode.XYXY_ABS,
+            "category_id": 1,
+            "iscrowd": 0
+        },
+        {
+            "bbox": [1008.0, 420.0, 1232.8, 560.8],
+            "bbox_mode": BoxMode.XYXY_ABS,
+            "category_id": 1,
+            "iscrowd": 0
+        }
+    ],
+}, {
+    "file_name": "demo/2.jpg",
+    "height": 120,
+    "width": 120,
+    "image_id": 1,
+    "annotations": [
+        {
+            "bbox": [876.8, 447.2, 1003.2, 520.8],
+            "bbox_mode": BoxMode.XYXY_ABS,
+            "category_id": 2,
+            "iscrowd": 0
+        },
+        {
+            "bbox": [776.0, 445.6, 824.0, 479.2],
+            "bbox_mode": BoxMode.XYXY_ABS,
+            "category_id": 1,
+            "iscrowd": 0
+        },
+        {
+            "bbox": [1008.0, 420.0, 1232.8, 560.8],
+            "bbox_mode": BoxMode.XYXY_ABS,
+            "category_id": 1,
+            "iscrowd": 0
+        }
+    ],
+}, {
+    "file_name": "demo/3.jpg",
+    "height": 120,
+    "width": 120,
+    "image_id": 1,
+    "annotations": [
+        {
+            "bbox": [876.8, 447.2, 1003.2, 520.8],
+            "bbox_mode": BoxMode.XYXY_ABS,
+            "category_id": 2,
+            "iscrowd": 0
+        },
+        {
+            "bbox": [776.0, 445.6, 824.0, 479.2],
+            "bbox_mode": BoxMode.XYXY_ABS,
+            "category_id": 1,
+            "iscrowd": 0
+        },
+        {
+            "bbox": [1008.0, 420.0, 1232.8, 560.8],
+            "bbox_mode": BoxMode.XYXY_ABS,
+            "category_id": 1,
+            "iscrowd": 0
+        }
+    ],
+}, {
+    "file_name": "demo/4.jpg",
+    "height": 120,
+    "width": 120,
+    "image_id": 1,
+    "annotations": [
+        {
+            "bbox": [876.8, 447.2, 1003.2, 520.8],
+            "bbox_mode": BoxMode.XYXY_ABS,
+            "category_id": 2,
+            "iscrowd": 0
+        },
+        {
+            "bbox": [776.0, 445.6, 824.0, 479.2],
+            "bbox_mode": BoxMode.XYXY_ABS,
+            "category_id": 1,
+            "iscrowd": 0
+        },
+        {
+            "bbox": [1008.0, 420.0, 1232.8, 560.8],
+            "bbox_mode": BoxMode.XYXY_ABS,
+            "category_id": 1,
+            "iscrowd": 0
+        }
+    ],
+}, {
+    "file_name": "demo/5.jpg",
     "height": 120,
     "width": 120,
     "image_id": 1,
@@ -31,19 +133,53 @@ j = [{
     ],
 }]
 
+data = []
+bdd = Bdd100kDataset(
+    split="val",
+    transform=lambda i, l: yolo_bdd_transform(i, l, new_shape=(768, 1280)),
+    use_original_categories=False,
+    use_extended_annotations=False,
+)
+
+data_loader = DataLoader(bdd, batch_size=1, shuffle=False, collate_fn=lambda x: x)
+
+count = 0
+for batch in data_loader:
+    if count == 10:
+        break
+    labels = batch[0]["labels"]
+    annotations = []
+    for l in labels:
+        annotations.append({
+            "bbox": l.as_xyxy().tolist()[0],
+            "bbox_mode": BoxMode.XYXY_ABS,
+            "category_id": l._class,
+            "iscrowd": 0
+        })
+    # labels = [l.as_xyxy().tolist()[0] for l in labels]
+    
+    data.append({
+        "file_name": batch[0]["path"],
+        "height": 120,
+        "width": 120,
+        "image_id": 1,
+        "annotations": annotations
+    })
+    count += 1
+
 
 def my_dataset_function():
     with open("/Users/harry/Desktop/Nothing/sky/scenic-reasoning/notebooks/annotation.json") as f:
         annotations = json.load(f)
 
-    return j
+    return data
 
 
 DatasetCatalog.register("my_dataset", my_dataset_function)
-MetadataCatalog.get("my_dataset").set(thing_classes=["car", "person", "bicycle"])
-data = DatasetCatalog.get("my_dataset")
+MetadataCatalog.get("my_dataset").set(thing_classes=list(coco_label.values()))
+d = DatasetCatalog.get("my_dataset")
 
-print(data)
+print(d)
 
 
 # from detectron2.data.datasets import register_coco_instances
@@ -68,6 +204,6 @@ predictor = DefaultPredictor(cfg)
 evaluator = COCOEvaluator("my_dataset", output_dir="../output")
 print("????????")
 # evaluator.evaluate()
-val_loader = build_detection_test_loader(cfg, "my_dataset")
+val_loader = build_detection_test_loader(cfg, "my_dataset", batch_size = 1, num_workers = 1)
 
 print(inference_on_dataset(predictor.model, val_loader, evaluator))
