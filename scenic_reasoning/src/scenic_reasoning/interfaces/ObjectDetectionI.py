@@ -479,6 +479,8 @@ class ObjectDetectionUtils:
         cv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
         # Make a copy to draw bounding boxes on
         cv_image_with_boxes = cv_image.copy()
+        cv_image_with_gt = cv_image.copy()
+        cv_image_with_preds = cv_image.copy()
         # Draw bounding boxes and labels on the copy
         for detection in detections:
             bbox = detection.as_xyxy()
@@ -500,9 +502,19 @@ class ObjectDetectionUtils:
                     
                     # Draw bounding box
                     cv2.rectangle(cv_image_with_boxes, (x1, y1), (x2, y2), color, 2)
+                    cv2.rectangle(cv_image_with_preds, (x1, y1), (x2, y2), color, 2)
                     # Put label text above the box
                     cv2.putText(
                         cv_image_with_boxes,
+                        f"{label}: {score:.2f}",
+                        (x1, max(y1 - 5, 15)),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5,
+                        (255, 255, 255),
+                        1,
+                    )
+                    cv2.putText(
+                        cv_image_with_preds,
                         f"{label}: {score:.2f}",
                         (x1, max(y1 - 5, 15)),
                         cv2.FONT_HERSHEY_SIMPLEX,
@@ -527,9 +539,19 @@ class ObjectDetectionUtils:
 
                 # Draw bounding box
                 cv2.rectangle(cv_image_with_boxes, (x1, y1), (x2, y2), color, 2)
+                cv2.rectangle(cv_image_with_preds, (x1, y1), (x2, y2), color, 2)
                 # Put label text above the box
                 cv2.putText(
                     cv_image_with_boxes,
+                    f"{label}: {score:.2f}",
+                    (x1, max(y1 - 5, 15)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (255, 255, 255),
+                    1,
+                )
+                cv2.putText(
+                    cv_image_with_preds,
                     f"{label}: {score:.2f}",
                     (x1, max(y1 - 5, 15)),
                     cv2.FONT_HERSHEY_SIMPLEX,
@@ -546,9 +568,19 @@ class ObjectDetectionUtils:
                     label = str(truth.label[i].item())
                     # Draw bounding box
                     cv2.rectangle(cv_image_with_boxes, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    cv2.rectangle(cv_image_with_gt, (x1, y1), (x2, y2), (0, 255, 0), 2)
                     # Put label text above the box
                     cv2.putText(
                         cv_image_with_boxes,
+                        f"{label}",
+                        (x1, max(y1 - 5, 15)),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5,
+                        (255, 255, 255),
+                        1,
+                    )
+                    cv2.putText(
+                        cv_image_with_gt,
                         f"{label}",
                         (x1, max(y1 - 5, 15)),
                         cv2.FONT_HERSHEY_SIMPLEX,
@@ -561,6 +593,7 @@ class ObjectDetectionUtils:
                 label = str(truth.label)
                 # Draw bounding box
                 cv2.rectangle(cv_image_with_boxes, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                cv2.rectangle(cv_image_with_gt, (x1, y1), (x2, y2), (0, 255, 0), 2)
                 # Put label text above the box
                 cv2.putText(
                     cv_image_with_boxes,
@@ -571,15 +604,22 @@ class ObjectDetectionUtils:
                     (255, 255, 255),
                     1,
                 )
+                cv2.putText(
+                    cv_image_with_gt,
+                    f"{label}",
+                    (x1, max(y1 - 5, 15)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (255, 255, 255),
+                    1,
+                )
 
         # Flag to track whether we show boxes or not
         show_boxes = True
+        img_to_show = cv_image_with_boxes
         while True:
             # Display the appropriate image
-            if show_boxes:
-                cv2.imshow("Detections", cv_image_with_boxes)
-            else:
-                cv2.imshow("Detections", cv_image)
+            cv2.imshow("Detections", img_to_show)
 
             key = cv2.waitKey(1) & 0xFF
 
@@ -589,6 +629,14 @@ class ObjectDetectionUtils:
             elif key == 32:
                 # Toggle showing bounding boxes
                 show_boxes = not show_boxes
+                if show_boxes:
+                    img_to_show = cv_image_with_boxes
+                else:
+                    img_to_show = cv_image
+            elif key == ord("g"):
+                img_to_show = cv_image_with_gt
+            elif key == ord("p"):
+                img_to_show = cv_image_with_preds
         
         cv2.destroyAllWindows()
 
