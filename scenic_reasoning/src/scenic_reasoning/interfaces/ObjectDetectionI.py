@@ -384,7 +384,7 @@ class ObjectDetectionUtils:
         
         return metric.compute()
 
-    def show_image_with_detections(image, detections):
+    def show_image_with_detections(image : Image.Image, detections: List[ObjectDetectionResultI]) -> None:
         # Convert PIL image to a NumPy array in OpenCV's BGR format
         cv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
 
@@ -403,7 +403,12 @@ class ObjectDetectionUtils:
                     label = str(detection.label[i].item())
 
                     # Choose a color and draw rectangle
-                    color = (0, 0, 255)  # BGR red
+                    if score > 0.8:
+                        color = (0, 255, 0)
+                    elif score > 0.5:
+                        color = (0, 255, 255)
+                    else:
+                        color = (0, 0, 255)
                     cv2.rectangle(cv_image_with_boxes, (x1, y1), (x2, y2), color, 2)
 
                     # Put label text above the box
@@ -461,6 +466,130 @@ class ObjectDetectionUtils:
                 # Toggle showing bounding boxes
                 show_boxes = not show_boxes
 
+        cv2.destroyAllWindows()
+
+    def show_image_with_detections_and_gt(
+        image: Image.Image,
+        detections: List[ObjectDetectionResultI],
+        ground_truth: List[ObjectDetectionResultI],
+    ) -> None:
+        # gt will be drawn in green
+        # detections will be colored based on score (orange, yellow, red)
+        # Convert PIL image to a NumPy array in OpenCV's BGR format
+        cv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+        # Make a copy to draw bounding boxes on
+        cv_image_with_boxes = cv_image.copy()
+        # Draw bounding boxes and labels on the copy
+        for detection in detections:
+            bbox = detection.as_xyxy()
+            if bbox.shape[0] > 1:
+                for i, box in enumerate(bbox):
+                    x1, y1, x2, y2 = map(int, box)
+                    score = detection.score[i].item()
+                    label = str(detection.label[i].item())
+                    # Choose a color and draw rectangle
+                    if score > 0.8:
+                        # orange
+                        color = (0, 165, 255)
+                    elif score > 0.5:
+                        # yellow
+                        color = (0, 255, 255)
+                    else:
+                        # red
+                        color = (0, 0, 255)
+                    
+                    # Draw bounding box
+                    cv2.rectangle(cv_image_with_boxes, (x1, y1), (x2, y2), color, 2)
+                    # Put label text above the box
+                    cv2.putText(
+                        cv_image_with_boxes,
+                        f"{label}: {score:.2f}",
+                        (x1, max(y1 - 5, 15)),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5,
+                        (255, 255, 255),
+                        1,
+                    )
+            else:
+                x1, y1, x2, y2 = map(int, bbox[0])
+                score = detection.score
+                label = str(detection.label)
+                # Pick a color based on the score
+                if score > 0.8:
+                    # orange
+                    color = (0, 165, 255)
+                elif score > 0.5:
+                    # yellow
+                    color = (0, 255, 255)
+                else:
+                    # red
+                    color = (0, 0, 255)
+
+                # Draw bounding box
+                cv2.rectangle(cv_image_with_boxes, (x1, y1), (x2, y2), color, 2)
+                # Put label text above the box
+                cv2.putText(
+                    cv_image_with_boxes,
+                    f"{label}: {score:.2f}",
+                    (x1, max(y1 - 5, 15)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (255, 255, 255),
+                    1,
+                )
+        # Draw ground truth boxes in green
+        for truth in ground_truth:
+            bbox = truth.as_xyxy()
+            if bbox.shape[0] > 1:
+                for i, box in enumerate(bbox):
+                    x1, y1, x2, y2 = map(int, box)
+                    label = str(truth.label[i].item())
+                    # Draw bounding box
+                    cv2.rectangle(cv_image_with_boxes, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    # Put label text above the box
+                    cv2.putText(
+                        cv_image_with_boxes,
+                        f"{label}",
+                        (x1, max(y1 - 5, 15)),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5,
+                        (255, 255, 255),
+                        1,
+                    )
+            else:
+                x1, y1, x2, y2 = map(int, bbox[0])
+                label = str(truth.label)
+                # Draw bounding box
+                cv2.rectangle(cv_image_with_boxes, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                # Put label text above the box
+                cv2.putText(
+                    cv_image_with_boxes,
+                    f"{label}",
+                    (x1, max(y1 - 5, 15)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (255, 255, 255),
+                    1,
+                )
+
+        # Flag to track whether we show boxes or not
+        show_boxes = True
+        while True:
+            # Display the appropriate image
+            if show_boxes:
+                cv2.imshow("Detections", cv_image_with_boxes)
+            else:
+                cv2.imshow("Detections", cv_image)
+
+            key = cv2.waitKey(1) & 0xFF
+
+            if key == 27:
+                # Close window
+                break
+            elif key == 32:
+                # Toggle showing bounding boxes
+                show_boxes = not show_boxes
+        
         cv2.destroyAllWindows()
 
 
