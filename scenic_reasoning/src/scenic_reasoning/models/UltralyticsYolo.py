@@ -50,7 +50,7 @@ class Yolo(ObjectDetectionModelI):
         predictions = self._model.predict(image, device=get_default_device(), **kwargs)
 
         if len(predictions) == 0:
-            return [[None]]
+            return []
 
         formatted_results = []
         for y_hat in predictions:
@@ -59,7 +59,7 @@ class Yolo(ObjectDetectionModelI):
             names = y_hat.names
 
             if boxes is None or len(boxes) == 0:
-                formatted_results.append(None)
+                formatted_results.append([])
                 continue
 
             for box in boxes:
@@ -77,16 +77,28 @@ class Yolo(ObjectDetectionModelI):
             formatted_results.append(result_for_image)
 
         if debug:
-            image_list = [
-                image[i].permute(1, 2, 0).cpu().numpy() for i in range(len(image))
-            ]
-            for i in range(len(image_list)):
-                curr_img = image_list[i]
-                if curr_img.dtype == np.float32:
-                    curr_img = curr_img.astype(np.uint8)
+            # images are in BGR format and need to be converted to RGB
+            # also need to be scaled to [0, 255]
+            image = image[:, [2, 1, 0], ...]
+            image = image * 255.0
+            image = image.permute(0, 2, 3, 1).cpu().numpy().astype(np.uint8) # (B, H, W, C)
+            batch_size = image.shape[0]
+            for i in range(batch_size):
+                curr_img = image[i]
                 ObjectDetectionUtils.show_image_with_detections(
                     Image.fromarray(curr_img), formatted_results[i]
                 )
+
+            # image_list = [
+            #     image[i].permute(1, 2, 0).cpu().numpy() for i in range(len(image))
+            # ]
+            # for i in range(len(image_list)):
+            #     curr_img = image_list[i]
+            #     if curr_img.dtype == np.float32:
+            #         curr_img = curr_img.astype(np.uint8)
+            #     ObjectDetectionUtils.show_image_with_detections(
+            #         Image.fromarray(curr_img), formatted_results[i]
+            #     )
 
         return formatted_results
 
@@ -114,7 +126,7 @@ class Yolo(ObjectDetectionModelI):
         predictions = self._model.predict(image, **kwargs)
 
         if len(predictions) == 0:
-            return [None]
+            return []
 
         result_per_image = []
         for y_hat in predictions:
@@ -129,7 +141,7 @@ class Yolo(ObjectDetectionModelI):
             classes = []
 
             if boxes is None or len(boxes) == 0:
-                result_per_image.append(None)
+                result_per_image.append([])
                 continue
 
             for box in boxes:

@@ -1,10 +1,12 @@
 from itertools import islice
-
+from PIL import Image
+import numpy as np
 from scenic_reasoning.data.ImageLoader import (
     Bdd100kDataset,
     NuImagesDataset,
     WaymoDataset,
 )
+from scenic_reasoning.interfaces.ObjectDetectionI import ObjectDetectionUtils
 from scenic_reasoning.measurements.ObjectDetection import ObjectDetectionMeasurements
 from scenic_reasoning.models.UltralyticsYolo import Yolo
 from scenic_reasoning.utilities.common import (
@@ -24,14 +26,14 @@ bdd = Bdd100kDataset(
     use_extended_annotations=False,
 )
 
-nu = NuImagesDataset(split="mini", size="mini", transform=lambda i, l: yolo_nuscene_transform(i, l, new_shape=(768, 1280)))
+# nu = NuImagesDataset(split="mini", size="mini", transform=lambda i, l: yolo_nuscene_transform(i, l, new_shape=(768, 1280)))
 
 # waymo = WaymoDataset(split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, (768, 1280)))
 
 # https://docs.ultralytics.com/models/yolov5/#performance-metrics
 model = Yolo(model="yolo11n.pt")
 
-for d in [nu]:
+for d in [bdd]:  # , nu, waymo]:
 
     measurements = ObjectDetectionMeasurements(
         model, d, batch_size=BATCH_SIZE, collate_fn=lambda x: x
@@ -44,20 +46,31 @@ for d in [nu]:
             imgsz=[768, 1280],
             bbox_offset=24,
             debug=False,
-            conf=0.1,
+            conf=0.17,
             class_metrics=True,
             extended_summary=True,
+            agnostic_nms=True,
+            # iou=0.7, # which is the default
         ),
         NUM_EXAMPLES_TO_SHOW,
     ):
         for i in range(len(results)):
+            ObjectDetectionUtils.show_image_with_detections(
+                Image.fromarray(d[i]["image"].permute(1, 2, 0).numpy().astype(np.uint8)),
+                results[i]["predictions"],
+            )
+            ObjectDetectionUtils.show_image_with_detections(
+                Image.fromarray(d[i]["image"].permute(1, 2, 0).numpy().astype(np.uint8)),
+                results[i]["labels"],
+            )
             print(f"{i}th image")
-            print("global map", results[i]['map'])
-            print("map 50", results[i]['map_50'])
-            print("map 75", results[i]['map_75'])
-            print("map_small", results[i]['map_small'])
-            print("map_medium", results[i]['map_medium'])
-            print("map_large", results[i]['map_large'])
-            print("mar_small", results[i]['mar_small'])
-            print("mar_medium", results[i]['mar_medium'])
-            print("mar_large", results[i]['mar_large'])
+            measurements = results[i]["measurements"]
+            print("global map", measurements['map'])
+            print("map 50", measurements['map_50'])
+            print("map 75", measurements['map_75'])
+            print("map_small", measurements['map_small'])
+            print("map_medium", measurements['map_medium'])
+            print("map_large", measurements['map_large'])
+            print("mar_small", measurements['mar_small'])
+            print("mar_medium", measurements['mar_medium'])
+            print("mar_large", measurements['mar_large'])

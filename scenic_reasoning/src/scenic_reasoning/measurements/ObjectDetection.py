@@ -78,11 +78,17 @@ class ObjectDetectionMeasurements:
                 # Convert RGB to BGR because Ultralytics YOLO expects BGR
                 # https://github.com/ultralytics/ultralytics/issues/9912
                 x = x[:, [2, 1, 0], ...]
+                x = x / 255.0 
                 prediction = self.model.identify_for_image(x, debug=debug, **kwargs)
+                # undo the conversion
+                x = x[:, [2, 1, 0], ...]
+                x = x * 255.0
             else:
                 self.model.to(device=get_default_device())
                 prediction = self.model.identify_for_image(x, debug=debug)
                 self.model.to(device="cpu")
+
+            x = x.cpu()
 
             results = []
             ims = []
@@ -96,15 +102,17 @@ class ObjectDetectionMeasurements:
                     extended_summary=extended_summary,
                     image=x[idx]
                 )
-                results.append(measurements)
+                full_image_result = dict()
+                full_image_result["image"] = x[idx]
+                full_image_result["measurements"] = measurements
+                full_image_result["predictions"] = odrs
+                full_image_result["labels"] = gt
+                results.append(full_image_result)
                 if debug:
                     im = self._show_debug_image(x[idx], gt, bbox_offset)
                     ims.append(im)
 
-            if debug:
-                yield results, ims
-            else:
-                yield results
+            yield results
 
     def _show_debug_image(
         self,
