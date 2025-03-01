@@ -17,7 +17,7 @@ from scenic_reasoning.utilities.common import (
 )
 
 NUM_EXAMPLES_TO_SHOW = 20
-BATCH_SIZE = 2
+BATCH_SIZE = 1
 
 bdd = Bdd100kDataset(
     split="val",
@@ -26,14 +26,14 @@ bdd = Bdd100kDataset(
     use_extended_annotations=False,
 )
 
-# nu = NuImagesDataset(split="mini", size="mini", transform=lambda i, l: yolo_nuscene_transform(i, l, new_shape=(768, 1280)))
+nu = NuImagesDataset(split="mini", size="mini", transform=lambda i, l: yolo_nuscene_transform(i, l, new_shape=(768, 1280)))
 
 # waymo = WaymoDataset(split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, (768, 1280)))
 
 # https://docs.ultralytics.com/models/yolov5/#performance-metrics
 model = Yolo(model="yolo11n.pt")
 
-for d in [bdd]:  # , nu, waymo]:
+for d in [nu]:  # , nu, waymo]:
 
     measurements = ObjectDetectionMeasurements(
         model, d, batch_size=BATCH_SIZE, collate_fn=lambda x: x
@@ -56,13 +56,14 @@ for d in [bdd]:  # , nu, waymo]:
     ):
         for i in range(len(results)):
             ObjectDetectionUtils.show_image_with_detections(
-                Image.fromarray(d[i]["image"].permute(1, 2, 0).numpy().astype(np.uint8)),
+                Image.fromarray(results[i]["image"].permute(1, 2, 0).numpy().astype(np.uint8)),
                 results[i]["predictions"],
             )
             ObjectDetectionUtils.show_image_with_detections(
-                Image.fromarray(d[i]["image"].permute(1, 2, 0).numpy().astype(np.uint8)),
+                Image.fromarray(results[i]["image"].permute(1, 2, 0).numpy().astype(np.uint8)),
                 results[i]["labels"],
             )
+
             print(f"{i}th image")
             measurements = results[i]["measurements"]
             print("global map", measurements['map'])

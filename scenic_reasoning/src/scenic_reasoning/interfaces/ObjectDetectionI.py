@@ -303,12 +303,17 @@ class ObjectDetectionUtils:
         boxes = []
         scores = []
         classes = []
-        for truth in ground_truth:
+        remove_indices_gt = []
+        for i, truth in enumerate(ground_truth):
             if truth.cls not in intersection_classes:
+                remove_indices_gt.append(i)
                 continue
             boxes.append(truth.as_xyxy())
             scores.append(truth.score)  # score is a float or tensor
             classes.append(truth.cls)
+
+        for i in sorted(remove_indices_gt, reverse=True):
+            ground_truth.pop(i)
 
         boxes = torch.cat(boxes) if boxes else torch.Tensor([])  # shape: (num_boxes, 4)
         scores = (
@@ -326,24 +331,18 @@ class ObjectDetectionUtils:
         pred_boxes = []
         pred_scores = []
         pred_classes = []
+        remove_indices_pred = []
 
         for pred in predictions:
             if pred.cls not in intersection_classes:
+                remove_indices_pred.append(i)
                 continue
             pred_boxes.append(pred.as_xyxy())
             pred_scores.append(pred.score)  # score is a float or tensor
             pred_classes.append(pred.cls)
 
-        if debug:
-            ObjectDetectionUtils.show_image_with_detections(
-                Image.fromarray((image.permute(1, 2, 0).cpu().numpy()).astype(np.uint8)),
-                [pred for pred in predictions if pred.cls in intersection_classes],
-            )
-
-            ObjectDetectionUtils.show_image_with_detections(
-                Image.fromarray((image.permute(1, 2, 0).cpu().numpy()).astype(np.uint8)),
-                [truth for truth in ground_truth if truth.cls in intersection_classes],
-            )
+        for i in sorted(remove_indices_pred, reverse=True):
+            predictions.pop(i)
 
 
         pred_boxes = torch.cat(pred_boxes) if pred_boxes else torch.Tensor([])
@@ -369,15 +368,19 @@ class ObjectDetectionUtils:
         preds: List[Dict[str, torch.Tensor]] = [
             dict(boxes=pred_boxes, labels=pred_classes, scores=pred_scores)
         ]
+        
 
         metric = MeanAveragePrecision(
             class_metrics=class_metrics,
             extended_summary=extended_summary,
+            box_format='xyxy',
             iou_thresholds=[0.25],
             iou_type='bbox'
         )
-        
+
         metric.update(target=targets, preds=preds)
+
+        
         
         return metric.compute()
 
