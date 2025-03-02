@@ -1069,9 +1069,6 @@ class WaymoDataset(ImageDataset):
                 logger.debug(f"Merged DataFrame for {image_file}: {merged_df.shape}\n")
                 merged_dfs.append(merged_df)
 
-        import pdb
-        pdb.set_trace()
-
         # Group dataframes by unique identifiers and process them
         for merged_df in merged_dfs:
             grouped_df = merged_df.groupby(
