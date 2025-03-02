@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
-
+import random
 import cv2
 import numpy as np
 import torch
@@ -300,40 +300,13 @@ class ObjectDetectionUtils:
         pred_classes_set = set([pred.cls for pred in predictions])
         intersection_classes = gt_classes_set.intersection(pred_classes_set)
 
-        boxes = []
-        scores = []
-        classes = []
-        remove_indices_gt = []
-        for i, truth in enumerate(ground_truth):
-            if truth.cls not in intersection_classes:
-                remove_indices_gt.append(i)
-                continue
-            boxes.append(truth.as_xyxy())
-            scores.append(truth.score)  # score is a float or tensor
-            classes.append(truth.cls)
-
-        for i in sorted(remove_indices_gt, reverse=True):
-            ground_truth.pop(i)
-
-        boxes = torch.cat(boxes) if boxes else torch.Tensor([])  # shape: (num_boxes, 4)
-        scores = (
-            torch.tensor(scores) if isinstance(scores[0], float) else torch.cat(scores)
-        ) if scores else torch.Tensor([])
-        classes = (
-            torch.tensor(classes) if isinstance(classes[0], int) else torch.cat(classes)
-        ) if classes else torch.Tensor([])
-
-
-        targets: List[Dict[str, torch.Tensor]] = [
-            dict(boxes=boxes, labels=classes, scores=scores)
-        ]
 
         pred_boxes = []
         pred_scores = []
         pred_classes = []
         remove_indices_pred = []
 
-        for pred in predictions:
+        for i, pred in enumerate(predictions):
             if pred.cls not in intersection_classes:
                 remove_indices_pred.append(i)
                 continue
@@ -343,7 +316,6 @@ class ObjectDetectionUtils:
 
         for i in sorted(remove_indices_pred, reverse=True):
             predictions.pop(i)
-
 
         pred_boxes = torch.cat(pred_boxes) if pred_boxes else torch.Tensor([])
         pred_scores = (
@@ -368,6 +340,63 @@ class ObjectDetectionUtils:
         preds: List[Dict[str, torch.Tensor]] = [
             dict(boxes=pred_boxes, labels=pred_classes, scores=pred_scores)
         ]
+
+
+        boxes = []
+        scores = []
+        classes = []
+        remove_indices_gt = []
+        for i, truth in enumerate(ground_truth):
+            if truth.cls not in intersection_classes:
+                remove_indices_gt.append(i)
+                continue
+            boxes.append(truth.as_xyxy())
+            scores.append(truth.score)
+            classes.append(truth.cls)
+
+        for i in sorted(remove_indices_gt, reverse=True):
+            ground_truth.pop(i)
+
+        num_fake_boxes = max(0, len(pred_boxes) - len(boxes))
+        image_size = (image.shape[1], image.shape[0])
+        fake_bbox_size = 20
+        for i in range(num_fake_boxes):
+            x1 = i * fake_bbox_size
+            y1 = fake_bbox_size
+            x2 = x1 + fake_bbox_size
+            y2 = y1 + fake_bbox_size
+
+            fake_bbox = [x1, y1, x2, y2]
+            fake_score = 1.0
+            fake_class = -1
+            fake_label = "fake"
+
+
+            fake_detection = ObjectDetectionResultI(
+                score=fake_score,
+                cls=fake_class,
+                label=fake_label,
+                bbox=fake_bbox,
+                image_hw=image_size
+            )
+            ground_truth.append(fake_detection)
+
+            boxes.append(fake_detection.as_xyxy())
+            scores.append(fake_detection.score) 
+            classes.append(fake_detection.cls)
+
+        boxes = torch.cat(boxes) if boxes else torch.Tensor([])  # shape: (num_boxes, 4)
+        scores = (
+            torch.tensor(scores) if isinstance(scores[0], float) else torch.cat(scores)
+        ) if scores else torch.Tensor([])
+        classes = (
+            torch.tensor(classes) if isinstance(classes[0], int) else torch.cat(classes)
+        ) if classes else torch.Tensor([])
+
+
+        targets: List[Dict[str, torch.Tensor]] = [
+            dict(boxes=boxes, labels=classes, scores=scores)
+        ]
         
 
         metric = MeanAveragePrecision(
@@ -375,12 +404,13 @@ class ObjectDetectionUtils:
             extended_summary=extended_summary,
             box_format='xyxy',
             iou_thresholds=[0.25],
-            iou_type='bbox'
+            iou_type='bbox',
+            backend='faster_coco_eval',
+            max_detection_thresholds=[10, 20, 100]
         )
 
         metric.update(target=targets, preds=preds)
 
-        
         
         return metric.compute()
 

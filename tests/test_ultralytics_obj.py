@@ -55,17 +55,22 @@ for d in [nu]:  # , nu, waymo]:
         NUM_EXAMPLES_TO_SHOW,
     ):
         for i in range(len(results)):
-            ObjectDetectionUtils.show_image_with_detections(
-                Image.fromarray(results[i]["image"].permute(1, 2, 0).numpy().astype(np.uint8)),
-                results[i]["predictions"],
-            )
-            ObjectDetectionUtils.show_image_with_detections(
-                Image.fromarray(results[i]["image"].permute(1, 2, 0).numpy().astype(np.uint8)),
-                results[i]["labels"],
-            )
+            # ObjectDetectionUtils.show_image_with_detections(
+            #     Image.fromarray(results[i]["image"].permute(1, 2, 0).numpy().astype(np.uint8)),
+            #     results[i]["predictions"],
+            # )
+            # ObjectDetectionUtils.show_image_with_detections(
+            #     Image.fromarray(results[i]["image"].permute(1, 2, 0).numpy().astype(np.uint8)),
+            #     results[i]["labels"],
+            # )
+            
+
+            print("gt classes:", [c._class for c in results[i]["labels"]])
+            print("pred classes:", [c._class for c in results[i]["predictions"]])
 
             print(f"{i}th image")
             measurements = results[i]["measurements"]
+            print(measurements)
             print("global map", measurements['map'])
             print("map 50", measurements['map_50'])
             print("map 75", measurements['map_75'])
@@ -75,3 +80,9 @@ for d in [nu]:  # , nu, waymo]:
             print("mar_small", measurements['mar_small'])
             print("mar_medium", measurements['mar_medium'])
             print("mar_large", measurements['mar_large'])
+
+            ObjectDetectionUtils.show_image_with_detections_and_gt(
+                Image.fromarray(results[i]["image"].permute(1, 2, 0).numpy().astype(np.uint8)),
+                detections=results[i]["predictions"],
+                ground_truth=results[i]["labels"],   
+            )
