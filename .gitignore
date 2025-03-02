@@ -4,6 +4,7 @@
 
 # dependencies
 /install/*
+/checkpoints/*
 
 # MAC
 .DS_Store

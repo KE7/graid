@@ -3,6 +3,7 @@ import concurrent.futures
 import hashlib
 import os
 import platform
+import shutil
 import subprocess
 import tempfile
 import zipfile
@@ -212,18 +213,18 @@ def _merge_chunks(
             os.remove(chunk_path)
 
 
-def _download_file(url: str, dest_path: str, num_threads: int = 10) -> None:
+def _download_file(url: str, dest_path: str, num_threads: int = 10) -> bool:
     response = requests.head(url)
     file_size = int(response.headers["Content-Length"])
 
     if os.path.exists(dest_path) and os.path.getsize(dest_path) == file_size:
-        return
+        return True
 
     chunk_size = (file_size + num_threads - 1) // num_threads
 
     print(
         f"Downloading {url} to {os.path.abspath(dest_path)} using "
-        f"{num_threads} threads."
+        f"{num_threads} thread(s)."
     )
 
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -245,7 +246,7 @@ def _download_file(url: str, dest_path: str, num_threads: int = 10) -> None:
         _merge_chunks(temp_dir, dest_path, num_threads, file_size)
 
     print(f"Download completed: {dest_path}")
-    return
+    return True
 
 
 def _check_md5(file_path: str, expected_md5: str) -> bool:
@@ -285,6 +286,12 @@ def download_and_check_md5(
 def unzip_file(zip_path: str, extract_to: str) -> None:
     print(f"Extracting {zip_path} to {os.path.abspath(extract_to)}")
     with zipfile.ZipFile(zip_path, "r") as zip_ref:
+        for member in zip_ref.namelist():
+            extracted_path = os.path.join(extract_to, member)
+            if os.path.isdir(extracted_path):
+                shutil.rmtree(extracted_path, ignore_errors=True)
+            elif os.path.isfile(extracted_path):
+                os.remove(extracted_path)
         zip_ref.extractall(extract_to)
 
 
@@ -355,12 +362,18 @@ def download_bdd(task: Optional[str] = None, split: Optional[str] = None) -> Non
             future.result()
 
     # label files don't have an md5 so we download them separately
-    if split != "test":
+    if split != "test": # test split doesn't have labels
         label_file = task_map[task][1]
         if not _download_file(
             source_url + label_file, root_dir + data_dir + "/" + label_file
         ):
             raise RuntimeError(f"Failed to download file {label_file}.")
+
+        # after downloading the label file, unzip it so 
+        # add it to the list of files to unzip and cleanup 
+        files_to_download.append(
+            (source_url + label_file, root_dir + data_dir + "/" + label_file)
+        )
 
     with concurrent.futures.ThreadPoolExecutor() as executor:
         futures = [
@@ -372,8 +385,8 @@ def download_bdd(task: Optional[str] = None, split: Optional[str] = None) -> Non
 
     with concurrent.futures.ThreadPoolExecutor() as executor:
         futures = [
-            executor.submit(cleanup, [file_name, file_name + ".md5"])
-            for file_name in files_to_download
+            executor.submit(cleanup, [file_path, file_path + ".md5"])
+            for _, file_path in files_to_download
         ]
         for future in concurrent.futures.as_completed(futures):
             future.result()
@@ -386,7 +399,7 @@ def download_nuscenes(split: Optional[str] = None) -> None:
     if split is None:
         parser = argparse.ArgumentParser()
         parser.add_argument(
-            "--split", type=str, default="mini", help="mini or full", required=True
+            "--split", type=str, help="mini or full", required=True
         )
 
         args = parser.parse_args()
@@ -454,13 +467,13 @@ def download_nuimages(split: Optional[str] = None) -> None:
 
         # extract all
         for location in locations:
-            subprocess.run(
-                ["tar", "-xf", location.split("/")[-1], "-C", "data/nuimages/all"]
-            )
+            print(f"Extracting {location.split('/')[-1]}... to data/nuimages/all")
+            subprocess.run(["tar", "-xvf", location.split("/")[-1], "-C", "data/nuimages/all"])
+            print(f"Finished extracting {location.split('/')[-1]}.")
 
         # remove all downloaded files
-        # for location in locations:
-        #     subprocess.run(["rm", location.split("/")[-1]])
+        for location in locations:
+            subprocess.run(["rm", location.split("/")[-1]])
 
     elif split == "mini":
         location = "https://d36yt3mvayqw5m.cloudfront.net/public/nuimages-v1.0/nuimages-v1.0-mini.tgz"

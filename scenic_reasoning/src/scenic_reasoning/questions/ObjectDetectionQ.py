@@ -327,16 +327,19 @@ class IsObjectCentered(Question):
 
             # TODO: verify this design decision manually
             # edge case: if the object is big enough to cover more than 1/3rd
-            # the answer should be left or right
-            if x_min < image_width / 3 and x_max < 2 * image_width / 3:
+            # then it's ambiguous so we will not answer
+            if x_min < image_width / 3 and x_max < image_width / 3:
                 answer = "left"
             elif x_min > image_width / 3 and x_max < 2 * image_width / 3:
                 answer = "centered"
-            elif x_min > image_width / 3 and x_max > 2 * image_width / 3:
+            elif x_min > 2 * image_width / 3 and x_max > 2 * image_width / 3:
                 answer = "right"
             else:
-                # x_min < image_width / 3 and x_max > 2 * image_width / 3
-                answer = "centered"
+                # object is too big to be centered so skip
+                logger.debug(
+                    "Object is too big to be left, right or centered. Skipping question."
+                )
+                continue
             question_answer_pairs.append((question, answer))
 
         return question_answer_pairs
@@ -344,9 +347,9 @@ class IsObjectCentered(Question):
 
 class WidthVsHeight(Question):
     # TODO: try a bunch of different thresholds for width vs height
-    def __init__(self, threshold: float = 0.15) -> None:
+    def __init__(self, threshold: float = 0.30) -> None:
         super().__init__(
-            question="Is the width of the {object_1} larger than the height?",
+            question="Is the width of the {object_1} appear to be larger than the height?",
             variables=["object_1"],
             predicates=[
                 ObjectDetectionPredicates.at_least_one_single_detection,
@@ -354,6 +357,9 @@ class WidthVsHeight(Question):
         )
         self.threshold = threshold
         self.other_question = "Is the height of the {object_1} larger than the width?"
+
+    def __repr__(self):
+        return f"Question: {self.question} (threshold: {self.threshold})"
 
     def _question_answer(
         self, class_name: str, detection: ObjectDetectionResultI, reverse: bool = False
@@ -448,8 +454,6 @@ class Quadrants(Question):
             ],
         )
 
-        # self.question = self.question.format(N=N, M=M)
-
     def _question_answer(
         self, image: Image.Image, class_name: str, detection: ObjectDetectionResultI
     ) -> Optional[Tuple[str, str]]:
@@ -479,7 +483,11 @@ class Quadrants(Question):
             return None
         quadrant = row * self.cols + col + 1
 
-        question = self.question.format(N=self.rows, M=self.cols, object_1=class_name)
+        question = self.question.format(
+            object_1=class_name,
+            N=self.rows,
+            M=self.cols,
+        )
         answer = str(quadrant)
         return (question, answer)
 
@@ -542,6 +550,9 @@ class LargestAppearance(Question):
             ],
         )
         self.threshold = threshold
+
+    def __repr__(self):
+        return f"Question: {self.question} (threshold: {self.threshold})"
 
     def apply(
         self,
@@ -1220,17 +1231,14 @@ class RightMostWidthVsHeight(WidthVsHeight):
 
 
 ALL_QUESTIONS = [
-    IsObjectCentered,
-    WidthVsHeight,
-    Quadrants,
-    LargestAppearance,
-    MostAppearance,
-    LeastAppearance,
-    LeftOf,
-    RightOf,
-    LeftMost,
-    RightMost,
-    HowMany,
-    LeftMostWidthVsHeight,
-    RightMostWidthVsHeight,
+    IsObjectCentered(),
+    WidthVsHeight(),
+    LargestAppearance(),
+    MostAppearance(),
+    LeastAppearance(),
+    LeftOf(),
+    RightOf(),
+    LeftMost(),
+    RightMost(),
+    HowMany(),
 ]

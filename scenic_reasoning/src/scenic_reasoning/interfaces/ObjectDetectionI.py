@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
-
+import random
 import cv2
 import numpy as np
 import torch
@@ -293,35 +293,29 @@ class ObjectDetectionUtils:
         class_metrics: bool = False,
         extended_summary: bool = False,
         debug: bool = False,
-        image: Optional[Image.Image] = None,
+        image: Optional[torch.Tensor] = None,
     ) -> Dict[str, float]:
-        boxes = []
-        scores = []
-        classes = []
-        for truth in ground_truth:
-            boxes.append(truth.as_xyxy())
-            scores.append(truth.score)  # score is a float or tensor
-            classes.append(truth.cls)
+        
+        gt_classes_set = set([truth.cls for truth in ground_truth])
+        pred_classes_set = set([pred.cls for pred in predictions])
+        intersection_classes = gt_classes_set.intersection(pred_classes_set)
 
-        boxes = torch.cat(boxes)  # shape: (num_boxes, 4)
-        scores = (
-            torch.tensor(scores) if isinstance(scores[0], float) else torch.cat(scores)
-        )
-        classes = (
-            torch.tensor(classes) if isinstance(classes[0], int) else torch.cat(classes)
-        )
-
-        targets: List[Dict[str, torch.Tensor]] = [
-            dict(boxes=boxes.squeeze(1), labels=classes, scores=scores)
-        ]
 
         pred_boxes = []
         pred_scores = []
         pred_classes = []
-        for pred in predictions:
+        remove_indices_pred = []
+
+        for i, pred in enumerate(predictions):
+            if pred.cls not in intersection_classes:
+                remove_indices_pred.append(i)
+                continue
             pred_boxes.append(pred.as_xyxy())
             pred_scores.append(pred.score)  # score is a float or tensor
             pred_classes.append(pred.cls)
+
+        for i in sorted(remove_indices_pred, reverse=True):
+            predictions.pop(i)
 
         pred_boxes = torch.cat(pred_boxes) if pred_boxes else torch.Tensor([])
         pred_scores = (
@@ -347,16 +341,80 @@ class ObjectDetectionUtils:
             dict(boxes=pred_boxes, labels=pred_classes, scores=pred_scores)
         ]
 
+
+        boxes = []
+        scores = []
+        classes = []
+        remove_indices_gt = []
+        for i, truth in enumerate(ground_truth):
+            if truth.cls not in intersection_classes:
+                remove_indices_gt.append(i)
+                continue
+            boxes.append(truth.as_xyxy())
+            scores.append(truth.score)
+            classes.append(truth.cls)
+
+        for i in sorted(remove_indices_gt, reverse=True):
+            ground_truth.pop(i)
+
+        num_fake_boxes = max(0, len(pred_boxes) - len(boxes))
+        image_size = (image.shape[1], image.shape[0])
+        fake_bbox_size = 20
+        for i in range(num_fake_boxes):
+            x1 = i * fake_bbox_size
+            y1 = fake_bbox_size
+            x2 = x1 + fake_bbox_size
+            y2 = y1 + fake_bbox_size
+
+            fake_bbox = [x1, y1, x2, y2]
+            fake_score = 1.0
+            fake_class = -1
+            fake_label = "fake"
+
+
+            fake_detection = ObjectDetectionResultI(
+                score=fake_score,
+                cls=fake_class,
+                label=fake_label,
+                bbox=fake_bbox,
+                image_hw=image_size
+            )
+            ground_truth.append(fake_detection)
+
+            boxes.append(fake_detection.as_xyxy())
+            scores.append(fake_detection.score) 
+            classes.append(fake_detection.cls)
+
+        boxes = torch.cat(boxes) if boxes else torch.Tensor([])  # shape: (num_boxes, 4)
+        scores = (
+            torch.tensor(scores) if isinstance(scores[0], float) else torch.cat(scores)
+        ) if scores else torch.Tensor([])
+        classes = (
+            torch.tensor(classes) if isinstance(classes[0], int) else torch.cat(classes)
+        ) if classes else torch.Tensor([])
+
+
+        targets: List[Dict[str, torch.Tensor]] = [
+            dict(boxes=boxes, labels=classes, scores=scores)
+        ]
+        
+
         metric = MeanAveragePrecision(
             class_metrics=class_metrics,
             extended_summary=extended_summary,
+            box_format='xyxy',
+            iou_thresholds=[0.25],
+            iou_type='bbox',
+            backend='faster_coco_eval',
+            max_detection_thresholds=[10, 20, 100]
         )
 
-        metric.update(targets, preds)
+        metric.update(target=targets, preds=preds)
 
+        
         return metric.compute()
 
-    def show_image_with_detections(image, detections):
+    def show_image_with_detections(image : Image.Image, detections: List[ObjectDetectionResultI]) -> None:
         # Convert PIL image to a NumPy array in OpenCV's BGR format
         cv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
 
@@ -375,7 +433,12 @@ class ObjectDetectionUtils:
                     label = str(detection.label[i].item())
 
                     # Choose a color and draw rectangle
-                    color = (0, 0, 255)  # BGR red
+                    if score > 0.8:
+                        color = (0, 255, 0)
+                    elif score > 0.5:
+                        color = (0, 255, 255)
+                    else:
+                        color = (0, 0, 255)
                     cv2.rectangle(cv_image_with_boxes, (x1, y1), (x2, y2), color, 2)
 
                     # Put label text above the box
@@ -433,6 +496,178 @@ class ObjectDetectionUtils:
                 # Toggle showing bounding boxes
                 show_boxes = not show_boxes
 
+        cv2.destroyAllWindows()
+
+    def show_image_with_detections_and_gt(
+        image: Image.Image,
+        detections: List[ObjectDetectionResultI],
+        ground_truth: List[ObjectDetectionResultI],
+    ) -> None:
+        # gt will be drawn in green
+        # detections will be colored based on score (orange, yellow, red)
+        # Convert PIL image to a NumPy array in OpenCV's BGR format
+        cv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+        # Make a copy to draw bounding boxes on
+        cv_image_with_boxes = cv_image.copy()
+        cv_image_with_gt = cv_image.copy()
+        cv_image_with_preds = cv_image.copy()
+        # Draw bounding boxes and labels on the copy
+        for detection in detections:
+            bbox = detection.as_xyxy()
+            if bbox.shape[0] > 1:
+                for i, box in enumerate(bbox):
+                    x1, y1, x2, y2 = map(int, box)
+                    score = detection.score[i].item()
+                    label = str(detection.label[i].item())
+                    # Choose a color and draw rectangle
+                    if score > 0.8:
+                        # orange
+                        color = (0, 165, 255)
+                    elif score > 0.5:
+                        # yellow
+                        color = (0, 255, 255)
+                    else:
+                        # red
+                        color = (0, 0, 255)
+                    
+                    # Draw bounding box
+                    cv2.rectangle(cv_image_with_boxes, (x1, y1), (x2, y2), color, 2)
+                    cv2.rectangle(cv_image_with_preds, (x1, y1), (x2, y2), color, 2)
+                    # Put label text above the box
+                    cv2.putText(
+                        cv_image_with_boxes,
+                        f"{label}: {score:.2f}",
+                        (x1, max(y1 - 5, 15)),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5,
+                        (255, 255, 255),
+                        1,
+                    )
+                    cv2.putText(
+                        cv_image_with_preds,
+                        f"{label}: {score:.2f}",
+                        (x1, max(y1 - 5, 15)),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5,
+                        (255, 255, 255),
+                        1,
+                    )
+            else:
+                x1, y1, x2, y2 = map(int, bbox[0])
+                score = detection.score
+                label = str(detection.label)
+                # Pick a color based on the score
+                if score > 0.8:
+                    # orange
+                    color = (0, 165, 255)
+                elif score > 0.5:
+                    # yellow
+                    color = (0, 255, 255)
+                else:
+                    # red
+                    color = (0, 0, 255)
+
+                # Draw bounding box
+                cv2.rectangle(cv_image_with_boxes, (x1, y1), (x2, y2), color, 2)
+                cv2.rectangle(cv_image_with_preds, (x1, y1), (x2, y2), color, 2)
+                # Put label text above the box
+                cv2.putText(
+                    cv_image_with_boxes,
+                    f"{label}: {score:.2f}",
+                    (x1, max(y1 - 5, 15)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (255, 255, 255),
+                    1,
+                )
+                cv2.putText(
+                    cv_image_with_preds,
+                    f"{label}: {score:.2f}",
+                    (x1, max(y1 - 5, 15)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (255, 255, 255),
+                    1,
+                )
+        # Draw ground truth boxes in green
+        for truth in ground_truth:
+            bbox = truth.as_xyxy()
+            if bbox.shape[0] > 1:
+                for i, box in enumerate(bbox):
+                    x1, y1, x2, y2 = map(int, box)
+                    label = str(truth.label[i].item())
+                    # Draw bounding box
+                    cv2.rectangle(cv_image_with_boxes, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    cv2.rectangle(cv_image_with_gt, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    # Put label text above the box
+                    cv2.putText(
+                        cv_image_with_boxes,
+                        f"{label}",
+                        (x1, max(y1 - 5, 15)),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5,
+                        (255, 255, 255),
+                        1,
+                    )
+                    cv2.putText(
+                        cv_image_with_gt,
+                        f"{label}",
+                        (x1, max(y1 - 5, 15)),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5,
+                        (255, 255, 255),
+                        1,
+                    )
+            else:
+                x1, y1, x2, y2 = map(int, bbox[0])
+                label = str(truth.label)
+                # Draw bounding box
+                cv2.rectangle(cv_image_with_boxes, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                cv2.rectangle(cv_image_with_gt, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                # Put label text above the box
+                cv2.putText(
+                    cv_image_with_boxes,
+                    f"{label}",
+                    (x1, max(y1 - 5, 15)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (255, 255, 255),
+                    1,
+                )
+                cv2.putText(
+                    cv_image_with_gt,
+                    f"{label}",
+                    (x1, max(y1 - 5, 15)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (255, 255, 255),
+                    1,
+                )
+
+        # Flag to track whether we show boxes or not
+        show_boxes = True
+        img_to_show = cv_image_with_boxes
+        while True:
+            # Display the appropriate image
+            cv2.imshow("Detections", img_to_show)
+
+            key = cv2.waitKey(1) & 0xFF
+
+            if key == 27:
+                # Close window
+                break
+            elif key == 32:
+                # Toggle showing bounding boxes
+                show_boxes = not show_boxes
+                if show_boxes:
+                    img_to_show = cv_image_with_boxes
+                else:
+                    img_to_show = cv_image
+            elif key == ord("g"):
+                img_to_show = cv_image_with_gt
+            elif key == ord("p"):
+                img_to_show = cv_image_with_preds
+        
         cv2.destroyAllWindows()
 
 
