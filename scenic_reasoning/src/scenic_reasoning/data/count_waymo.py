@@ -5,6 +5,7 @@ import pandas as pd
 from scenic_reasoning.utilities.common import convert_to_xyxy
 import json
 from tqdm import tqdm
+from pathlib import Path
 
 
 logger = logging.getLogger(__name__)
@@ -44,18 +45,7 @@ def metric(data_per_scene):
     
     return best_score, best_time, best_camera
 
-def main(camera_img_dir, camera_box_dir, split):
-
-    if not os.path.exists(camera_img_dir) or not os.path.exists(
-        camera_box_dir
-    ):
-        raise FileNotFoundError(
-            f"Directories not found: {camera_img_dir}, {camera_box_dir}"
-        )
-
-    camera_image_files = [
-        f for f in os.listdir(camera_img_dir) if f.endswith(".parquet")
-    ]
+def choose_best(camera_image_files, split):
 
     if not camera_image_files:
         raise FileNotFoundError(
@@ -80,7 +70,6 @@ def main(camera_img_dir, camera_box_dir, split):
             ],
             how="inner",
         )
-
 
         if merged_df.empty:
             logger.warning(f"No matches found for {image_file} and {box_file}.")
@@ -138,10 +127,21 @@ def main(camera_img_dir, camera_box_dir, split):
 
 if __name__ == "__main__":
     
-    split = "validation"
-    root_dir = project_root_dir() / "data" / "waymo"
+    split = "training"
+    root_dir = Path("/work/ke-public/graid_data/waymo")
     camera_img_dir = root_dir / f"{split}" / "camera_image"
     camera_box_dir = root_dir / f"{split}" / "camera_box"
+
+    if not os.path.exists(camera_img_dir) or not os.path.exists(
+        camera_box_dir
+    ):
+        raise FileNotFoundError(
+            f"Directories not found: {camera_img_dir}, {camera_box_dir}"
+        )
+
+    camera_image_files = [
+        f for f in os.listdir(camera_img_dir) if f.endswith(".parquet")
+    ]
 
     input_file = f"{split}_best_frames.json"
 
@@ -149,7 +149,9 @@ if __name__ == "__main__":
         with open(input_file, 'r') as f:
             data = json.load(f)
     else:
-        data = main(camera_img_dir, camera_box_dir, split)
+        data = choose_best(camera_image_files, split)
+    
+    
 
     camera_name_counts = {}
     for image_file, details in data.items():
