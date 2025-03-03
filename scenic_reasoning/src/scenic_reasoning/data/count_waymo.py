@@ -19,21 +19,18 @@ def metric(data_per_scene):
     :return: Weighted score
     """
 
-    N_max = 0  # Track the max mean area found
-    A_max = 0  # Track the max number of boxes found
+    N_max = 0 
+    A_max = 0 
 
     for image in data_per_scene:
         N_max = max(N_max, image['N'])
         A_max = max(A_max, image['A'])
     
-
     best_score = 0
     best_time = None
     best_camera = None
 
     for image in data_per_scene:
-        if not bboxes:
-            continue
         
         N = image['N']
         A = image['A']
@@ -47,8 +44,6 @@ def metric(data_per_scene):
     
     return best_score, best_time, best_camera
 
-
-
 def main(camera_img_dir, camera_box_dir, split):
 
     if not os.path.exists(camera_img_dir) or not os.path.exists(
@@ -58,19 +53,10 @@ def main(camera_img_dir, camera_box_dir, split):
             f"Directories not found: {camera_img_dir}, {camera_box_dir}"
         )
 
-    # Initialize img_labels
-    img_labels = []
-
-    # Get the camera image files in the directory
     camera_image_files = [
         f for f in os.listdir(camera_img_dir) if f.endswith(".parquet")
     ]
 
-    # camera_image_files = camera_image_files[
-    #     :10
-    # ]  # TODO: doing this because using the entire validation gives us memory issue. Need to change later.
-
-    # Check if image files are found
     if not camera_image_files:
         raise FileNotFoundError(
             f"No parquet image files found in {camera_img_dir}"
@@ -82,19 +68,8 @@ def main(camera_img_dir, camera_box_dir, split):
         image_path = camera_img_dir / image_file
         box_path = camera_box_dir / box_file
 
-        # Load the dataframes
         image_df = pd.read_parquet(image_path)
         box_df = pd.read_parquet(box_path)
-
-        unique_images_df = box_df.groupby(
-            [
-                "key.segment_context_name",
-                "key.frame_timestamp_micros",
-                "key.camera_name",
-            ]
-        )
-
-        # Merge image and box data
         merged_df = pd.merge(
             image_df,
             box_df,
@@ -119,14 +94,8 @@ def main(camera_img_dir, camera_box_dir, split):
                     ]
                 )
 
-
         data_per_scene = []
         for group_name, group_data in grouped_df:
-            # Each group has one unique image frame, in which all the detected objects belong to
-            image_data = group_data.iloc[0]
-            img_bytes = image_data["[CameraImageComponent].image"]
-
-            labels = []
             bboxes = []
             for _, row in group_data.iterrows():
                 bbox = convert_to_xyxy(
@@ -140,9 +109,11 @@ def main(camera_img_dir, camera_box_dir, split):
 
             areas = [(x2 - x1) * (y2 - y1) for x1, y1, x2, y2 in bboxes]
             mean_area = sum(areas) / len(areas)
+            frame_timestamp_micros = group_name[1]
+            camera_name = group_name[2]
             data_per_scene.append({
-                "key.frame_timestamp_micros": group_name[1], 
-                "key.camera_name": group_name[2], 
+                "key.frame_timestamp_micros": frame_timestamp_micros, 
+                "key.camera_name": camera_name, 
                 "A": mean_area,
                 "N": len(bboxes)
                 })
@@ -165,8 +136,6 @@ def main(camera_img_dir, camera_box_dir, split):
     return data
 
 
-
-
 if __name__ == "__main__":
     
     split = "validation"
@@ -174,7 +143,6 @@ if __name__ == "__main__":
     camera_img_dir = root_dir / f"{split}" / "camera_image"
     camera_box_dir = root_dir / f"{split}" / "camera_box"
 
-        # Read in the JSON file as data
     input_file = f"{split}_best_frames.json"
 
     if os.path.exists(input_file):
