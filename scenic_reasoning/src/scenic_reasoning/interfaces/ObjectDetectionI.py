@@ -294,6 +294,7 @@ class ObjectDetectionUtils:
         extended_summary: bool = False,
         debug: bool = False,
         image: Optional[torch.Tensor] = None,
+        fake_boxes: bool = False,
     ) -> Dict[str, float]:
         
         gt_classes_set = set([truth.cls for truth in ground_truth])
@@ -357,33 +358,34 @@ class ObjectDetectionUtils:
         for i in sorted(remove_indices_gt, reverse=True):
             ground_truth.pop(i)
 
-        num_fake_boxes = max(0, len(pred_boxes) - len(boxes))
-        image_size = (image.shape[1], image.shape[0])
-        fake_bbox_size = 20
-        for i in range(num_fake_boxes):
-            x1 = i * fake_bbox_size
-            y1 = fake_bbox_size
-            x2 = x1 + fake_bbox_size
-            y2 = y1 + fake_bbox_size
+        if fake_boxes:
+            num_fake_boxes = max(0, len(pred_boxes) - len(boxes))
+            image_size = (image.shape[1], image.shape[0])
+            fake_bbox_size = 20
+            for i in range(num_fake_boxes):
+                x1 = i * fake_bbox_size
+                y1 = fake_bbox_size
+                x2 = x1 + fake_bbox_size
+                y2 = y1 + fake_bbox_size
 
-            fake_bbox = [x1, y1, x2, y2]
-            fake_score = 1.0
-            fake_class = -1
-            fake_label = "fake"
+                fake_bbox = [x1, y1, x2, y2]
+                fake_score = 1.0
+                fake_class = -1
+                fake_label = "fake"
 
 
-            fake_detection = ObjectDetectionResultI(
-                score=fake_score,
-                cls=fake_class,
-                label=fake_label,
-                bbox=fake_bbox,
-                image_hw=image_size
-            )
-            ground_truth.append(fake_detection)
+                fake_detection = ObjectDetectionResultI(
+                    score=fake_score,
+                    cls=fake_class,
+                    label=fake_label,
+                    bbox=fake_bbox,
+                    image_hw=image_size
+                )
+                ground_truth.append(fake_detection)
 
-            boxes.append(fake_detection.as_xyxy())
-            scores.append(fake_detection.score) 
-            classes.append(fake_detection.cls)
+                boxes.append(fake_detection.as_xyxy())
+                scores.append(fake_detection.score) 
+                classes.append(fake_detection.cls)
 
         boxes = torch.cat(boxes) if boxes else torch.Tensor([])  # shape: (num_boxes, 4)
         scores = (

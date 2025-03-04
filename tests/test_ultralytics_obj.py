@@ -32,6 +32,7 @@ nu = NuImagesDataset(split="mini", size="mini", transform=lambda i, l: yolo_nusc
 
 # https://docs.ultralytics.com/models/yolov5/#performance-metrics
 model = Yolo(model="yolo11n.pt")
+# model = Yolo(model="yolovv8n.pt")
 
 for d in [nu]:  # , nu, waymo]:
 
@@ -55,16 +56,6 @@ for d in [nu]:  # , nu, waymo]:
         NUM_EXAMPLES_TO_SHOW,
     ):
         for i in range(len(results)):
-            # ObjectDetectionUtils.show_image_with_detections(
-            #     Image.fromarray(results[i]["image"].permute(1, 2, 0).numpy().astype(np.uint8)),
-            #     results[i]["predictions"],
-            # )
-            # ObjectDetectionUtils.show_image_with_detections(
-            #     Image.fromarray(results[i]["image"].permute(1, 2, 0).numpy().astype(np.uint8)),
-            #     results[i]["labels"],
-            # )
-            
-
             print("gt classes:", [c._class for c in results[i]["labels"]])
             print("pred classes:", [c._class for c in results[i]["predictions"]])
 

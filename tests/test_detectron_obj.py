@@ -1,50 +1,50 @@
 from itertools import islice
-from scenic_reasoning.data.ImageLoader import Bdd100kDataset, NuImagesDataset, WaymoDataset
-from scenic_reasoning.models.MMDetection import MMdetection_obj
+from scenic_reasoning.data.ImageLoader import Bdd100kDataset
 from scenic_reasoning.measurements.ObjectDetection import ObjectDetectionMeasurements
 from scenic_reasoning.interfaces.ObjectDetectionI import ObjectDetectionUtils
-from scenic_reasoning.utilities.common import yolo_waymo_transform
-from PIL import Image
+from scenic_reasoning.utilities.common import get_default_device
+from scenic_reasoning.models.Detectron import Detectron_obj
+from ultralytics.data.augment import LetterBox
 import numpy as np
-
+from PIL import Image
 
 NUM_EXAMPLES_TO_SHOW = 3
 BATCH_SIZE = 1
 
+shape_transform = LetterBox(new_shape=(768, 1280))
 bdd = Bdd100kDataset(
     split="val", 
     use_original_categories=False,
     use_extended_annotations=False,
 )
 
-niu = NuImagesDataset(split='test', size="full")
 
-waymo = WaymoDataset(
-    split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, (640, 1333))
+threshold = 0.5
+config_file = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
+weights_file = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
+
+
+model = Detectron_obj(
+    config_file=config_file, 
+    weights_file=weights_file, 
+    threshold=threshold
 )
 
-config_file = '../install/mmdetection/configs/mask_rcnn/mask-rcnn_r50-caffe_fpn_ms-poly-3x_coco.py'
-checkpoint_file = '../install/mmdetection/checkpoints/mask_rcnn_r50_caffe_fpn_mstrain-poly_3x_coco_bbox_mAP-0.408__segm_mAP-0.37_20200504_163245-42aa3d00.pth'
+measurements = ObjectDetectionMeasurements(model, bdd, batch_size=BATCH_SIZE, collate_fn=lambda x: x) # hacky way to avoid RuntimeError: each element in list of batch should be of equal size
 
-model = MMdetection_obj(config_file, checkpoint_file)
-
-
-for d in [bdd, niu, waymo]:
-        
-    measurements = ObjectDetectionMeasurements(model, d, batch_size=BATCH_SIZE, collate_fn=lambda x: x) # hacky way to avoid RuntimeError: each element in list of batch should be of equal size
-
-    # WARNING ⚠️ imgsz=[720, 1280] must be multiple of max stride 64, updating to [768, 1280]
-    for results in islice(measurements.iter_measurements(
-            # device=get_default_device(), 
-            imgsz=[768, 1280],
-            bbox_offset=24,
-            debug=True,
-            conf=0.1,
-            class_metrics=True,
-            extended_summary=True,
-            ), 
-        NUM_EXAMPLES_TO_SHOW):
-        for i in range(len(results)):
+# WARNING ⚠️ imgsz=[720, 1280] must be multiple of max stride 64, updating to [768, 1280]
+from pprint import pprint
+for results in islice(measurements.iter_measurements(
+        device=get_default_device(), 
+        imgsz=[720, 1280],
+        bbox_offset=24,
+        debug=True,
+        conf=0.1,
+        class_metrics=True,
+        extended_summary=True,
+        ), 
+    NUM_EXAMPLES_TO_SHOW):
+    for i in range(len(results)):
             print("gt classes:", [c._class for c in results[i]["labels"]])
             print("pred classes:", [c._class for c in results[i]["predictions"]])
 
@@ -66,3 +66,5 @@ for d in [bdd, niu, waymo]:
                 detections=results[i]["predictions"],
                 ground_truth=results[i]["labels"],   
             )
+
+

@@ -55,6 +55,7 @@ class ObjectDetectionMeasurements:
         class_metrics: bool = False,
         extended_summary: bool = False,
         debug: bool = False,
+        fake_boxes: bool = False,
         **kwargs
     ) -> Iterator[Union[List[Dict], Tuple[List[Dict], List[Results]]]]:
         if self.collate_fn is not None:
@@ -100,7 +101,8 @@ class ObjectDetectionMeasurements:
                     gt,
                     class_metrics=class_metrics,
                     extended_summary=extended_summary,
-                    image=x[idx]
+                    image=x[idx],
+                    fake_boxes=fake_boxes
                 )
                 full_image_result = dict()
                 full_image_result["image"] = x[idx]
@@ -151,7 +153,8 @@ class ObjectDetectionMeasurements:
         gt: List[ObjectDetectionResultI],
         class_metrics: bool,
         extended_summary: bool,
-        image: Optional[torch.Tensor] = None
+        image: Optional[torch.Tensor] = None,
+        fake_boxes: bool = False
     ) -> Dict:
         return ObjectDetectionUtils.compute_metrics_for_single_img(
             ground_truth=gt,
@@ -161,7 +164,8 @@ class ObjectDetectionMeasurements:
             predictions=odr,
             class_metrics=class_metrics,
             extended_summary=extended_summary,
-            image=image
+            image=image,
+            fake_boxes=fake_boxes
         )
 
 
