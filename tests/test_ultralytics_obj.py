@@ -1,6 +1,7 @@
 from itertools import islice
-from PIL import Image
+
 import numpy as np
+from PIL import Image
 from scenic_reasoning.data.ImageLoader import (
     Bdd100kDataset,
     NuImagesDataset,
@@ -26,7 +27,11 @@ bdd = Bdd100kDataset(
     use_extended_annotations=False,
 )
 
-nu = NuImagesDataset(split="mini", size="mini", transform=lambda i, l: yolo_nuscene_transform(i, l, new_shape=(768, 1280)))
+nu = NuImagesDataset(
+    split="mini",
+    size="mini",
+    transform=lambda i, l: yolo_nuscene_transform(i, l, new_shape=(768, 1280)),
+)
 
 # waymo = WaymoDataset(split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, (768, 1280)))
 
@@ -63,7 +68,6 @@ for d in [nu]:  # , nu, waymo]:
             #     Image.fromarray(results[i]["image"].permute(1, 2, 0).numpy().astype(np.uint8)),
             #     results[i]["labels"],
             # )
-            
 
             print("gt classes:", [c._class for c in results[i]["labels"]])
             print("pred classes:", [c._class for c in results[i]["predictions"]])
@@ -71,18 +75,20 @@ for d in [nu]:  # , nu, waymo]:
             print(f"{i}th image")
             measurements = results[i]["measurements"]
             print(measurements)
-            print("global map", measurements['map'])
-            print("map 50", measurements['map_50'])
-            print("map 75", measurements['map_75'])
-            print("map_small", measurements['map_small'])
-            print("map_medium", measurements['map_medium'])
-            print("map_large", measurements['map_large'])
-            print("mar_small", measurements['mar_small'])
-            print("mar_medium", measurements['mar_medium'])
-            print("mar_large", measurements['mar_large'])
+            print("global map", measurements["map"])
+            print("map 50", measurements["map_50"])
+            print("map 75", measurements["map_75"])
+            print("map_small", measurements["map_small"])
+            print("map_medium", measurements["map_medium"])
+            print("map_large", measurements["map_large"])
+            print("mar_small", measurements["mar_small"])
+            print("mar_medium", measurements["mar_medium"])
+            print("mar_large", measurements["mar_large"])
 
             ObjectDetectionUtils.show_image_with_detections_and_gt(
-                Image.fromarray(results[i]["image"].permute(1, 2, 0).numpy().astype(np.uint8)),
+                Image.fromarray(
+                    results[i]["image"].permute(1, 2, 0).numpy().astype(np.uint8)
+                ),
                 detections=results[i]["predictions"],
-                ground_truth=results[i]["labels"],   
+                ground_truth=results[i]["labels"],
             )
