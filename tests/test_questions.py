@@ -53,7 +53,9 @@ bdd_original = Bdd100kDataset(
 )
 
 niu = NuImagesDataset(
-    split="val", transform=lambda i, l: yolo_nuscene_transform(i, l, (768, 1280)), size="mini"
+    split="val",
+    transform=lambda i, l: yolo_nuscene_transform(i, l, (768, 1280)),
+    size="mini",
 )
 niu_original = NuImagesDataset(
     split="val",
@@ -62,7 +64,7 @@ niu_original = NuImagesDataset(
 
 waymo = WaymoDataset(
     split="validation",
-    # TODO: I think yolo_waymo_transform is broken now 
+    # TODO: I think yolo_waymo_transform is broken now
     # transform=lambda i, l: yolo_waymo_transform(i, l, (640, 1333))
 )
 waymo_original = WaymoDataset(

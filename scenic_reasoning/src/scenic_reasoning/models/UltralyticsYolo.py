@@ -81,7 +81,9 @@ class Yolo(ObjectDetectionModelI):
             # also need to be scaled to [0, 255]
             image = image[:, [2, 1, 0], ...]
             image = image * 255.0
-            image = image.permute(0, 2, 3, 1).cpu().numpy().astype(np.uint8) # (B, H, W, C)
+            image = (
+                image.permute(0, 2, 3, 1).cpu().numpy().astype(np.uint8)
+            )  # (B, H, W, C)
             batch_size = image.shape[0]
             for i in range(batch_size):
                 curr_img = image[i]
