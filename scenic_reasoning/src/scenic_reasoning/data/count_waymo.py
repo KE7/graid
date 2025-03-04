@@ -5,7 +5,10 @@ import pandas as pd
 from scenic_reasoning.utilities.common import convert_to_xyxy
 import json
 from tqdm import tqdm
+import base64
 from pathlib import Path
+import io
+from PIL import Image
 
 
 logger = logging.getLogger(__name__)
@@ -28,10 +31,9 @@ def metric(data_per_scene):
         A_max = max(A_max, image['A'])
     
     best_score = 0
-    best_time = None
-    best_camera = None
+    best_idx = 0
 
-    for image in data_per_scene:
+    for i, image in enumerate(data_per_scene):
         
         N = image['N']
         A = image['A']
@@ -40,10 +42,9 @@ def metric(data_per_scene):
         curr_score = 0.5 * (N_score + A_score)
         if curr_score > best_score:
             best_score = curr_score
-            best_time = image["key.frame_timestamp_micros"]
-            best_camera = image["key.camera_name"]
+            best_idx = i
     
-    return best_score, best_time, best_camera
+    return best_score, best_idx
 
 def choose_best(camera_image_files, split):
 
@@ -85,6 +86,8 @@ def choose_best(camera_image_files, split):
 
         data_per_scene = []
         for group_name, group_data in grouped_df:
+            if group_name[2] != 1:    # Only consider camera 1 (front)
+                continue
             bboxes = []
             for _, row in group_data.iterrows():
                 bbox = convert_to_xyxy(
@@ -96,24 +99,29 @@ def choose_best(camera_image_files, split):
             
                 bboxes.append(bbox)
 
+            image_data = group_data.iloc[0]
+            img_bytes = image_data["[CameraImageComponent].image"]
             areas = [(x2 - x1) * (y2 - y1) for x1, y1, x2, y2 in bboxes]
             mean_area = sum(areas) / len(areas)
             frame_timestamp_micros = group_name[1]
             camera_name = group_name[2]
+
             data_per_scene.append({
                 "key.frame_timestamp_micros": frame_timestamp_micros, 
                 "key.camera_name": camera_name, 
                 "A": mean_area,
-                "N": len(bboxes)
+                "N": len(bboxes),
+                "image": img_bytes
                 })
             
-        best_score, best_time, best_camera = metric(data_per_scene)
+        best_score, idx = metric(data_per_scene)
+        best_time, best_camera, image = data_per_scene[idx]["key.frame_timestamp_micros"], data_per_scene[idx]["key.camera_name"], data_per_scene[idx]["image"]
         
         print(f"Best score: {best_score}, Best time: {best_time}, Best camera: {best_camera}")
         data[image_file] = {
             "key.frame_timestamp_micros": int(best_time), 
-            "key.camera_name": int(best_camera), 
-            "score": best_score
+            "score": best_score,
+            "image": base64.b64encode(image).decode('utf-8'),
             }
         
     output_file = f"{split}_best_frames.json"
@@ -127,8 +135,9 @@ def choose_best(camera_image_files, split):
 
 if __name__ == "__main__":
     
-    split = "training"
-    root_dir = Path("/work/ke-public/graid_data/waymo")
+    split = "validation"
+    # root_dir = Path("/work/ke-public/graid_data/waymo")
+    root_dir = project_root_dir() / "data" / "waymo"
     camera_img_dir = root_dir / f"{split}" / "camera_image"
     camera_box_dir = root_dir / f"{split}" / "camera_box"
 
@@ -150,15 +159,15 @@ if __name__ == "__main__":
             data = json.load(f)
     else:
         data = choose_best(camera_image_files, split)
-    
-    
 
-    camera_name_counts = {}
-    for image_file, details in data.items():
-        camera_name = details["key.camera_name"]
-        if camera_name not in camera_name_counts:
-            camera_name_counts[camera_name] = 0
-        camera_name_counts[camera_name] += 1
+    import matplotlib.pyplot as plt
 
-    for camera_name, count in camera_name_counts.items():
-        print(f"Camera {camera_name}: {count}")
+    for image_file, image_data in data.items():
+        img_bytes = base64.b64decode(image_data["image"])
+        img = Image.open(io.BytesIO(img_bytes))
+        plt.imshow(img)
+        plt.title(f"Score: {image_data['score']}")
+        plt.show()
+
+
+# add bounding boxes to the image
