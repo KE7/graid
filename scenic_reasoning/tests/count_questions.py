@@ -1,4 +1,5 @@
 import time
+
 import torchvision.transforms as transforms
 from scenic_reasoning.data.ImageLoader import (
     Bdd100kDataset,
@@ -38,12 +39,12 @@ bdd = Bdd100kDataset(
 )
 
 niu = NuImagesDataset(
-    split="val", 
+    split="val",
     # transform=lambda i, l: yolo_nuscene_transform(i, l, (768, 1280))
 )
 
 waymo = WaymoDataset(
-    split="validation", 
+    split="validation",
     # transform=lambda i, l: yolo_waymo_transform(i, l, (640, 1333))
 )
 
@@ -83,9 +84,15 @@ for my_dataset in datasets:
                 total_num_questions_for_dataset += len(qa_list)
 
     end_time = time.time()
-    print("Total number of questions for", dataset_name + ":", total_num_questions_for_dataset)
+    print(
+        "Total number of questions for",
+        dataset_name + ":",
+        total_num_questions_for_dataset,
+    )
     print("\tTime taken (in seconds):", end_time - start_time)
     total_count_across_all_datasets += total_num_questions_for_dataset
 
-print("Total number of questions across all datasets: ", total_count_across_all_datasets)
+print(
+    "Total number of questions across all datasets: ", total_count_across_all_datasets
+)
 # Total number of questions across all datasets:  193150

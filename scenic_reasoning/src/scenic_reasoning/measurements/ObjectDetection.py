@@ -79,7 +79,7 @@ class ObjectDetectionMeasurements:
                 # Convert RGB to BGR because Ultralytics YOLO expects BGR
                 # https://github.com/ultralytics/ultralytics/issues/9912
                 x = x[:, [2, 1, 0], ...]
-                x = x / 255.0 
+                x = x / 255.0
                 prediction = self.model.identify_for_image(x, debug=debug, **kwargs)
                 # undo the conversion
                 x = x[:, [2, 1, 0], ...]

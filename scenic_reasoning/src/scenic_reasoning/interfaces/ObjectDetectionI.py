@@ -1,8 +1,9 @@
+import random
 from abc import ABC, abstractmethod
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
-import random
+
 import cv2
 import numpy as np
 import torch
@@ -296,11 +297,10 @@ class ObjectDetectionUtils:
         image: Optional[torch.Tensor] = None,
         fake_boxes: bool = False,
     ) -> Dict[str, float]:
-        
+
         gt_classes_set = set([truth.cls for truth in ground_truth])
         pred_classes_set = set([pred.cls for pred in predictions])
         intersection_classes = gt_classes_set.intersection(pred_classes_set)
-
 
         pred_boxes = []
         pred_scores = []
@@ -341,7 +341,6 @@ class ObjectDetectionUtils:
         preds: List[Dict[str, torch.Tensor]] = [
             dict(boxes=pred_boxes, labels=pred_classes, scores=pred_scores)
         ]
-
 
         boxes = []
         scores = []
@@ -389,34 +388,45 @@ class ObjectDetectionUtils:
 
         boxes = torch.cat(boxes) if boxes else torch.Tensor([])  # shape: (num_boxes, 4)
         scores = (
-            torch.tensor(scores) if isinstance(scores[0], float) else torch.cat(scores)
-        ) if scores else torch.Tensor([])
+            (
+                torch.tensor(scores)
+                if isinstance(scores[0], float)
+                else torch.cat(scores)
+            )
+            if scores
+            else torch.Tensor([])
+        )
         classes = (
-            torch.tensor(classes) if isinstance(classes[0], int) else torch.cat(classes)
-        ) if classes else torch.Tensor([])
-
+            (
+                torch.tensor(classes)
+                if isinstance(classes[0], int)
+                else torch.cat(classes)
+            )
+            if classes
+            else torch.Tensor([])
+        )
 
         targets: List[Dict[str, torch.Tensor]] = [
             dict(boxes=boxes, labels=classes, scores=scores)
         ]
-        
 
         metric = MeanAveragePrecision(
             class_metrics=class_metrics,
             extended_summary=extended_summary,
-            box_format='xyxy',
+            box_format="xyxy",
             iou_thresholds=[0.25],
-            iou_type='bbox',
-            backend='faster_coco_eval',
-            max_detection_thresholds=[10, 20, 100]
+            iou_type="bbox",
+            backend="faster_coco_eval",
+            max_detection_thresholds=[10, 20, 100],
         )
 
         metric.update(target=targets, preds=preds)
 
-        
         return metric.compute()
 
-    def show_image_with_detections(image : Image.Image, detections: List[ObjectDetectionResultI]) -> None:
+    def show_image_with_detections(
+        image: Image.Image, detections: List[ObjectDetectionResultI]
+    ) -> None:
         # Convert PIL image to a NumPy array in OpenCV's BGR format
         cv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
 
@@ -531,7 +541,7 @@ class ObjectDetectionUtils:
                     else:
                         # red
                         color = (0, 0, 255)
-                    
+
                     # Draw bounding box
                     cv2.rectangle(cv_image_with_boxes, (x1, y1), (x2, y2), color, 2)
                     cv2.rectangle(cv_image_with_preds, (x1, y1), (x2, y2), color, 2)
@@ -599,7 +609,9 @@ class ObjectDetectionUtils:
                     x1, y1, x2, y2 = map(int, box)
                     label = str(truth.label[i].item())
                     # Draw bounding box
-                    cv2.rectangle(cv_image_with_boxes, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    cv2.rectangle(
+                        cv_image_with_boxes, (x1, y1), (x2, y2), (0, 255, 0), 2
+                    )
                     cv2.rectangle(cv_image_with_gt, (x1, y1), (x2, y2), (0, 255, 0), 2)
                     # Put label text above the box
                     cv2.putText(
@@ -669,7 +681,7 @@ class ObjectDetectionUtils:
                 img_to_show = cv_image_with_gt
             elif key == ord("p"):
                 img_to_show = cv_image_with_preds
-        
+
         cv2.destroyAllWindows()
 
 
