@@ -362,15 +362,15 @@ def download_bdd(task: Optional[str] = None, split: Optional[str] = None) -> Non
             future.result()
 
     # label files don't have an md5 so we download them separately
-    if split != "test": # test split doesn't have labels
+    if split != "test":  # test split doesn't have labels
         label_file = task_map[task][1]
         if not _download_file(
             source_url + label_file, root_dir + data_dir + "/" + label_file
         ):
             raise RuntimeError(f"Failed to download file {label_file}.")
 
-        # after downloading the label file, unzip it so 
-        # add it to the list of files to unzip and cleanup 
+        # after downloading the label file, unzip it so
+        # add it to the list of files to unzip and cleanup
         files_to_download.append(
             (source_url + label_file, root_dir + data_dir + "/" + label_file)
         )
@@ -398,9 +398,7 @@ def download_bdd(task: Optional[str] = None, split: Optional[str] = None) -> Non
 def download_nuscenes(split: Optional[str] = None) -> None:
     if split is None:
         parser = argparse.ArgumentParser()
-        parser.add_argument(
-            "--split", type=str, help="mini or full", required=True
-        )
+        parser.add_argument("--split", type=str, help="mini or full", required=True)
 
         args = parser.parse_args()
         split = args.split
@@ -468,7 +466,9 @@ def download_nuimages(split: Optional[str] = None) -> None:
         # extract all
         for location in locations:
             print(f"Extracting {location.split('/')[-1]}... to data/nuimages/all")
-            subprocess.run(["tar", "-xvf", location.split("/")[-1], "-C", "data/nuimages/all"])
+            subprocess.run(
+                ["tar", "-xvf", location.split("/")[-1], "-C", "data/nuimages/all"]
+            )
             print(f"Finished extracting {location.split('/')[-1]}.")
 
         # remove all downloaded files

@@ -4,6 +4,7 @@ import json
 import logging
 import os
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
+
 import numpy as np
 import pandas as pd
 import torch
@@ -17,12 +18,12 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
     BBox_Format,
     ObjectDetectionResultI,
 )
+from scenic_reasoning.utilities.coco import inverse_coco_label
 from scenic_reasoning.utilities.common import (
     convert_to_xyxy,
     project_root_dir,
-    read_image
+    read_image,
 )
-from scenic_reasoning.utilities.coco import inverse_coco_label
 from torch import Tensor
 from torch.utils.data import Dataset
 from torchvision import transforms
@@ -499,7 +500,7 @@ class NuImagesDataset(ImageDataset):
     }
 
     _CATEGORIES_TO_COCO = {
-        "animal": "undefined",   #TODO: change this to include speicfic animals
+        "animal": "undefined",  # TODO: change this to include speicfic animals
         "flat.driveable_surface": "undefined",
         "human.pedestrian.adult": "person",
         "human.pedestrian.child": "person",
@@ -509,7 +510,7 @@ class NuImagesDataset(ImageDataset):
         "human.pedestrian.stroller": "person",
         "human.pedestrian.wheelchair": "person",
         "movable_object.barrier": "undefined",
-        "movable_object.debris": "undefined", 
+        "movable_object.debris": "undefined",
         "movable_object.pushable_pullable": "undefined",
         "movable_object.trafficcone": "undefined",
         "static_object.bicycle_rack": "undefined",
@@ -517,15 +518,14 @@ class NuImagesDataset(ImageDataset):
         "vehicle.bus.bendy": "bus",
         "vehicle.bus.rigid": "bus",
         "vehicle.car": "car",
-        "vehicle.construction": "truck", 
+        "vehicle.construction": "truck",
         "vehicle.ego": "undefined",
-        "vehicle.emergency.ambulance": "undefined", 
-        "vehicle.emergency.police": "person",  
+        "vehicle.emergency.ambulance": "undefined",
+        "vehicle.emergency.police": "person",
         "vehicle.motorcycle": "motorcycle",
         "vehicle.trailer": "undefined",
         "vehicle.truck": "truck",
     }
-
 
     def category_to_cls(self, category: str) -> int:
         return inverse_coco_label[category]
@@ -1068,9 +1068,6 @@ class WaymoDataset(ImageDataset):
             else:
                 logger.debug(f"Merged DataFrame for {image_file}: {merged_df.shape}\n")
                 merged_dfs.append(merged_df)
-
-        import pdb
-        pdb.set_trace()
 
         # Group dataframes by unique identifiers and process them
         for merged_df in merged_dfs:
