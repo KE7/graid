@@ -111,17 +111,19 @@ def choose_best(camera_image_files, split):
                 "key.camera_name": camera_name, 
                 "A": mean_area,
                 "N": len(bboxes),
-                "image": img_bytes
+                "image": img_bytes,
+                "bboxes": bboxes
                 })
             
         best_score, idx = metric(data_per_scene)
-        best_time, best_camera, image = data_per_scene[idx]["key.frame_timestamp_micros"], data_per_scene[idx]["key.camera_name"], data_per_scene[idx]["image"]
+        best_time, best_camera, image, bboxes = data_per_scene[idx]["key.frame_timestamp_micros"], data_per_scene[idx]["key.camera_name"], data_per_scene[idx]["image"], data_per_scene[idx]["bboxes"]
         
         print(f"Best score: {best_score}, Best time: {best_time}, Best camera: {best_camera}")
         data[image_file] = {
             "key.frame_timestamp_micros": int(best_time), 
             "score": best_score,
             "image": base64.b64encode(image).decode('utf-8'),
+            "bboxes": bboxes
             }
         
     output_file = f"{split}_best_frames.json"
