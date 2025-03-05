@@ -9,7 +9,7 @@ from scenic_reasoning.data.ImageLoader import (
 )
 from scenic_reasoning.interfaces.ObjectDetectionI import ObjectDetectionUtils
 from scenic_reasoning.measurements.ObjectDetection import ObjectDetectionMeasurements
-from scenic_reasoning.models.UltralyticsYolo import Yolo
+from scenic_reasoning.models.Ultralytics import Yolo
 from scenic_reasoning.utilities.common import (
     get_default_device,
     yolo_bdd_transform,

@@ -296,6 +296,7 @@ class ObjectDetectionUtils:
         debug: bool = False,
         image: Optional[torch.Tensor] = None,
         fake_boxes: bool = False,
+        conf: float = 0.1,
     ) -> Dict[str, float]:
 
         gt_classes_set = set([truth.cls for truth in ground_truth])
@@ -308,7 +309,7 @@ class ObjectDetectionUtils:
         remove_indices_pred = []
 
         for i, pred in enumerate(predictions):
-            if pred.cls not in intersection_classes:
+            if pred.cls not in intersection_classes or pred.score < conf:
                 remove_indices_pred.append(i)
                 continue
             pred_boxes.append(pred.as_xyxy())

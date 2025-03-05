@@ -9,7 +9,7 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
     ObjectDetectionResultI,
     ObjectDetectionUtils,
 )
-from scenic_reasoning.models.UltralyticsYolo import Yolo
+from scenic_reasoning.models.Ultralytics import Yolo
 from scenic_reasoning.utilities.common import get_default_device
 from torch.utils.data import DataLoader
 from ultralytics.engine.results import Results
@@ -56,6 +56,7 @@ class ObjectDetectionMeasurements:
         extended_summary: bool = False,
         debug: bool = False,
         fake_boxes: bool = False,
+        conf: float = 0.1,
         **kwargs
     ) -> Iterator[Union[List[Dict], Tuple[List[Dict], List[Results]]]]:
         if self.collate_fn is not None:
@@ -102,7 +103,8 @@ class ObjectDetectionMeasurements:
                     class_metrics=class_metrics,
                     extended_summary=extended_summary,
                     image=x[idx],
-                    fake_boxes=fake_boxes
+                    fake_boxes=fake_boxes,
+                    conf=conf,
                 )
                 full_image_result = dict()
                 full_image_result["image"] = x[idx]
@@ -154,7 +156,8 @@ class ObjectDetectionMeasurements:
         class_metrics: bool,
         extended_summary: bool,
         image: Optional[torch.Tensor] = None,
-        fake_boxes: bool = False
+        fake_boxes: bool = False,
+        conf: float = 0.1,
     ) -> Dict:
         return ObjectDetectionUtils.compute_metrics_for_single_img(
             ground_truth=gt,
@@ -165,7 +168,8 @@ class ObjectDetectionMeasurements:
             class_metrics=class_metrics,
             extended_summary=extended_summary,
             image=image,
-            fake_boxes=fake_boxes
+            fake_boxes=fake_boxes,
+            conf=conf,
         )
 
 

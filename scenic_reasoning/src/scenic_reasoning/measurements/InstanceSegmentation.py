@@ -7,7 +7,7 @@ from scenic_reasoning.interfaces.InstanceSegmentationI import (
     InstanceSegmentationResultI,
     InstanceSegmentationUtils,
 )
-from scenic_reasoning.models.UltralyticsYolo import Yolo, Yolo_seg
+from scenic_reasoning.models.Ultralytics import Yolo, Yolo_seg
 from scenic_reasoning.utilities.common import get_default_device
 from torch.utils.data import DataLoader
 from ultralytics.engine.results import Results

@@ -17,7 +17,7 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
     ObjectDetectionUtils,
 )
 from scenic_reasoning.utilities.common import get_default_device
-from ultralytics import YOLO
+from ultralytics import YOLO, RTDETR
 
 # TODO: Need class for InstanceSegmentation here
 
@@ -220,6 +220,24 @@ class Yolo(ObjectDetectionModelI):
 
     def to(self, device: Union[str, torch.device]):
         pass
+
+
+class RT_DETR(Yolo):
+    def __init__(self, model: Union[str, Path], **kwargs) -> None:
+        self._model = RTDETR(model, **kwargs)
+    def identify_for_image(self, *args, **kwargs):
+        return super().identify_for_image(*args, **kwargs)
+
+    def identify_for_image_as_tensor(self, *args, **kwargs):
+        return super().identify_for_image_as_tensor(*args, **kwargs)
+
+    def identify_for_video(self, *args, **kwargs):
+        return super().identify_for_video(*args, **kwargs)
+
+    def to(self, *args, **kwargs):
+        return super().to(*args, **kwargs)
+    
+
 
 
 class Yolo_seg(InstanceSegmentationModelI):
