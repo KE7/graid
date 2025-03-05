@@ -91,17 +91,17 @@ class Detectron_obj(ObjectDetectionModelI):
 
         if len(predictions) == 0:
             print("Predictions were empty and not found in this image.")
-            return [[None]]
+            return []
 
         if "instances" not in predictions or len(predictions["instances"]) == 0:
             print("No instances or predictions in this image.")
-            return [[None]]
+            return []
 
         instances = predictions["instances"]
 
         if not hasattr(instances, "pred_boxes") or len(instances.pred_boxes) == 0:
             print("Prediction boxes attribute missing or not found in instances.")
-            return [[None]]
+            return []
 
         formatted_results = []
         for i in range(len(instances)):

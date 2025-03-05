@@ -415,10 +415,7 @@ class ObjectDetectionUtils:
             class_metrics=class_metrics,
             extended_summary=extended_summary,
             box_format="xyxy",
-            iou_thresholds=[0.25],
             iou_type="bbox",
-            backend="faster_coco_eval",
-            max_detection_thresholds=[10, 20, 100],
         )
 
         metric.update(target=targets, preds=preds)
