@@ -22,14 +22,14 @@ from tqdm import tqdm
 
 
 
-# bdd = Bdd100kDataset(
-#     split="val",
-#     transform=lambda i, l: yolo_bdd_transform(i, l, new_shape=(768, 1280)),
-#     use_original_categories=False,
-#     use_extended_annotations=False,
-# )
+bdd = Bdd100kDataset(
+    split="val",
+    transform=lambda i, l: yolo_bdd_transform(i, l, new_shape=(768, 1280)),
+    use_original_categories=False,
+    use_extended_annotations=False,
+)
 
-# nu = NuImagesDataset(split="mini", size="all", transform=lambda i, l: yolo_nuscene_transform(i, l, new_shape=(768, 1280)))
+nu = NuImagesDataset(split="mini", size="all", transform=lambda i, l: yolo_nuscene_transform(i, l, new_shape=(768, 1280)))
 
 waymo = WaymoDataset(split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, (768, 1280)))
 
@@ -37,12 +37,12 @@ waymo = WaymoDataset(split="validation", transform=lambda i, l: yolo_waymo_trans
 # yolo_11n = Yolo(model="yolo11n.pt")
 # rtdetr = RT_DETR("rtdetr-l.pt")
 
-# retinanet_R_101_FPN_3x_config = "COCO-Detection/retinanet_R_101_FPN_3x.yaml"
-# retinanet_R_101_FPN_3x_weights = "COCO-Detection/retinanet_R_101_FPN_3x.yaml"
-# retinanet_R_101_FPN_3x = Detectron_obj(
-#     config_file=retinanet_R_101_FPN_3x_config, 
-#     weights_file=retinanet_R_101_FPN_3x_weights
-# )
+retinanet_R_101_FPN_3x_config = "COCO-Detection/retinanet_R_101_FPN_3x.yaml"
+retinanet_R_101_FPN_3x_weights = "COCO-Detection/retinanet_R_101_FPN_3x.yaml"
+retinanet_R_101_FPN_3x = Detectron_obj(
+    config_file=retinanet_R_101_FPN_3x_config, 
+    weights_file=retinanet_R_101_FPN_3x_weights
+)
 
 faster_rcnn_R_50_FPN_3x_config = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
 faster_rcnn_R_50_FPN_3x_weights = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
@@ -90,6 +90,13 @@ def metric_per_dataset(model, dataset, conf):
             mAP = result["measurements"]['map']
             mAPs_fake.append(mAP.item())
     
+    print({
+        'dataset': type(d).__name__,
+        'model': type(model).__name__,
+        'confidence': conf,
+        'average_mAP': sum(mAPs) / len(mAPs),
+        'fake_average_mAP': sum(mAPs_fake) / len(mAPs_fake)
+        })
     return {
         'dataset': type(d).__name__,
         'model': type(model).__name__,
@@ -101,13 +108,15 @@ def metric_per_dataset(model, dataset, conf):
 
 
 if __name__ == "__main__":
-
     ray.init()
+
     waymo_ref = ray.put(waymo)
-    datasets = [waymo_ref]
-    models = [faster_rcnn_R_50_FPN_3x]
+    bdd_ref = ray.put(bdd)
+    nu_ref = ray.put(nu)
+    datasets = [nu_ref]
+    models = [retinanet_R_101_FPN_3x]
     # confs = [c for c in np.arange(0.05, 0.90, 0.05)]
-    confs = [0.2]
+    confs = [0.2, 0.3]
     BATCH_SIZE = 4
 
     tasks = []
@@ -117,6 +126,8 @@ if __name__ == "__main__":
                 task_id = metric_per_dataset.remote(model, d, conf)
                 tasks.append(task_id)
 
+    print(tasks)
+    # results = ray.get([metric_per_dataset.remote(retinanet_R_101_FPN_3x, nu_ref, 0.2)])
     results = ray.get(tasks)
 
     output_file = project_root_dir() / "src" / "scenic_reasoning " / "evaluation" / "results.json"
