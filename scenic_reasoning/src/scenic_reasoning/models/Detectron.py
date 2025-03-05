@@ -86,11 +86,8 @@ class Detectron_obj(ObjectDetectionModelI):
         return self._process_single_image(image)
 
     def _process_single_image(self, image: np.ndarray) -> List[ObjectDetectionResultI]:
-        print(f"Image to predict: {image.shape}")
 
         predictions = self._predictor(image)
-
-        print(f"Predictions: {predictions}")
 
         if len(predictions) == 0:
             print("Predictions were empty and not found in this image.")
