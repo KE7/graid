@@ -309,11 +309,11 @@ class ObjectDetectionUtils:
         remove_indices_pred = []
 
         for i, pred in enumerate(predictions):
-            if pred.cls not in intersection_classes or pred.score < conf:
+            if pred.cls not in intersection_classes:  # removed: or pred.score < conf
                 remove_indices_pred.append(i)
                 continue
             pred_boxes.append(pred.as_xyxy())
-            pred_scores.append(pred.score)  # score is a float or tensor
+            pred_scores.append(pred.score)
             pred_classes.append(pred.cls)
 
         for i in sorted(remove_indices_pred, reverse=True):

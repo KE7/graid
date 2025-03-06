@@ -30,10 +30,10 @@ bdd = Bdd100kDataset(
 nu = NuImagesDataset(
     split="mini",
     size="all",
-    transform=lambda i, l: yolo_nuscene_transform(i, l, new_shape=(768, 1280)),
+    transform=lambda i, l: yolo_nuscene_transform(i, l, new_shape=(896, 1600)),
 )
 
-# waymo = WaymoDataset(split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, (768, 1280)))
+waymo = WaymoDataset(split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, (1280, 1920)))
 
 # https://docs.ultralytics.com/models/yolov5/#performance-metrics
 model = Yolo(model="yolo11n.pt")
@@ -66,7 +66,6 @@ for d in [nu]:  # , nu, waymo]:
 
             print(f"{i}th image")
             measurements = results[i]["measurements"]
-            print(measurements)
             print("global map", measurements["map"])
             print("map 50", measurements["map_50"])
             print("map 75", measurements["map_75"])

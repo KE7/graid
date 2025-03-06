@@ -71,6 +71,7 @@ class ObjectDetectionMeasurements:
                 self.dataset, batch_size=self.batch_size, shuffle=False
             )
 
+        self.model.set_threshold(conf)
         for batch in data_loader:
             x = torch.stack([sample["image"] for sample in batch])
             y = [sample["labels"] for sample in batch]

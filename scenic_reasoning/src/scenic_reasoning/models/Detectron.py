@@ -30,11 +30,12 @@ from scenic_reasoning.utilities.common import get_default_device
 
 
 class Detectron_obj(ObjectDetectionModelI):
-    def __init__(self, config_file: str, weights_file: str):
+    def __init__(self, config_file: str, weights_file: str, threshold: float = 0.1):
         # Input Detectron2 config file and weights file
         cfg = get_cfg()
         cfg.MODEL.DEVICE = str(get_default_device())
         cfg.merge_from_file(model_zoo.get_config_file(config_file))
+        cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = threshold
         cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url(weights_file)
         self.cfg = cfg
         self._predictor = DefaultPredictor(cfg)
@@ -167,6 +168,9 @@ class Detectron_obj(ObjectDetectionModelI):
 
     def to(self, device: Union[str, torch.device]):
         pass
+    
+    def set_threshold(self, threshold: float):
+        self.cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = threshold
     
     def __str__(self):
         return self.model_name.split("/")[-1].split(".")[0]

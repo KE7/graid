@@ -23,8 +23,10 @@ from ultralytics import YOLO, RTDETR
 
 
 class Yolo(ObjectDetectionModelI):
-    def __init__(self, model: Union[str, Path], **kwargs) -> None:
-        self._model = YOLO(model, **kwargs)
+    def __init__(self, model: Union[str, Path]) -> None:
+        self.model_name = model
+        self._model = YOLO(model)
+        self.threshold = 0.1
 
     def identify_for_image(
         self,
@@ -47,7 +49,7 @@ class Yolo(ObjectDetectionModelI):
             represents the batch of images, and the inner list represents the
             detections in a particular image.
         """
-        predictions = self._model.predict(image, device=get_default_device(), **kwargs)
+        predictions = self._model.predict(image, device=get_default_device(), conf=self.threshold)
 
         if len(predictions) == 0:
             return []
@@ -220,10 +222,17 @@ class Yolo(ObjectDetectionModelI):
 
     def to(self, device: Union[str, torch.device]):
         pass
+    
+    def set_threshold(self, threshold: float):
+        self.threshold = threshold
+    
+    def __str__(self):
+        return self.model_name
 
 
 class RT_DETR(Yolo):
     def __init__(self, model: Union[str, Path], **kwargs) -> None:
+        self.model_name = model
         self._model = RTDETR(model, **kwargs)
     def identify_for_image(self, *args, **kwargs):
         return super().identify_for_image(*args, **kwargs)
@@ -236,6 +245,9 @@ class RT_DETR(Yolo):
 
     def to(self, *args, **kwargs):
         return super().to(*args, **kwargs)
+    
+    def __str__(self):
+        return self.model_name.split(".")[0]
     
 
 

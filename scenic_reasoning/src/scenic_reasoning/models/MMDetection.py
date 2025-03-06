@@ -139,6 +139,9 @@ class MMdetection_obj(ObjectDetectionModelI):
 
     def to(self, device: Union[str, torch.device]):
         pass
+    
+    def set_threshold(self, threshold: float):
+        self._model.cfg.model.test_cfg.rcnn.score_thr = threshold
 
     def __str__(self):
         return self.model_name
