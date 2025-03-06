@@ -29,7 +29,7 @@ bdd = Bdd100kDataset(
 
 nu = NuImagesDataset(
     split="mini",
-    size="mini",
+    size="all",
     transform=lambda i, l: yolo_nuscene_transform(i, l, new_shape=(768, 1280)),
 )
 

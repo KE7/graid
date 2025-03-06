@@ -31,6 +31,7 @@ class MMdetection_obj(ObjectDetectionModelI):
             device = "cuda"
 
         self._model = init_detector(config_file, checkpoint_file, device=device)
+        self.model_name = config_file
 
         # set class_agnostic to True to avoid overlaps: https://github.com/open-mmlab/mmdetection/issues/6254
         self._model.test_cfg.rcnn.nms.class_agnostic = True
@@ -139,6 +140,9 @@ class MMdetection_obj(ObjectDetectionModelI):
     def to(self, device: Union[str, torch.device]):
         pass
 
+    def __str__(self):
+        return self.model_name
+        
 
 class MMdetection_seg(InstanceSegmentationModelI):
     def __init__(self, config_file: str, checkpoint_file, **kwargs) -> None:

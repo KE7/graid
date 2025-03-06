@@ -420,7 +420,14 @@ class ObjectDetectionUtils:
 
         metric.update(target=targets, preds=preds)
 
-        return metric.compute()
+        score = metric.compute()
+
+        if preds[0]['boxes'].shape == torch.Size([0]) and targets[0]['boxes'].shape == torch.Size([0]):
+            score['TN'] = 1
+        else:
+            score['TN'] = 0
+
+        return score
 
     def show_image_with_detections(
         image: Image.Image, detections: List[ObjectDetectionResultI]

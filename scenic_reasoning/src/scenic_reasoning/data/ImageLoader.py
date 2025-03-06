@@ -572,7 +572,7 @@ class NuImagesDataset(ImageDataset):
         empty_count = 0
         img_labels = []
         for i in tqdm(
-            range(len(self.nuim.sample)), desc="Processing NuImage dataset..."
+            range(len(self.nuim.sample)), desc="Processing NuImage dataset..."    #len(self.nuim.sample)
         ):
             # see: https://www.nuscenes.org/tutorials/nuimages_tutorial.html
             sample = self.nuim.sample[i]

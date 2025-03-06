@@ -39,6 +39,7 @@ class Detectron_obj(ObjectDetectionModelI):
         self.cfg = cfg
         self._predictor = DefaultPredictor(cfg)
         self._metadata = MetadataCatalog.get(cfg.DATASETS.TRAIN[0])
+        self.model_name = config_file
 
     def identify_for_image(self, image, **kwargs) -> List[ObjectDetectionResultI]:
         """
@@ -166,6 +167,9 @@ class Detectron_obj(ObjectDetectionModelI):
 
     def to(self, device: Union[str, torch.device]):
         pass
+    
+    def __str__(self):
+        return self.model_name.split("/")[-1].split(".")[0]
 
 
 class Detectron2InstanceSegmentation:

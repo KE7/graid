@@ -20,30 +20,17 @@ import ray
 from tqdm import tqdm
 
 
-yolo_v8n = Yolo(model="yolov8n.pt")
-yolo_11n = Yolo(model="yolo11n.pt")
-rtdetr = RT_DETR("rtdetr-l.pt")
+config_file = "../install/mmdetection/configs/mm_grounding_dino/mask-rcnn_r50-caffe_fpn_ms-poly-3x_coco.py"
+checkpoint_file = "../install/mmdetection/checkpoints/mask_rcnn_r50_caffe_fpn_mstrain-poly_3x_coco_bbox_mAP-0.408__segm_mAP-0.37_20200504_163245-42aa3d00.pth"
 
-retinanet_R_101_FPN_3x_config = "COCO-Detection/retinanet_R_101_FPN_3x.yaml"
-retinanet_R_101_FPN_3x_weights = "COCO-Detection/retinanet_R_101_FPN_3x.yaml"
-retinanet_R_101_FPN_3x = Detectron_obj(
-    config_file=retinanet_R_101_FPN_3x_config, 
-    weights_file=retinanet_R_101_FPN_3x_weights
-)
-
-faster_rcnn_R_50_FPN_3x_config = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
-faster_rcnn_R_50_FPN_3x_weights = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
-faster_rcnn_R_50_FPN_3x = Detectron_obj(
-    config_file=faster_rcnn_R_50_FPN_3x_config, 
-    weights_file=faster_rcnn_R_50_FPN_3x_weights
-)
+model = MMdetection_obj(config_file, checkpoint_file)
 
 
 @ray.remote(num_gpus=1)
 def metric_per_dataset(model, dataset_name, conf):
-    if dataset_name == "NuImages":
+    if dataset_name == "nu":
         dataset = NuImagesDataset(split="mini", size="all", transform=lambda i, l: yolo_nuscene_transform(i, l, new_shape=(768, 1280)))
-    elif dataset_name == "Waymo":
+    elif dataset_name == "waymo":
         dataset = WaymoDataset(split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, (768, 1280)))
     else:
         dataset = Bdd100kDataset(
@@ -57,8 +44,8 @@ def metric_per_dataset(model, dataset_name, conf):
         model, dataset, batch_size=BATCH_SIZE, collate_fn=lambda x: x
     )
     mAPs = []
-    TN_count = 0
     mAP_iterator = measurements.iter_measurements(
+        imgsz=[768, 1280],
         bbox_offset=24,
         debug=False,
         conf=conf,
@@ -69,16 +56,12 @@ def metric_per_dataset(model, dataset_name, conf):
         )
     for results in tqdm(mAP_iterator, desc="processing mAP measurements"):
         for result in results:
-            if result["measurements"]['TN'] == 1:
-                print("Both ground truth and predictions are empty. Ignore")
-                TN_count += 1
-                continue
             mAP = result["measurements"]['map']
             mAPs.append(mAP.item())
     
     mAPs_fake = []
-    TN_count_fake = 0
     mAP_iterator_fake = measurements.iter_measurements(
+        imgsz=[768, 1280],
         bbox_offset=24,
         debug=False,
         conf=conf,
@@ -89,34 +72,27 @@ def metric_per_dataset(model, dataset_name, conf):
         )
     for results in tqdm(mAP_iterator_fake, desc="processing fake mAP measurements"):
         for result in results:
-            if result["measurements"]['TN'] == 1:
-                print("Both ground truth and predictions are empty. Ignore")
-                TN_count_fake += 1
-                continue
             mAP = result["measurements"]['map']
             mAPs_fake.append(mAP.item())
     
     stats = ({
-        'dataset': dataset_name,
-        'model': str(model),
+        'dataset': type(d).__name__,
+        'model': type(model).__name__,
         'confidence': conf,
         'average_mAP': sum(mAPs) / len(mAPs),
-        'fake_average_mAP': sum(mAPs_fake) / len(mAPs_fake),
-        'TN': TN_count,
-        'TN_fake': TN_count_fake
+        'fake_average_mAP': sum(mAPs_fake) / len(mAPs_fake)
         })
     print(stats)
     return stats
 
 
-
 if __name__ == "__main__":
     ray.init()
 
-    datasets = ["NuImages", "BDD", "Waymo"]
+    datasets = ["nu"]
     models = [retinanet_R_101_FPN_3x]
     # confs = [c for c in np.arange(0.05, 0.90, 0.05)]
-    confs = [0.5]
+    confs = [0.2]
     BATCH_SIZE = 4
 
     tasks = []
@@ -127,13 +103,7 @@ if __name__ == "__main__":
                 tasks.append(task_id)
 
     results = ray.get(tasks)
-    output_file = {}
-    for result in results:
-        k = result["model"] + "//" + result["dataset"] + "//" + str(result["confidence"])
-        output_file[k] = result
-    
-    print(output_file)
-    
-    output_file_path = project_root_dir() / "scenic_reasoning"/ "src" / "scenic_reasoning" / "eval" / "results.json"
-    with open(output_file_path, 'w') as f:
-        json.dump(output_file, f, indent=4)
+
+    output_file = project_root_dir() / "src" / "scenic_reasoning" / "evaluation" / "results.json"
+    with open(output_file, 'w') as f:
+        json.dump(results, f, indent=4)
