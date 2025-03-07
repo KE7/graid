@@ -126,9 +126,48 @@ class Detectron_obj(ObjectDetectionModelI):
         return formatted_results
 
     def identify_for_image_as_tensor(
-        self, image, **kwargs
+        self, batched_images, **kwargs
     ) -> List[ObjectDetectionResultI]:
-        raise NotImplementedError
+        assert (
+            batched_images.ndimension() == 4
+        ), "Input tensor must be of shape (B, C, H, W) in RGB format"
+        batched_images = batched_images[:, [2, 1, 0], ...]  # Convert RGB to BGR
+        list_of_images = []
+        for i in range(batched_images.shape[0]):
+            image = batched_images[i]
+            image = image.permute(1, 2, 0).cpu().numpy()  # Convert to HWC
+            image = self.aug.get_transform(image).apply_image(image)
+            image = torch.as_tensor(image.astype("float32").transpose(2, 0, 1)) # Convert back to CHW
+            image.to(self.cfg.MODEL.DEVICE)
+            height, width = image.shape[1:]
+            list_of_images.append(
+                {"image": image, "height": height, "width": width}
+            )
+
+        predictions = self.model(list_of_images)
+
+        formatted_results = []
+        for i in range(len(predictions)):
+            img_result = []
+            for j in range(len(predictions[i]["instances"])):
+                box = predictions[i]["instances"][j].pred_boxes.tensor.cpu().numpy().tolist()[0]
+                score = predictions[i]["instances"][j].scores.item()
+                cls_id = int(predictions[i]["instances"][j].pred_classes.item())
+                label = self._metadata.thing_classes[cls_id]
+
+                odr = ObjectDetectionResultI(
+                    score=score,
+                    cls=cls_id,
+                    label=label,
+                    bbox=box,
+                    image_hw=(height, width),
+                    bbox_format=BBox_Format.XYXY,
+                )
+
+                img_result.append(odr)
+
+            formatted_results.append(img_result)
+        
 
     def identify_for_video(
         self,
@@ -168,10 +207,10 @@ class Detectron_obj(ObjectDetectionModelI):
 
     def to(self, device: Union[str, torch.device]):
         pass
-    
+
     def set_threshold(self, threshold: float):
         self.cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = threshold
-    
+
     def __str__(self):
         return self.model_name.split("/")[-1].split(".")[0]
 
