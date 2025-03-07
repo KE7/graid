@@ -969,30 +969,32 @@ class WaymoDataset(ImageDataset):
         "TYPE_CYCLIST": 4,
     }
 
-    _CLS_TO_CATEGORIES = {
-        "0": "TYPE_UNKNOWN",
-        "1": "TYPE_VEHICLE",
-        "2": "TYPE_PEDESTRIAN",
-        "3": "TYPE_SIGN",
-        "4": "TYPE_CYCLIST",
-    }
+    _CATEGORIES_R = {v: k for k, v in _CATEGORIES.items()}
 
-    _CATEGORIES_TO_COCO = {
-        "TYPE_UNKNOWN": "unknown",  # ??
-        "TYPE_VEHICLE": "vehicle",  # ??
-        "TYPE_PEDESTRIAN": "pedestrain",
-        "TYPE_SIGN": "traffic sign",
+    _CLS_TO_COCO_CLS = {
+        "TYPE_UNKNOWN": "undefined",
+        "TYPE_VEHICLE": "car",
+        "TYPE_PEDESTRIAN": "person",
+        "TYPE_SIGN": "stop sign",
         "TYPE_CYCLIST": "person",
     }
 
-    def category_to_cls(self, category: str) -> int:
-        return self._CATEGORIES[category]
+    _CATEGORIES_TO_COCO = {
+        "TYPE_UNKNOWN": -1,
+        "TYPE_VEHICLE": 2, 
+        "TYPE_PEDESTRIAN": 0,
+        "TYPE_SIGN": 11,
+        "TYPE_CYCLIST": 0,
+    }
 
-    def category_to_coco(self, category: str):
+    def category_to_cls(self, category: str) -> int:
         return self._CATEGORIES_TO_COCO[category]
 
+    def category_to_coco(self, category: str):
+        return self._CLS_TO_COCO_CLS[category]
+
     def cls_to_category(self, cls: int) -> str:
-        return self._CLS_TO_CATEGORIES[str(cls)]
+        return self._CATEGORIES_R[cls]
 
     def __init__(
         self,
@@ -1119,15 +1121,16 @@ class WaymoDataset(ImageDataset):
             results = []
 
             for label in labels:
-
                 cls = label["type"]
                 bbox = label["bbox"]
                 class_label = self.cls_to_category(cls)
-
+                cls = self.category_to_cls(class_label)
+                label = self.category_to_coco(class_label)
+                
                 result = ObjectDetectionResultI(
                     score=1.0,
                     cls=cls,
-                    label=self.category_to_coco(class_label),
+                    label=label,
                     bbox=list(bbox),
                     image_hw=image.shape,
                     attributes=[attributes],
@@ -1155,6 +1158,8 @@ class WaymoDataset(ImageDataset):
             raise IndexError(
                 f"Index {idx} out of range for dataset with {len(self.img_labels)} samples."
             )
+        
+        print("!!!!!!!!!!!!!!!!!", idx)
 
         img_data = self.img_labels[idx]
         img_bytes = img_data["image"]

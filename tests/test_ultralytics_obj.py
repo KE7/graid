@@ -27,11 +27,11 @@ bdd = Bdd100kDataset(
     use_extended_annotations=False,
 )
 
-nu = NuImagesDataset(
-    split="mini",
-    size="all",
-    transform=lambda i, l: yolo_nuscene_transform(i, l, new_shape=(896, 1600)),
-)
+# nu = NuImagesDataset(
+#     split="mini",
+#     size="all",
+#     transform=lambda i, l: yolo_nuscene_transform(i, l, new_shape=(896, 1600)),
+# )
 
 waymo = WaymoDataset(split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, (1280, 1920)))
 
@@ -39,8 +39,8 @@ waymo = WaymoDataset(split="validation", transform=lambda i, l: yolo_waymo_trans
 model = Yolo(model="yolo11n.pt")
 # model = Yolo(model="yolovv8n.pt")
 
-for d in [nu]:  # , nu, waymo]:
-
+for d in [waymo]:  # , nu, waymo]:
+    print(len(d))
     measurements = ObjectDetectionMeasurements(
         model, d, batch_size=BATCH_SIZE, collate_fn=lambda x: x
     )  # hacky way to avoid RuntimeError: each element in list of batch should be of equal size

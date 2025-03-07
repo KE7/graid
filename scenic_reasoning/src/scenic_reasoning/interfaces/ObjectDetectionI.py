@@ -299,25 +299,14 @@ class ObjectDetectionUtils:
         conf: float = 0.1,
     ) -> Dict[str, float]:
 
-        gt_classes_set = set([truth.cls for truth in ground_truth])
-        pred_classes_set = set([pred.cls for pred in predictions])
-        intersection_classes = gt_classes_set.intersection(pred_classes_set)
-
         pred_boxes = []
         pred_scores = []
         pred_classes = []
-        remove_indices_pred = []
 
         for i, pred in enumerate(predictions):
-            if pred.cls not in intersection_classes:  # removed: or pred.score < conf
-                remove_indices_pred.append(i)
-                continue
             pred_boxes.append(pred.as_xyxy())
             pred_scores.append(pred.score)
             pred_classes.append(pred.cls)
-
-        for i in sorted(remove_indices_pred, reverse=True):
-            predictions.pop(i)
 
         pred_boxes = torch.cat(pred_boxes) if pred_boxes else torch.Tensor([])
         pred_scores = (
@@ -346,17 +335,10 @@ class ObjectDetectionUtils:
         boxes = []
         scores = []
         classes = []
-        remove_indices_gt = []
         for i, truth in enumerate(ground_truth):
-            if truth.cls not in intersection_classes:
-                remove_indices_gt.append(i)
-                continue
             boxes.append(truth.as_xyxy())
             scores.append(truth.score)
             classes.append(truth.cls)
-
-        for i in sorted(remove_indices_gt, reverse=True):
-            ground_truth.pop(i)
 
         if fake_boxes:
             num_fake_boxes = max(0, len(pred_boxes) - len(boxes))
