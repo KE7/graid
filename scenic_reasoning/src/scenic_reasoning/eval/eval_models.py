@@ -114,7 +114,7 @@ if __name__ == "__main__":
     datasets = ["NuImages"]
     models = [yolo_v8n, yolo_11n, rtdetr, retinanet_R_101_FPN_3x, faster_rcnn_R_50_FPN_3x]
     # confs = [c for c in np.arange(0.05, 0.90, 0.05)]
-    confs = [0.2]
+    confs = [0.2, 0.5, 0.7]
     BATCH_SIZE = 8
 
     tasks = []
