@@ -104,7 +104,7 @@ class ObjectDetectionMeasurements:
                     class_metrics=class_metrics,
                     extended_summary=extended_summary,
                     image=x[idx],
-                    fake_boxes=fake_boxes,
+                    penalize_for_extra_predicitions=fake_boxes,
                     conf=conf,
                 )
                 full_image_result = dict()
@@ -157,7 +157,7 @@ class ObjectDetectionMeasurements:
         class_metrics: bool,
         extended_summary: bool,
         image: Optional[torch.Tensor] = None,
-        fake_boxes: bool = False,
+        penalize_for_extra_predicitions: bool = False,
         conf: float = 0.1,
     ) -> Dict:
         return ObjectDetectionUtils.compute_metrics_for_single_img(
@@ -169,7 +169,7 @@ class ObjectDetectionMeasurements:
             class_metrics=class_metrics,
             extended_summary=extended_summary,
             image=image,
-            fake_boxes=fake_boxes,
+            penalize_for_extra_predicitions=penalize_for_extra_predicitions,
             conf=conf,
         )
 

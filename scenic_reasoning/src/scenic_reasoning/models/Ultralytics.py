@@ -17,7 +17,7 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
     ObjectDetectionUtils,
 )
 from scenic_reasoning.utilities.common import get_default_device
-from ultralytics import YOLO, RTDETR
+from ultralytics import RTDETR, YOLO
 
 # TODO: Need class for InstanceSegmentation here
 
@@ -26,7 +26,6 @@ class Yolo(ObjectDetectionModelI):
     def __init__(self, model: Union[str, Path]) -> None:
         self.model_name = model
         self._model = YOLO(model)
-        self.threshold = 0.1
 
     def identify_for_image(
         self,
@@ -49,7 +48,11 @@ class Yolo(ObjectDetectionModelI):
             represents the batch of images, and the inner list represents the
             detections in a particular image.
         """
-        predictions = self._model.predict(image, device=get_default_device(), conf=self.threshold)
+        predictions = self._model.predict(
+            image, 
+            device=get_default_device(), 
+            **kwargs
+        )
 
         if len(predictions) == 0:
             return []
@@ -222,18 +225,19 @@ class Yolo(ObjectDetectionModelI):
 
     def to(self, device: Union[str, torch.device]):
         pass
-    
+
     def set_threshold(self, threshold: float):
         self.threshold = threshold
-    
+
     def __str__(self):
         return self.model_name.split(".")[0]
 
 
 class RT_DETR(Yolo):
-    def __init__(self, model: Union[str, Path], **kwargs) -> None:
+    def __init__(self, model: Union[str, Path]) -> None:
         self.model_name = model
-        self._model = RTDETR(model, **kwargs)
+        self._model = RTDETR(model)
+
     def identify_for_image(self, *args, **kwargs):
         return super().identify_for_image(*args, **kwargs)
 
@@ -245,17 +249,15 @@ class RT_DETR(Yolo):
 
     def to(self, *args, **kwargs):
         return super().to(*args, **kwargs)
-    
+
     def __str__(self):
         return self.model_name.split(".")[0]
-    
-
 
 
 class Yolo_seg(InstanceSegmentationModelI):
-    def __init__(self, model: Union[str, Path], **kwargs) -> None:
+    def __init__(self, model: Union[str, Path]) -> None:
         super().__init__()
-        self._model = YOLO(model, **kwargs)
+        self._model = YOLO(model)
         self._instance_count = {}
 
     def identify_for_image(
@@ -279,7 +281,7 @@ class Yolo_seg(InstanceSegmentationModelI):
             represents the batch of images, and the inner list represents the
             detections in a particular image.
         """
-        results = self._model.predict(source=image)
+        results = self._model.predict(source=image, **kwargs)
 
         # results = self._model.track(source=image, persist=True)
 

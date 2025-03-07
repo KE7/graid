@@ -572,7 +572,8 @@ class NuImagesDataset(ImageDataset):
         empty_count = 0
         img_labels = []
         for i in tqdm(
-            range(len(self.nuim.sample)), desc="Processing NuImage dataset..."    #len(self.nuim.sample)
+            range(len(self.nuim.sample)),
+            desc="Processing NuImage dataset...",  # len(self.nuim.sample)
         ):
             # see: https://www.nuscenes.org/tutorials/nuimages_tutorial.html
             sample = self.nuim.sample[i]
@@ -981,7 +982,7 @@ class WaymoDataset(ImageDataset):
 
     _CATEGORIES_TO_COCO = {
         "TYPE_UNKNOWN": -1,
-        "TYPE_VEHICLE": 2, 
+        "TYPE_VEHICLE": 2,
         "TYPE_PEDESTRIAN": 0,
         "TYPE_SIGN": 11,
         "TYPE_CYCLIST": 0,
@@ -1070,7 +1071,7 @@ class WaymoDataset(ImageDataset):
 
             logger.debug(f"Merged DataFrame for {image_file}: {merged_df.shape}\n")
 
-        # Group dataframes by unique identifiers and process them
+            # Group dataframes by unique identifiers and process them
             grouped_df = merged_df.groupby(
                 [
                     "key.segment_context_name",
@@ -1124,7 +1125,7 @@ class WaymoDataset(ImageDataset):
                 class_label = self.cls_to_category(cls)
                 cls = self.category_to_cls(class_label)
                 label = self.category_to_coco(class_label)
-                
+
                 result = ObjectDetectionResultI(
                     score=1.0,
                     cls=cls,
