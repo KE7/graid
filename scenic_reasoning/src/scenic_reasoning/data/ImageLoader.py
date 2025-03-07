@@ -1021,9 +1021,9 @@ class WaymoDataset(ImageDataset):
             f for f in os.listdir(self.camera_img_dir) if f.endswith(".parquet")
         ]
 
-        camera_image_files = camera_image_files[
-            :10
-        ]  # TODO: doing this because using the entire validation gives us memory issue. Need to change later.
+        # camera_image_files = camera_image_files[
+        #     :10
+        # ]  # TODO: doing this because using the entire validation gives us memory issue. Need to change later.
 
         # Check if image files are found
         if not camera_image_files:
@@ -1031,8 +1031,7 @@ class WaymoDataset(ImageDataset):
                 f"No parquet image files found in {self.camera_img_dir}"
             )
 
-        merged_dfs = []
-        for image_file in camera_image_files:
+        for image_file in tqdm(camera_image_files, desc="processing Waymo dataset..."):
             box_file = image_file.replace("camera_image", "camera_box")
             image_path = self.camera_img_dir / image_file
             box_path = self.camera_box_dir / box_file
@@ -1068,12 +1067,10 @@ class WaymoDataset(ImageDataset):
             if merged_df.empty:
                 logger.warning(f"No matches found for {image_file} and {box_file}.")
                 continue
-            # else:
+
             logger.debug(f"Merged DataFrame for {image_file}: {merged_df.shape}\n")
-            # merged_dfs.append(merged_df)
 
         # Group dataframes by unique identifiers and process them
-        # for merged_df in merged_dfs:
             grouped_df = merged_df.groupby(
                 [
                     "key.segment_context_name",
