@@ -66,9 +66,8 @@ def metric_per_dataset(model, dataset_name, conf):
     mAPs = []
     TN_count = 0
     mAP_iterator = measurements.iter_measurements(
-        bbox_offset=24,
+        bbox_offset=24, # TODO: this should be calibrated per dataset and image size
         debug=False,
-        conf=conf,
         class_metrics=True,
         extended_summary=True,
         agnostic_nms=True,
@@ -88,7 +87,6 @@ def metric_per_dataset(model, dataset_name, conf):
     mAP_iterator_fake = measurements.iter_measurements(
         bbox_offset=24,
         debug=False,
-        conf=conf,
         class_metrics=True,
         extended_summary=True,
         agnostic_nms=True,
@@ -127,6 +125,10 @@ if __name__ == "__main__":
     ]
     # confs = [c for c in np.arange(0.05, 0.90, 0.05)]
     confs = [0.2, 0.5, 0.7]
+
+    for model in models:
+        model.set_threshold(confs[0])
+
     BATCH_SIZE = 8
 
     tasks = []

@@ -56,7 +56,6 @@ class ObjectDetectionMeasurements:
         extended_summary: bool = False,
         debug: bool = False,
         fake_boxes: bool = False,
-        conf: float = 0.1,
         **kwargs
     ) -> Iterator[Union[List[Dict], Tuple[List[Dict], List[Results]]]]:
         if self.collate_fn is not None:
@@ -71,7 +70,6 @@ class ObjectDetectionMeasurements:
                 self.dataset, batch_size=self.batch_size, shuffle=False
             )
 
-        self.model.set_threshold(conf)
         for batch in data_loader:
             x = torch.stack([sample["image"] for sample in batch])
             y = [sample["labels"] for sample in batch]
@@ -105,7 +103,6 @@ class ObjectDetectionMeasurements:
                     extended_summary=extended_summary,
                     image=x[idx],
                     penalize_for_extra_predicitions=fake_boxes,
-                    conf=conf,
                 )
                 full_image_result = dict()
                 full_image_result["image"] = x[idx]
@@ -158,7 +155,6 @@ class ObjectDetectionMeasurements:
         extended_summary: bool,
         image: Optional[torch.Tensor] = None,
         penalize_for_extra_predicitions: bool = False,
-        conf: float = 0.1,
     ) -> Dict:
         return ObjectDetectionUtils.compute_metrics_for_single_img(
             ground_truth=gt,
@@ -170,7 +166,6 @@ class ObjectDetectionMeasurements:
             extended_summary=extended_summary,
             image=image,
             penalize_for_extra_predicitions=penalize_for_extra_predicitions,
-            conf=conf,
         )
 
 

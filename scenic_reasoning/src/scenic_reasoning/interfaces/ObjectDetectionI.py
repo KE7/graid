@@ -296,7 +296,6 @@ class ObjectDetectionUtils:
         debug: bool = False,
         image: Optional[torch.Tensor] = None,
         penalize_for_extra_predicitions: bool = False,
-        conf: float = 0.1,
     ) -> Dict[str, float]:
 
         pred_boxes = []
