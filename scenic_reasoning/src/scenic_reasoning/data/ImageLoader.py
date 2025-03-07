@@ -1067,12 +1067,13 @@ class WaymoDataset(ImageDataset):
 
             if merged_df.empty:
                 logger.warning(f"No matches found for {image_file} and {box_file}.")
-            else:
-                logger.debug(f"Merged DataFrame for {image_file}: {merged_df.shape}\n")
-                merged_dfs.append(merged_df)
+                continue
+            # else:
+            logger.debug(f"Merged DataFrame for {image_file}: {merged_df.shape}\n")
+            # merged_dfs.append(merged_df)
 
         # Group dataframes by unique identifiers and process them
-        for merged_df in merged_dfs:
+        # for merged_df in merged_dfs:
             grouped_df = merged_df.groupby(
                 [
                     "key.segment_context_name",
