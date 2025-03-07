@@ -1,18 +1,15 @@
 import json
 
-import numpy as np
 import ray
 from scenic_reasoning.data.ImageLoader import (
     Bdd100kDataset,
     NuImagesDataset,
     WaymoDataset,
 )
-from scenic_reasoning.interfaces.ObjectDetectionI import ObjectDetectionUtils
 from scenic_reasoning.measurements.ObjectDetection import ObjectDetectionMeasurements
 from scenic_reasoning.models.Detectron import Detectron_obj
 from scenic_reasoning.models.Ultralytics import RT_DETR, Yolo
 from scenic_reasoning.utilities.common import (
-    get_default_device,
     project_root_dir,
     yolo_bdd_transform,
     yolo_nuscene_transform,
@@ -20,9 +17,9 @@ from scenic_reasoning.utilities.common import (
 )
 from tqdm import tqdm
 
-yolo_v8n = Yolo(model="yolov8n.pt")
-yolo_11n = Yolo(model="yolo11n.pt")
-rtdetr = RT_DETR("rtdetr-l.pt")
+yolo_v10x = Yolo(model="YOLOv10x.pt")
+yolo_11x = Yolo(model="yolo11x.pt")
+rtdetr = RT_DETR("rtdetr-x.pt")
 
 retinanet_R_101_FPN_3x_config = "COCO-Detection/retinanet_R_101_FPN_3x.yaml"
 retinanet_R_101_FPN_3x_weights = "COCO-Detection/retinanet_R_101_FPN_3x.yaml"
@@ -40,25 +37,8 @@ faster_rcnn_R_50_FPN_3x = Detectron_obj(
 
 
 @ray.remote(num_gpus=1)
-def metric_per_dataset(model, dataset_name, conf):
-    if dataset_name == "NuImages":
-        dataset = NuImagesDataset(
-            split="mini",
-            size="all",
-            transform=lambda i, l: yolo_nuscene_transform(i, l, new_shape=(896, 1600)),
-        )
-    elif dataset_name == "Waymo":
-        dataset = WaymoDataset(
-            split="validation",
-            transform=lambda i, l: yolo_waymo_transform(i, l, (1280, 1920)),
-        )
-    else:
-        dataset = Bdd100kDataset(
-            split="val",
-            transform=lambda i, l: yolo_bdd_transform(i, l, new_shape=(768, 1280)),
-            use_original_categories=False,
-            use_extended_annotations=False,
-        )
+def metric_per_dataset(model, dataset, conf_thresholds):
+    dataset = dataset()
 
     measurements = ObjectDetectionMeasurements(
         model, dataset, batch_size=BATCH_SIZE, collate_fn=lambda x: x
@@ -92,7 +72,7 @@ def metric_per_dataset(model, dataset_name, conf):
         agnostic_nms=True,
         fake_boxes=True,
     )
-    for results in tqdm(mAP_iterator_fake, desc="processing fake mAP measurements"):
+    for results in tqdm(mAP_iterator_fake, desc="processing COCO mAP with penalties for extra predictions"):
         for result in results:
             if result["measurements"]["TN"] == 1:
                 print("Both ground truth and predictions are empty. Ignore")
@@ -102,7 +82,7 @@ def metric_per_dataset(model, dataset_name, conf):
             mAPs_fake.append(mAP.item())
 
     return {
-        "dataset": dataset_name,
+        "dataset": str(dataset),
         "model": str(model),
         "confidence": conf,
         "average_mAP": sum(mAPs) / len(mAPs),
@@ -115,10 +95,42 @@ def metric_per_dataset(model, dataset_name, conf):
 if __name__ == "__main__":
     ray.init()
 
-    datasets = ["NuImages"]
+    datasets = []
+    # NuImages
+    for split in ["mini", "train", "val"]:
+        for size in ["all", "mini"]:
+            datasets.append(
+                lambda: 
+                NuImagesDataset(
+                    split=split,
+                    size=size,
+                    transform=lambda i, l: yolo_nuscene_transform(i, l, new_shape=(896, 1600)),
+                )
+            )
+    # Waymo
+    for split in ["train", "validation"]:
+        datasets.append(
+            lambda:
+            WaymoDataset(
+                split=split,
+                transform=lambda i, l: yolo_waymo_transform(i, l, (1280, 1920)),
+            )
+        )
+    # BDD100k
+    for split in ["train", "val"]:
+        datasets.append(
+            lambda:
+            Bdd100kDataset(
+                split=split,
+                transform=lambda i, l: yolo_bdd_transform(i, l, new_shape=(768, 1280)),
+                use_original_categories=False,
+                use_extended_annotations=False,
+            )
+        )
+    
     models = [
-        yolo_v8n,
-        yolo_11n,
+        yolo_v10x,
+        yolo_11x,
         rtdetr,
         retinanet_R_101_FPN_3x,
         faster_rcnn_R_50_FPN_3x,
@@ -134,9 +146,8 @@ if __name__ == "__main__":
     tasks = []
     for d in datasets:
         for model in models:
-            for conf in confs:
-                task_id = metric_per_dataset.remote(model, d, conf)
-                tasks.append(task_id)
+            task_id = metric_per_dataset.remote(model, d, confs)
+            tasks.append(task_id)
 
     results = ray.get(tasks)
     output_file = {}
