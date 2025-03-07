@@ -294,6 +294,9 @@ class Bdd100kDataset(ImageDataset):
 
     def __len__(self) -> int:
         return len(self.img_labels)
+    
+    def __repr__(self):
+        return f"BDD100K Dataset {self.split} split with {len(self.img_labels)} images."
 
     def __init__(
         self,
@@ -302,6 +305,7 @@ class Bdd100kDataset(ImageDataset):
         use_extended_annotations: bool = True,
         **kwargs,
     ):
+        self.split = split
 
         root_dir = project_root_dir() / "data" / "bdd100k"
         img_dir = root_dir / "images" / "100k" / split
@@ -541,6 +545,9 @@ class NuImagesDataset(ImageDataset):
             if item.get(field) == match_value:
                 filtered_list.append(item)
         return filtered_list
+    
+    def __repr__(self):
+        return f"NuImages Dataset {self.split} split with {len(self.img_labels)} images."
 
     def __init__(
         self,
@@ -549,6 +556,9 @@ class NuImagesDataset(ImageDataset):
         **kwargs,
     ):
         from nuimages import NuImages
+
+        self.size = size
+        self.split = split
 
         root_dir = project_root_dir() / "data" / "nuimages" / size
         img_dir = root_dir
@@ -996,12 +1006,17 @@ class WaymoDataset(ImageDataset):
 
     def cls_to_category(self, cls: int) -> str:
         return self._CATEGORIES_R[cls]
+    
+    def __repr__(self):
+        return f"Waymo Dataset {self.split} split with {len(self.img_labels)} images."
 
     def __init__(
         self,
         split: Union[Literal["training", "validation", "testing"]] = "training",
         **kwargs,
     ):
+        self.split = split
+
         root_dir = project_root_dir() / "data" / "waymo"
         self.camera_img_dir = root_dir / f"{split}" / "camera_image"
         self.camera_box_dir = root_dir / f"{split}" / "camera_box"
