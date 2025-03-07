@@ -544,17 +544,18 @@ class NuImagesDataset(ImageDataset):
     def __init__(
         self,
         split: Union[Literal["train", "val", "test", "mini"]] = "val",
-        size: Union[Literal["mini", "full"]] = "full",
+        size: Union[Literal["mini", "all"]] = "all",
         **kwargs,
     ):
         from nuimages import NuImages
 
         root_dir = project_root_dir() / "data" / "nuimages" / size
+        subdir = "v1.0-" + (size if size == "mini" else split)
         img_dir = root_dir
-        obj_annotations_file = root_dir / f"v1.0-{split}" / "object_ann.json"
-        categories_file = root_dir / f"v1.0-{split}" / "category.json"
-        sample_data_labels_file = root_dir / f"v1.0-{split}" / "sample_data.json"
-        attributes_file = root_dir / f"v1.0-{split}" / "attribute.json"
+        obj_annotations_file = root_dir / subdir / "object_ann.json"
+        categories_file = root_dir / subdir / "category.json"
+        sample_data_labels_file = root_dir / subdir / "sample_data.json"
+        attributes_file = root_dir / subdir / "attribute.json"
 
         self.sample_data_labels = json.load(open(sample_data_labels_file))
         self.attribute_labels = json.load(open(attributes_file))
@@ -563,7 +564,7 @@ class NuImagesDataset(ImageDataset):
 
         self.nuim = NuImages(
             dataroot=img_dir,
-            version=f"v1.0-{split}",
+            version=subdir,
             verbose=False,
             lazy=True,  # verbose off to avoid excessive print statement
         )
@@ -612,7 +613,7 @@ class NuImagesDataset(ImageDataset):
 
             # TODO: add error catching logic in case of empty token or token mismatch.
 
-        print(
+        logger.debug(
             f"{split} has {empty_count} out of {len(self.nuim.sample)} empty samples."
         )
 
