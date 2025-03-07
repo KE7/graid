@@ -8,7 +8,7 @@ on:
 
 jobs:
   check:
-    name: Run check.ch
+    name: Run check.sh
     runs-on: ubuntu-latest
 
     steps:
@@ -23,13 +23,15 @@ jobs:
       - name: Install Dependencies
         run: poetry install
 
-      - name: Ensure check.ch exists and is executable
+      - name: Ensure check.sh exists and is executable
         run: |
+          set -e
           cd $GITHUB_WORKSPACE
-            if [ -f check.ch ]; then
-            chmod +x check.ch
-            ./check.ch || exit 1
+            if [ -f check.sh ]; then
+            chmod +x check.sh
+            ./check.sh
           else
-            echo "File check.ch does not exist. Listing files in the directory:"
+            echo "File check.sh does not exist. Listing files in the directory:"
             ls -la
+            exit 1
           fi
