@@ -1158,8 +1158,6 @@ class WaymoDataset(ImageDataset):
             raise IndexError(
                 f"Index {idx} out of range for dataset with {len(self.img_labels)} samples."
             )
-        
-        print("!!!!!!!!!!!!!!!!!", idx)
 
         img_data = self.img_labels[idx]
         img_bytes = img_data["image"]

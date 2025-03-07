@@ -40,7 +40,6 @@ model = Yolo(model="yolo11n.pt")
 # model = Yolo(model="yolovv8n.pt")
 
 for d in [waymo]:  # , nu, waymo]:
-    print(len(d))
     measurements = ObjectDetectionMeasurements(
         model, d, batch_size=BATCH_SIZE, collate_fn=lambda x: x
     )  # hacky way to avoid RuntimeError: each element in list of batch should be of equal size

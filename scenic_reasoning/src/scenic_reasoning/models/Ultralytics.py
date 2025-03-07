@@ -227,7 +227,7 @@ class Yolo(ObjectDetectionModelI):
         self.threshold = threshold
     
     def __str__(self):
-        return self.model_name
+        return self.model_name.split(".")[0]
 
 
 class RT_DETR(Yolo):

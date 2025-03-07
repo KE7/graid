@@ -42,9 +42,9 @@ faster_rcnn_R_50_FPN_3x = Detectron_obj(
 @ray.remote(num_gpus=1)
 def metric_per_dataset(model, dataset_name, conf):
     if dataset_name == "NuImages":
-        dataset = NuImagesDataset(split="mini", size="all", transform=lambda i, l: yolo_nuscene_transform(i, l, new_shape=(768, 1280)))
+        dataset = NuImagesDataset(split="mini", size="all", transform=lambda i, l: yolo_nuscene_transform(i, l, new_shape=(896, 1600)))
     elif dataset_name == "Waymo":
-        dataset = WaymoDataset(split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, (768, 1280)))
+        dataset = WaymoDataset(split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, (1280, 1920)))
     else:
         dataset = Bdd100kDataset(
             split="val",
@@ -96,7 +96,7 @@ def metric_per_dataset(model, dataset_name, conf):
             mAP = result["measurements"]['map']
             mAPs_fake.append(mAP.item())
     
-    stats = ({
+    return {
         'dataset': dataset_name,
         'model': str(model),
         'confidence': conf,
@@ -104,20 +104,18 @@ def metric_per_dataset(model, dataset_name, conf):
         'fake_average_mAP': sum(mAPs_fake) / len(mAPs_fake),
         'TN': TN_count,
         'TN_fake': TN_count_fake
-        })
-    print(stats)
-    return stats
+        }
 
 
 
 if __name__ == "__main__":
     ray.init()
 
-    datasets = ["NuImages", "BDD", "Waymo"]
-    models = [retinanet_R_101_FPN_3x]
+    datasets = ["NuImages"]
+    models = [yolo_v8n, yolo_11n, rtdetr, retinanet_R_101_FPN_3x, faster_rcnn_R_50_FPN_3x]
     # confs = [c for c in np.arange(0.05, 0.90, 0.05)]
-    confs = [0.5]
-    BATCH_SIZE = 4
+    confs = [0.2]
+    BATCH_SIZE = 8
 
     tasks = []
     for d in datasets:
