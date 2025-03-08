@@ -294,7 +294,7 @@ class Bdd100kDataset(ImageDataset):
 
     def __len__(self) -> int:
         return len(self.img_labels)
-    
+
     def __repr__(self):
         return f"BDD100K Dataset {self.split} split with {len(self.img_labels)} images."
 
@@ -545,9 +545,11 @@ class NuImagesDataset(ImageDataset):
             if item.get(field) == match_value:
                 filtered_list.append(item)
         return filtered_list
-    
+
     def __repr__(self):
-        return f"NuImages Dataset {self.split} split with {len(self.img_labels)} images."
+        return (
+            f"NuImages Dataset {self.split} split with {len(self.img_labels)} images."
+        )
 
     def __init__(
         self,
@@ -1006,7 +1008,7 @@ class WaymoDataset(ImageDataset):
 
     def cls_to_category(self, cls: int) -> str:
         return self._CATEGORIES_R[cls]
-    
+
     def __repr__(self):
         return f"Waymo Dataset {self.split} split with {len(self.img_labels)} images."
 

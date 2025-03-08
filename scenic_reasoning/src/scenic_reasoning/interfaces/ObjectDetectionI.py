@@ -340,7 +340,7 @@ class ObjectDetectionUtils:
             classes.append(truth.cls)
 
         if penalize_for_extra_predicitions:
-            # if there are more predictions than ground truth, add fake boxes 
+            # if there are more predictions than ground truth, add fake boxes
             # so that we will end up lowering the mAP
             num_ghost_boxes = max(0, len(pred_boxes) - len(boxes))
             image_size = (image.shape[1], image.shape[0])

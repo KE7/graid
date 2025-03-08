@@ -48,11 +48,7 @@ class Yolo(ObjectDetectionModelI):
             represents the batch of images, and the inner list represents the
             detections in a particular image.
         """
-        predictions = self._model.predict(
-            image, 
-            device=get_default_device(), 
-            **kwargs
-        )
+        predictions = self._model.predict(image, device=get_default_device(), **kwargs)
 
         if len(predictions) == 0:
             return []

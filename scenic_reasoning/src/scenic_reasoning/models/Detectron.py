@@ -137,12 +137,12 @@ class Detectron_obj(ObjectDetectionModelI):
             image = batched_images[i]
             image = image.permute(1, 2, 0).cpu().numpy()  # Convert to HWC
             image = self.aug.get_transform(image).apply_image(image)
-            image = torch.as_tensor(image.astype("float32").transpose(2, 0, 1)) # Convert back to CHW
+            image = torch.as_tensor(
+                image.astype("float32").transpose(2, 0, 1)
+            )  # Convert back to CHW
             image.to(self.cfg.MODEL.DEVICE)
             height, width = image.shape[1:]
-            list_of_images.append(
-                {"image": image, "height": height, "width": width}
-            )
+            list_of_images.append({"image": image, "height": height, "width": width})
 
         predictions = self.model(list_of_images)
 
@@ -150,7 +150,12 @@ class Detectron_obj(ObjectDetectionModelI):
         for i in range(len(predictions)):
             img_result = []
             for j in range(len(predictions[i]["instances"])):
-                box = predictions[i]["instances"][j].pred_boxes.tensor.cpu().numpy().tolist()[0]
+                box = (
+                    predictions[i]["instances"][j]
+                    .pred_boxes.tensor.cpu()
+                    .numpy()
+                    .tolist()[0]
+                )
                 score = predictions[i]["instances"][j].scores.item()
                 cls_id = int(predictions[i]["instances"][j].pred_classes.item())
                 label = self._metadata.thing_classes[cls_id]
@@ -167,7 +172,6 @@ class Detectron_obj(ObjectDetectionModelI):
                 img_result.append(odr)
 
             formatted_results.append(img_result)
-        
 
     def identify_for_video(
         self,
