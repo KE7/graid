@@ -2,7 +2,7 @@ import random
 from abc import ABC, abstractmethod
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple, Union
 
 import cv2
 import numpy as np
@@ -289,8 +289,8 @@ class ObjectDetectionUtils:
 
     @staticmethod
     def compute_metrics_for_single_img(
-        ground_truth: List[ObjectDetectionResultI],
-        predictions: List[ObjectDetectionResultI],
+        ground_truth: Iterable[ObjectDetectionResultI],
+        predictions: Iterable[ObjectDetectionResultI],
         class_metrics: bool = False,
         extended_summary: bool = False,
         debug: bool = False,

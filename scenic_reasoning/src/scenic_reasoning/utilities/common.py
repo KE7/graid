@@ -1,3 +1,5 @@
+import pickle
+from functools import wraps
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Tuple
 
@@ -66,25 +68,6 @@ def read_image(img_path):
         image = cv2.imread(img_path)
         image = torch.from_numpy(image).permute(2, 0, 1)
     return image
-
-
-# def yolo_waymo_transform(image, labels, stride=32):
-#     orig_H, orig_W = image.shape[1:]
-
-#     C, H, W = image.shape
-#     new_H = (H + stride - 1) // stride * stride
-#     new_W = (W + stride - 1) // stride * stride
-#     image = image.permute(1, 2, 0).cpu().numpy()
-#     resized_image = cv2.resize(image, (new_W, new_H), interpolation=cv2.INTER_LINEAR)
-#     resized_image = torch.from_numpy(resized_image).permute(2, 0, 1).float()
-
-#     scale_x = new_W / orig_W
-#     scale_y = new_H / orig_H
-#     for label in labels:
-#         x1, y1, x2, y2 = label["bbox"]
-#         label["bbox"] = (x1 * scale_x, y1 * scale_y, x2 * scale_x, y2 * scale_y)
-
-#     return resized_image, labels
 
 
 def _get_bbox(label: Dict[str, Any], box_key: str) -> List[float]:
@@ -190,3 +173,27 @@ def yolo_waymo_transform(
     image: torch.Tensor, labels: List[dict], new_shape: Tuple[int, int]
 ):
     return yolo_transform(image, labels, new_shape, "bbox", scale=(1.0 / 255.0))
+
+
+def persistent_cache(filepath: str):
+    def decorator(func):
+        cache = {}
+        if Path(filepath).exists():
+            with open(filepath, "rb") as f:
+                try:
+                    cache = pickle.load(f)
+                except Exception as e:
+                    cache = {}
+
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            key = (args, frozenset(kwargs.items()))
+            if key not in cache:
+                cache[key] = func(*args, **kwargs)
+                with open(filepath, "wb") as f:
+                    pickle.dump(cache, f)
+            return cache[key]
+
+        return wrapper
+
+    return decorator

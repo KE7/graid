@@ -126,25 +126,28 @@ class Detectron_obj(ObjectDetectionModelI):
         return formatted_results
 
     def identify_for_image_as_tensor(
-        self, batched_images, **kwargs
+        self, batched_images, debug: bool = False, **kwargs
     ) -> List[ObjectDetectionResultI]:
         assert (
             batched_images.ndimension() == 4
         ), "Input tensor must be of shape (B, C, H, W) in RGB format"
         batched_images = batched_images[:, [2, 1, 0], ...]  # Convert RGB to BGR
         list_of_images = []
-        for i in range(batched_images.shape[0]):
-            image = batched_images[i]
-            image = image.permute(1, 2, 0).cpu().numpy()  # Convert to HWC
-            image = self.aug.get_transform(image).apply_image(image)
-            image = torch.as_tensor(
-                image.astype("float32").transpose(2, 0, 1)
-            )  # Convert back to CHW
-            image.to(self.cfg.MODEL.DEVICE)
-            height, width = image.shape[1:]
-            list_of_images.append({"image": image, "height": height, "width": width})
+        with torch.no_grad():  # https://github.com/sphinx-doc/sphinx/issues/4258
+            for i in range(batched_images.shape[0]):
+                image = batched_images[i]
+                image = image.permute(1, 2, 0).cpu().numpy()  # Convert to HWC
+                image = self._predictor.aug.get_transform(image).apply_image(image)
+                image = torch.as_tensor(
+                    image.astype("float32").transpose(2, 0, 1)
+                )  # Convert back to CHW
+                image.to(self.cfg.MODEL.DEVICE)
+                height, width = image.shape[1:]
+                list_of_images.append(
+                    {"image": image, "height": height, "width": width}
+                )
 
-        predictions = self.model(list_of_images)
+            predictions = self._predictor.model(list_of_images)
 
         formatted_results = []
         for i in range(len(predictions)):
@@ -172,6 +175,8 @@ class Detectron_obj(ObjectDetectionModelI):
                 img_result.append(odr)
 
             formatted_results.append(img_result)
+
+        return formatted_results
 
     def identify_for_video(
         self,

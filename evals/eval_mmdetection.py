@@ -1,7 +1,6 @@
 import json
 
 import numpy as np
-from scenic_reasoning.models.MMDetection import MMdetection_obj
 import ray
 from scenic_reasoning.data.ImageLoader import (
     Bdd100kDataset,
@@ -11,6 +10,7 @@ from scenic_reasoning.data.ImageLoader import (
 from scenic_reasoning.interfaces.ObjectDetectionI import ObjectDetectionUtils
 from scenic_reasoning.measurements.ObjectDetection import ObjectDetectionMeasurements
 from scenic_reasoning.models.Detectron import Detectron_obj
+from scenic_reasoning.models.MMDetection import MMdetection_obj
 from scenic_reasoning.models.Ultralytics import RT_DETR, Yolo
 from scenic_reasoning.utilities.common import (
     get_default_device,

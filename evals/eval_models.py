@@ -1,5 +1,7 @@
 import json
+from collections import defaultdict
 
+import numpy as np
 import ray
 import torch
 from scenic_reasoning.data.ImageLoader import (
@@ -20,18 +22,18 @@ from scenic_reasoning.utilities.common import (
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-yolo_v10x = Yolo(model="YOLOv10x.pt")
-yolo_11x = Yolo(model="yolo11x.pt")
-rtdetr = RT_DETR("rtdetr-x.pt")
+yolo_v10x = Yolo(model="yolov10x.pt")  # 61.4 Mb
+yolo_11x = Yolo(model="yolo11x.pt")  # 109 Mb
+rtdetr = RT_DETR("rtdetr-x.pt")  # 129 Mb
 
-retinanet_R_101_FPN_3x_config = "COCO-Detection/retinanet_R_101_FPN_3x.yaml"
+retinanet_R_101_FPN_3x_config = "COCO-Detection/retinanet_R_101_FPN_3x.yaml"  # 228MB
 retinanet_R_101_FPN_3x_weights = "COCO-Detection/retinanet_R_101_FPN_3x.yaml"
 retinanet_R_101_FPN_3x = Detectron_obj(
     config_file=retinanet_R_101_FPN_3x_config,
     weights_file=retinanet_R_101_FPN_3x_weights,
 )
 
-faster_rcnn_R_50_FPN_3x_config = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
+faster_rcnn_R_50_FPN_3x_config = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"  # 167MB
 faster_rcnn_R_50_FPN_3x_weights = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
 faster_rcnn_R_50_FPN_3x = Detectron_obj(
     config_file=faster_rcnn_R_50_FPN_3x_config,
@@ -51,6 +53,11 @@ def metric_per_dataset(model, dataset, conf_thresholds):
 
     model.to(device=get_default_device())
 
+    mAP_at_conf = defaultdict(list)
+    mAPs_with_penalty_at_conf = defaultdict(list)
+    TN_count = defaultdict(int)
+    TN_count_with_penalty = defaultdict(int)
+
     for batch in tqdm(data_loader, desc="processing dataset " + str(dataset)):
         x = torch.stack([sample["image"] for sample in batch])
         y = [sample["labels"] for sample in batch]
@@ -61,7 +68,7 @@ def metric_per_dataset(model, dataset, conf_thresholds):
             # https://github.com/ultralytics/ultralytics/issues/9912
             x = x[:, [2, 1, 0], ...]
             x = x / 255.0
-            prediction = model.identify_for_image(x)
+            prediction = model.identify_for_image(x, verbose=False)
             # undo the conversion
             x = x[:, [2, 1, 0], ...]
             x = x * 255.0
@@ -72,23 +79,11 @@ def metric_per_dataset(model, dataset, conf_thresholds):
 
         x = x.cpu()
 
-        results = []
-        mAPs = {}
-        TN_counts = {}
-        mAPs_with_penalty = {}
-        TN_counts_with_penalty = {}
-
         for idx, (odrs, gt) in enumerate(
             zip(prediction, y)
         ):  # odr = object detection result, gt = ground truth
-
-            mAP_at_conf = []
-            mAPs_with_penalty_at_conf = []
-            TN_count = 0
-            TN_count_with_penalty = 0
-
             for conf in conf_thresholds:
-                relevant_odrs = map(lambda x: x.score() >= conf, odrs)
+                relevant_odrs = list(filter(lambda x: x.score >= conf, odrs))
 
                 measurements: dict = (
                     ObjectDetectionUtils.compute_metrics_for_single_img(
@@ -108,10 +103,10 @@ def metric_per_dataset(model, dataset, conf_thresholds):
 
                 if measurements["TN"] == 1:
                     print("Both ground truth and predictions are empty. Ignore")
-                    TN_count += 1
+                    TN_count[conf] += 1
                 else:
-                    mAP = measurements_with_penalty["map"]
-                    mAP_at_conf.append(mAP.item())
+                    mAP = measurements["map"]
+                    mAP_at_conf[conf].append(mAP.item())
 
                 measurements_with_penalty: dict = (
                     ObjectDetectionUtils.compute_metrics_for_single_img(
@@ -131,17 +126,19 @@ def metric_per_dataset(model, dataset, conf_thresholds):
 
                 if measurements_with_penalty["TN"] == 1:
                     print("Both ground truth and predictions are empty. Ignore")
-                    TN_count_with_penalty += 1
+                    TN_count_with_penalty[conf] += 1
                 else:
                     mAP = measurements_with_penalty["map"]
-                    mAPs_with_penalty_at_conf.append(mAP.item())
+                    mAPs_with_penalty_at_conf[conf].append(mAP.item())
 
-            mAPs[conf] = sum(mAP_at_conf) / len(mAP_at_conf)
-            mAPs_with_penalty[conf] = sum(mAPs_with_penalty_at_conf) / len(
-                mAPs_with_penalty_at_conf
-            )
-            TN_counts[conf] = TN_count
-            TN_counts_with_penalty[conf] = TN_count_with_penalty
+    mAPs = {
+        conf: sum(mAP_at_conf[conf]) / len(mAP_at_conf[conf]) for conf in mAP_at_conf
+    }
+    mAPs_with_penalty = {
+        conf: sum(mAPs_with_penalty_at_conf[conf])
+        / len(mAPs_with_penalty_at_conf[conf])
+        for conf in mAPs_with_penalty_at_conf
+    }
 
     model.to(device="cpu")
 
@@ -151,8 +148,8 @@ def metric_per_dataset(model, dataset, conf_thresholds):
         "confidence_thresholds": conf_thresholds,
         "average_mAP": mAPs,
         "average_mAP_with_penalty": mAPs_with_penalty,
-        "TNs": TN_counts,
-        "TN_with_penaltys": TN_counts_with_penalty,
+        "TNs": TN_count,
+        "TN_with_penaltys": TN_count_with_penalty,
     }
 
 
@@ -162,7 +159,7 @@ if __name__ == "__main__":
     datasets = []
     # NuImages
     for split in ["mini", "train", "val"]:
-        for size in ["all", "mini"]:
+        for size in ["all"]:
             datasets.append(
                 lambda: NuImagesDataset(
                     split=split,
@@ -198,13 +195,13 @@ if __name__ == "__main__":
         retinanet_R_101_FPN_3x,
         faster_rcnn_R_50_FPN_3x,
     ]
-    # confs = [c for c in np.arange(0.05, 0.90, 0.05)]
-    confs = [0.2, 0.5, 0.7]
+    confs = [float(c) for c in np.arange(0.05, 0.90, 0.05)]
+    # confs = [0.2, 0.5, 0.7]
 
     for model in models:
         model.set_threshold(confs[0])
 
-    BATCH_SIZE = 8
+    BATCH_SIZE = 16
 
     tasks = []
     for d in datasets:
@@ -215,13 +212,7 @@ if __name__ == "__main__":
     results = ray.get(tasks)
     output_file = {}
     for result in results:
-        k = (
-            result["model"]
-            + "//"
-            + result["dataset"]
-            + "//"
-            + str(result["confidence"])
-        )
+        k = result["model"] + "//" + result["dataset"]
         output_file[k] = result
 
     print(output_file)
