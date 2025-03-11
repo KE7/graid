@@ -1,5 +1,5 @@
 from itertools import islice
-
+from pathlib import Path
 import numpy as np
 from PIL import Image
 from scenic_reasoning.data.ImageLoader import (
@@ -16,6 +16,7 @@ from scenic_reasoning.utilities.common import (
     yolo_nuscene_transform,
     yolo_waymo_transform,
 )
+import cv2
 
 NUM_EXAMPLES_TO_SHOW = 20
 BATCH_SIZE = 1
@@ -75,10 +76,12 @@ for d in [waymo]:  # , nu, waymo]:
             print("mar_medium", measurements["mar_medium"])
             print("mar_large", measurements["mar_large"])
 
-            ObjectDetectionUtils.show_image_with_detections_and_gt(
+            img_to_show = ObjectDetectionUtils.show_image_with_detections_and_gt(
                 Image.fromarray(
                     results[i]["image"].permute(1, 2, 0).numpy().astype(np.uint8)
                 ),
                 detections=results[i]["predictions"],
                 ground_truth=results[i]["labels"],
             )
+            
+            # cv2.imwrite("temp.jpg", img_to_show)

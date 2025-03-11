@@ -19,7 +19,7 @@ from tqdm import tqdm
 
 
 class ObjDectDatasetBuilder(Dataset):
-    DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent.parent / "databases"
+    DEFAULT_DB_PATH = Path(__file__).resolve().parent / "databases"
 
     def __init__(
         self,
@@ -55,7 +55,7 @@ class ObjDectDatasetBuilder(Dataset):
         if dataset == "bdd":
             self.bdd = Bdd100kDataset(split=self.split, transform=transform)
             self.all_sets.append(self.bdd)
-        elif dataset == "nuimages":
+        elif dataset == "nuimage":
             self.nu_images = NuImagesDataset(
                 split=self.split, size="full", transform=transform
             )
@@ -76,6 +76,9 @@ class ObjDectDatasetBuilder(Dataset):
             self.has_been_built = True
 
         self.has_been_built = False
+    
+    def is_built(self):
+        return self.has_been_built
 
     def __len__(self):
         if not self.has_been_built:
@@ -97,16 +100,20 @@ class ObjDectDatasetBuilder(Dataset):
         raise IndexError("Index out of range")
 
     def build(self, model: Optional[ObjectDetectionModelI] = None, batch_size: int = 1):
+        
+
         if self.has_been_built:
             print("Dataset has already been built.")
             return
 
         for dataset in self.all_sets:
             print("Generating dataset...")
+
+            
             data_loader = DataLoader(
                 dataset, batch_size=batch_size, shuffle=False, collate_fn=lambda x: x
             )
-            for batch in tqdm(data_loader):
+            for batch in tqdm(data_loader, desc="generating dataset..."):
                 batch_images = torch.stack([sample["image"] for sample in batch])
                 batch_names = [sample["name"] for sample in batch]
 

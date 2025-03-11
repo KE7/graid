@@ -671,6 +671,8 @@ class ObjectDetectionUtils:
 
         cv2.destroyAllWindows()
 
+        return img_to_show
+
 
 class ObjectDetectionModelI(ABC):
     @abstractmethod

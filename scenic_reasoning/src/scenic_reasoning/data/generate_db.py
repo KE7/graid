@@ -44,33 +44,38 @@ def generate_db(model, dataset_name, split, conf):
     model.set_threshold(conf)
     db_name = f"{dataset_name}_{split}_{str(model)}"
 
-    if dataset_name == "nuimages":
+    if dataset_name == "nuimage":
         transform = nuimage_transform
-    elif dataset_name == "bdd100k":
+    elif dataset_name == "bdd":
         transform = bdd_transform
     elif dataset_name == "waymo":
         transform = waymo_transform
 
-    db_builder = ObjDectDatasetBuilder(split=split, dataset=db_name, db_name=f"{dataset_name}_{split}_{str(model)}", transform=transform)
-    db_builder.build(model=model, batch_size=BATCH_SIZE)
+    db_builder = ObjDectDatasetBuilder(split=split, dataset=dataset_name, db_name=db_name, transform=transform)
+    if not db_builder.is_built():
+        db_builder.build(model=model, batch_size=BATCH_SIZE)
     
 
 if __name__ == "__main__":
     ray.init()
 
-    models = [yolo_v8n, yolo_11n, rtdetr, retinanet_R_101_FPN_3x, faster_rcnn_R_50_FPN_3x]
+    models = [yolo_v8n]
     # confs = [c for c in np.arange(0.05, 0.90, 0.05)]
-    confs = [0.2, 0.5, 0.7]
-    datasets = ["nuimages"]
+    confs = [0.2]
+    datasets = ["bdd"]
     
     tasks = []
 
     for d in datasets:
         for model in models:
             for conf in confs:
-                task_train = generate_db.remote(model, d, "train", conf)
-                task_val = generate_db.remote(model, d, "val", conf)
+                task_train = generate_db.remote(model, d, "val", conf)
+                # task_val = generate_db.remote(model, d, "val", conf)
                 tasks.append(task_train)
-                tasks.append(task_val)
+                # tasks.append(task_val)
+                break
+            break
+        break
+
 
     results = ray.get(tasks)

@@ -36,6 +36,8 @@ class MMdetection_obj(ObjectDetectionModelI):
         # set class_agnostic to True to avoid overlaps: https://github.com/open-mmlab/mmdetection/issues/6254
         self._model.test_cfg.rcnn.nms.class_agnostic = True
 
+        
+
     def collect_env(self):
         """Collect the information of the running environments."""
         env_info = collect_base_env()
