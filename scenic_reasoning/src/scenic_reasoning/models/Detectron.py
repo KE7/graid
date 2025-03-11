@@ -125,7 +125,7 @@ class Detectron_obj(ObjectDetectionModelI):
 
         return formatted_results
 
-    def identify_for_image_as_tensor(
+    def identify_for_image_batch(
         self, batched_images, debug: bool = False, **kwargs
     ) -> List[ObjectDetectionResultI]:
         assert (

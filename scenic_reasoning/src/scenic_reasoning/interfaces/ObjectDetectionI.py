@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 from enum import Enum
-from pathlib import Path
 from typing import Dict, Iterator, List, Optional, Tuple, Union
 
 import cv2
@@ -412,6 +411,7 @@ class ObjectDetectionUtils:
 
         return score
 
+    @staticmethod
     def show_image_with_detections(
         image: Image.Image, detections: List[ObjectDetectionResultI]
     ) -> None:
@@ -498,6 +498,7 @@ class ObjectDetectionUtils:
 
         cv2.destroyAllWindows()
 
+    @staticmethod
     def show_image_with_detections_and_gt(
         image: Image.Image,
         detections: List[ObjectDetectionResultI],
@@ -683,28 +684,24 @@ class ObjectDetectionModelI(ABC):
     @abstractmethod
     def identify_for_image(
         self,
-        image: Union[
-            str, Path, int, Image.Image, list, tuple, np.ndarray, torch.Tensor
-        ],
+        image: Union[np.ndarray, torch.Tensor],
         debug: bool = False,
-    ) -> List[List[Optional[ObjectDetectionResultI]]]:
+    ) -> List[List[ObjectDetectionResultI]]:
         pass
 
     @abstractmethod
-    def identify_for_image_as_tensor(
+    def identify_for_image_batch(
         self,
-        image: Union[
-            str, Path, int, Image.Image, list, tuple, np.ndarray, torch.Tensor
-        ],
+        image: Union[np.ndarray, torch.Tensor],
         debug: bool = False,
         **kwargs,
-    ) -> List[Optional[ObjectDetectionResultI]]:
+    ) -> List[List[ObjectDetectionResultI]]:
         pass
 
     @abstractmethod
     def identify_for_video(
         self,
-        video: Union[Iterator[Image.Image], List[Image.Image]],
+        video: Union[Iterator[Union[np.ndarray, torch.Tensor]], List[Union[np.ndarray, torch.Tensor]]],
         batch_size: int = 1,
     ) -> Iterator[List[Optional[ObjectDetectionResultI]]]:
         pass

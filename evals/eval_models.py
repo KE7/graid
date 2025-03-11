@@ -1,19 +1,22 @@
 import json
 from collections import defaultdict
+from typing import Callable, List
 
 import numpy as np
 import ray
 import torch
 from scenic_reasoning.data.ImageLoader import (
     Bdd100kDataset,
+    ImageDataset,
     NuImagesDataset,
     WaymoDataset,
 )
-from scenic_reasoning.interfaces.ObjectDetectionI import ObjectDetectionUtils
+from scenic_reasoning.interfaces.ObjectDetectionI import ObjectDetectionModelI, ObjectDetectionUtils
 from scenic_reasoning.models.Detectron import Detectron_obj
 from scenic_reasoning.models.Ultralytics import RT_DETR, Yolo
 from scenic_reasoning.utilities.common import (
     get_default_device,
+    persistent_cache,
     project_root_dir,
     yolo_bdd_transform,
     yolo_nuscene_transform,
@@ -41,9 +44,14 @@ faster_rcnn_R_50_FPN_3x = Detectron_obj(
 )
 
 
+@persistent_cache(str(project_root_dir() / "evals" / "eval_models_cache.pkl"))
 @ray.remote(num_gpus=1)
-def metric_per_dataset(model, dataset, conf_thresholds):
-    dataset = dataset()
+def metric_per_dataset(
+    model: ObjectDetectionModelI,
+    dataset_fn: Callable[[], ImageDataset],
+    conf_thresholds: List[float],
+):
+    dataset = dataset_fn()
     data_loader = DataLoader(
         dataset,
         batch_size=BATCH_SIZE,
@@ -58,27 +66,15 @@ def metric_per_dataset(model, dataset, conf_thresholds):
     TN_count = defaultdict(int)
     TN_count_with_penalty = defaultdict(int)
 
-    for batch in tqdm(data_loader, desc="processing dataset " + str(dataset)):
+    for batch in tqdm(data_loader, desc="processing " + str(dataset)):
         x = torch.stack([sample["image"] for sample in batch])
         y = [sample["labels"] for sample in batch]
 
         x = x.to(device=get_default_device())
-        if isinstance(model, Yolo) or isinstance(model, RT_DETR):
-            # Convert RGB to BGR because Ultralytics models expect BGR
-            # https://github.com/ultralytics/ultralytics/issues/9912
-            x = x[:, [2, 1, 0], ...]
-            x = x / 255.0
-            prediction = model.identify_for_image(x, verbose=False)
-            # undo the conversion
-            x = x[:, [2, 1, 0], ...]
-            x = x * 255.0
-        elif isinstance(model, Detectron_obj):
-            prediction = model.identify_for_image_as_tensor(x)
-        else:
-            prediction = model.identify_for_image(x)
-
+        prediction = model.identify_for_image_batch(x)
         x = x.cpu()
 
+        # TODO: this loop should be split into another ray task since it's cpu bound
         for idx, (odrs, gt) in enumerate(
             zip(prediction, y)
         ):  # odr = object detection result, gt = ground truth
@@ -170,7 +166,7 @@ if __name__ == "__main__":
                 )
             )
     # Waymo
-    for split in ["train", "validation"]:
+    for split in ["training", "validation"]:
         datasets.append(
             lambda: WaymoDataset(
                 split=split,
