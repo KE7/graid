@@ -1,4 +1,7 @@
+import json
+
 import numpy as np
+import ray
 from scenic_reasoning.data.ImageLoader import (
     Bdd100kDataset,
     NuImagesDataset,
@@ -6,16 +9,16 @@ from scenic_reasoning.data.ImageLoader import (
 )
 from scenic_reasoning.interfaces.ObjectDetectionI import ObjectDetectionUtils
 from scenic_reasoning.measurements.ObjectDetection import ObjectDetectionMeasurements
+from scenic_reasoning.models.Detectron import Detectron_obj
 from scenic_reasoning.models.MMDetection import MMdetection_obj
+from scenic_reasoning.models.Ultralytics import RT_DETR, Yolo
 from scenic_reasoning.utilities.common import (
     get_default_device,
+    project_root_dir,
     yolo_bdd_transform,
     yolo_nuscene_transform,
     yolo_waymo_transform,
 )
-from scenic_reasoning.utilities.common import project_root_dir
-import json
-import ray
 from tqdm import tqdm
 
 
@@ -37,16 +40,23 @@ def metric_per_dataset(model, dataset_name, conf):
     model.set_threshold(conf)
 
     if dataset_name == "NuImages":
-        dataset = NuImagesDataset(split="mini", size="all", transform=lambda i, l: yolo_nuscene_transform(i, l, new_shape=(896, 1600)))
+        dataset = NuImagesDataset(
+            split="mini",
+            size="all",
+            transform=lambda i, l: yolo_nuscene_transform(i, l, new_shape=(896, 1600)),
+        )
     elif dataset_name == "Waymo":
-        dataset = WaymoDataset(split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, (1280, 1920)))
+        dataset = WaymoDataset(
+            split="validation",
+            transform=lambda i, l: yolo_waymo_transform(i, l, (1280, 1920)),
+        )
     else:
         dataset = Bdd100kDataset(
             split="val",
             transform=lambda i, l: yolo_bdd_transform(i, l, new_shape=(768, 1280)),
             use_original_categories=False,
             use_extended_annotations=False,
-            )
+        )
 
     measurements = ObjectDetectionMeasurements(
         model, dataset, batch_size=BATCH_SIZE, collate_fn=lambda x: x
@@ -60,17 +70,17 @@ def metric_per_dataset(model, dataset_name, conf):
         class_metrics=True,
         extended_summary=True,
         agnostic_nms=True,
-        fake_boxes=False
-        )
+        fake_boxes=False,
+    )
     for results in tqdm(mAP_iterator, desc="processing mAP measurements"):
         for result in results:
-            if result["measurements"]['TN'] == 1:
+            if result["measurements"]["TN"] == 1:
                 print("Both ground truth and predictions are empty. Ignore")
                 TN_count += 1
                 continue
-            mAP = result["measurements"]['map']
+            mAP = result["measurements"]["map"]
             mAPs.append(mAP.item())
-    
+
     mAPs_fake = []
     TN_count_fake = 0
     mAP_iterator_fake = measurements.iter_measurements(
@@ -80,27 +90,26 @@ def metric_per_dataset(model, dataset_name, conf):
         class_metrics=True,
         extended_summary=True,
         agnostic_nms=True,
-        fake_boxes=True
-        )
+        fake_boxes=True,
+    )
     for results in tqdm(mAP_iterator_fake, desc="processing fake mAP measurements"):
         for result in results:
-            if result["measurements"]['TN'] == 1:
+            if result["measurements"]["TN"] == 1:
                 print("Both ground truth and predictions are empty. Ignore")
                 TN_count_fake += 1
                 continue
-            mAP = result["measurements"]['map']
+            mAP = result["measurements"]["map"]
             mAPs_fake.append(mAP.item())
-    
-    return {
-        'dataset': dataset_name,
-        'model': str(model),
-        'confidence': conf,
-        'average_mAP': sum(mAPs) / len(mAPs),
-        'fake_average_mAP': sum(mAPs_fake) / len(mAPs_fake),
-        'TN': TN_count,
-        'TN_fake': TN_count_fake
-        }
 
+    return {
+        "dataset": dataset_name,
+        "model": str(model),
+        "confidence": conf,
+        "average_mAP": sum(mAPs) / len(mAPs),
+        "fake_average_mAP": sum(mAPs_fake) / len(mAPs_fake),
+        "TN": TN_count,
+        "TN_fake": TN_count_fake,
+    }
 
 
 if __name__ == "__main__":
@@ -122,11 +131,24 @@ if __name__ == "__main__":
     results = ray.get(tasks)
     output_file = {}
     for result in results:
-        k = result["model"] + "//" + result["dataset"] + "//" + str(result["confidence"])
+        k = (
+            result["model"]
+            + "//"
+            + result["dataset"]
+            + "//"
+            + str(result["confidence"])
+        )
         output_file[k] = result
-    
+
     print(output_file)
-    
-    output_file_path = project_root_dir() / "scenic_reasoning"/ "src" / "scenic_reasoning" / "eval" / "results.json"
-    with open(output_file_path, 'w') as f:
+
+    output_file_path = (
+        project_root_dir()
+        / "scenic_reasoning"
+        / "src"
+        / "scenic_reasoning"
+        / "eval"
+        / "results.json"
+    )
+    with open(output_file_path, "w") as f:
         json.dump(output_file, f, indent=4)

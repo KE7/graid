@@ -1,8 +1,7 @@
-import random
 from abc import ABC, abstractmethod
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Dict, Iterator, List, Optional, Tuple, Union
 
 import cv2
 import numpy as np
@@ -295,8 +294,7 @@ class ObjectDetectionUtils:
         extended_summary: bool = False,
         debug: bool = False,
         image: Optional[torch.Tensor] = None,
-        fake_boxes: bool = False,
-        conf: float = 0.1,
+        penalize_for_extra_predicitions: bool = False,
     ) -> Dict[str, float]:
 
         pred_boxes = []
@@ -335,38 +333,39 @@ class ObjectDetectionUtils:
         boxes = []
         scores = []
         classes = []
-        for i, truth in enumerate(ground_truth):
+        for truth in ground_truth:
             boxes.append(truth.as_xyxy())
             scores.append(truth.score)
             classes.append(truth.cls)
 
-        if fake_boxes:
-            num_fake_boxes = max(0, len(pred_boxes) - len(boxes))
+        if penalize_for_extra_predicitions:
+            # if there are more predictions than ground truth, add fake boxes
+            # so that we will end up lowering the mAP
+            num_ghost_boxes = max(0, len(pred_boxes) - len(boxes))
             image_size = (image.shape[1], image.shape[0])
-            fake_bbox_size = 20
-            for i in range(num_fake_boxes):
-                x1 = i * fake_bbox_size
-                y1 = fake_bbox_size
-                x2 = x1 + fake_bbox_size
-                y2 = y1 + fake_bbox_size
+            ghost_bbox_size = 20
+            for i in range(num_ghost_boxes):
+                x1 = i * ghost_bbox_size
+                y1 = ghost_bbox_size
+                x2 = x1 + ghost_bbox_size
+                y2 = y1 + ghost_bbox_size
 
-                fake_bbox = [x1, y1, x2, y2]
+                ghost_bbox = [x1, y1, x2, y2]
                 fake_score = 1.0
-                fake_class = -1
-                fake_label = "fake"
-
+                nonsignificant_class = -1
+                nonexistent_label = "fake"
 
                 fake_detection = ObjectDetectionResultI(
                     score=fake_score,
-                    cls=fake_class,
-                    label=fake_label,
-                    bbox=fake_bbox,
-                    image_hw=image_size
+                    cls=nonsignificant_class,
+                    label=nonexistent_label,
+                    bbox=ghost_bbox,
+                    image_hw=image_size,
                 )
                 ground_truth.append(fake_detection)
 
                 boxes.append(fake_detection.as_xyxy())
-                scores.append(fake_detection.score) 
+                scores.append(fake_detection.score)
                 classes.append(fake_detection.cls)
 
         boxes = torch.cat(boxes) if boxes else torch.Tensor([])  # shape: (num_boxes, 4)
@@ -404,10 +403,12 @@ class ObjectDetectionUtils:
 
         score = metric.compute()
 
-        if preds[0]['boxes'].shape == torch.Size([0]) and targets[0]['boxes'].shape == torch.Size([0]):
-            score['TN'] = 1
+        if preds[0]["boxes"].shape == torch.Size([0]) and targets[0][
+            "boxes"
+        ].shape == torch.Size([0]):
+            score["TN"] = 1
         else:
-            score['TN'] = 0
+            score["TN"] = 0
 
         return score
 

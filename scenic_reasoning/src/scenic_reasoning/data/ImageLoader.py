@@ -21,6 +21,7 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
 from scenic_reasoning.utilities.coco import inverse_coco_label
 from scenic_reasoning.utilities.common import (
     convert_to_xyxy,
+    persistent_cache,
     project_root_dir,
     read_image,
 )
@@ -136,6 +137,9 @@ class Bdd10kDataset(ImageDataset):
     def category_to_coco_cls(self, category: str) -> int:
         return self._CATEGORIES_TO_COCO[category]
 
+    @persistent_cache(
+        str(project_root_dir() / "data" / "bdd100k" / "processed" / "bdd10k.pkl")
+    )
     def __init__(
         self,
         split: Literal["train", "val", "test"] = "train",
@@ -295,6 +299,9 @@ class Bdd100kDataset(ImageDataset):
     def __len__(self) -> int:
         return len(self.img_labels)
 
+    def __repr__(self):
+        return f"BDD100K Dataset {self.split} split with {len(self.img_labels)} images."
+
     def __init__(
         self,
         split: Literal["train", "val", "test"] = "train",
@@ -302,6 +309,7 @@ class Bdd100kDataset(ImageDataset):
         use_extended_annotations: bool = True,
         **kwargs,
     ):
+        self.split = split
 
         root_dir = project_root_dir() / "data" / "bdd100k"
         img_dir = root_dir / "images" / "100k" / split
@@ -542,13 +550,56 @@ class NuImagesDataset(ImageDataset):
                 filtered_list.append(item)
         return filtered_list
 
+    def __repr__(self):
+        return (
+            f"NuImages Dataset {self.split} split with {len(self.img_labels)} images."
+        )
+
+    def _get_image_label(self, i: int):
+        sample = self.nuim.sample[i]
+        sample_token = sample["token"]
+        key_camera_token = sample["key_camera_token"]
+        object_tokens, surface_tokens = self.nuim.list_anns(
+            sample_token, verbose=False
+        )  # verbose off to avoid excessive print statement
+        if not object_tokens:
+            return None
+
+        object_data = []
+        for object_token in object_tokens:
+            obj = self.nuim.get("object_ann", object_token)
+            category_token = obj["category_token"]
+            attribute_tokens = obj["attribute_tokens"]
+            attributes = []
+            for attribute_token in attribute_tokens:
+                attribute = self.nuim.get("attribute", attribute_token)
+                attributes.append(attribute)
+
+            category = self.nuim.get("category", category_token)["name"]
+            obj["category"] = category
+            obj["attributes"] = attributes
+            object_data.append(obj)
+
+        sample_data = self.nuim.get("sample_data", key_camera_token)
+        img_filename = sample_data["filename"]
+        timestamp = sample_data["timestamp"]
+
+        return {
+            "object_data": object_data,
+            "img_filename": img_filename,
+            "timestamp": timestamp,
+        }
+
     def __init__(
         self,
-        split: Union[Literal["train", "val", "test", "mini"]] = "val",
-        size: Union[Literal["mini", "all"]] = "all",
+        split: Literal["train", "val", "test", "mini"] = "val",
+        size: Literal["mini", "full"] = "full",
         **kwargs,
     ):
         from nuimages import NuImages
+
+        self.size = size
+        self.split = split
 
         root_dir = project_root_dir() / "data" / "nuimages" / size
         subdir = "v1.0-" + (size if size == "mini" else split)
@@ -570,53 +621,75 @@ class NuImagesDataset(ImageDataset):
             lazy=True,  # verbose off to avoid excessive print statement
         )
 
-        empty_count = 0
-        img_labels = []
-        for i in tqdm(
-            range(len(self.nuim.sample)), desc="Processing NuImage dataset..."    #len(self.nuim.sample)
-        ):
-            # see: https://www.nuscenes.org/tutorials/nuimages_tutorial.html
-            sample = self.nuim.sample[i]
-            sample_token = sample["token"]
-            key_camera_token = sample["key_camera_token"]
-            object_tokens, surface_tokens = self.nuim.list_anns(
-                sample_token, verbose=False
-            )  # verbose off to avoid excessive print statement
-            if object_tokens == []:
-                empty_count += 1
-                continue
+        cache_path = root_dir / "processed" / f"img_labels_{split}.json"
+        reprocess = True
+        if cache_path.exists():
+            with open(cache_path, "r") as f:
+                try:
+                    img_labels = json.load(f)
+                    reprocess = False
+                except json.JSONDecodeError:
+                    # delete the file and reprocess
+                    cache_path.unlink()
+                    img_labels = []
+        if reprocess:
+            empty_count = 0
+            img_labels = []
+            for i in tqdm(
+                range(len(self.nuim.sample)),
+                desc="Processing NuImage dataset...",  # len(self.nuim.sample)
+            ):
+                # see: https://www.nuscenes.org/tutorials/nuimages_tutorial.html
+                sample = self.nuim.sample[i]
+                sample_token = sample["token"]
+                key_camera_token = sample["key_camera_token"]
+                object_tokens, surface_tokens = self.nuim.list_anns(
+                    sample_token, verbose=False
+                )  # verbose off to avoid excessive print statement
+                if object_tokens == []:
+                    empty_count += 1
+                    continue
 
-            object_data = []
-            for object_token in object_tokens:
-                obj = self.nuim.get("object_ann", object_token)
-                category_token = obj["category_token"]
-                attribute_tokens = obj["attribute_tokens"]
-                attributes = []
-                for attribute_token in attribute_tokens:
-                    attribute = self.nuim.get("attribute", attribute_token)
-                    attributes.append(attribute)
+                object_data = []
+                for object_token in object_tokens:
+                    obj = self.nuim.get("object_ann", object_token)
+                    category_token = obj["category_token"]
+                    attribute_tokens = obj["attribute_tokens"]
+                    attributes = []
+                    for attribute_token in attribute_tokens:
+                        attribute = self.nuim.get("attribute", attribute_token)
+                        attributes.append(attribute)
 
-                category = self.nuim.get("category", category_token)["name"]
-                obj["category"] = category
-                obj["attributes"] = attributes
-                object_data.append(obj)
+                    category = self.nuim.get("category", category_token)["name"]
+                    obj["category"] = category
+                    obj["attributes"] = attributes
+                    object_data.append(obj)
 
-            sample_data = self.nuim.get("sample_data", key_camera_token)
-            img_filename = sample_data["filename"]
-            timestamp = sample_data["timestamp"]
-            img_labels.append(
-                {
-                    "filename": img_filename,
-                    "labels": object_data,
-                    "timestamp": timestamp,
-                }
-            )
+                sample_data = self.nuim.get("sample_data", key_camera_token)
+                img_filename = sample_data["filename"]
+                timestamp = sample_data["timestamp"]
+                img_labels.append(
+                    {
+                        "filename": img_filename,
+                        "labels": object_data,
+                        "timestamp": timestamp,
+                    }
+                )
 
-            # TODO: add error catching logic in case of empty token or token mismatch.
+                # TODO: add error catching logic in case of empty token or token mismatch.
+
+        print(
+            f"{split} has {empty_count} out of {len(self.nuim.sample)} empty samples."
+        )
+
+            if not cache_path.parent.exists():
+                cache_path.parent.mkdir(parents=True, exist_ok=True)
 
         logger.debug(
             f"{split} has {empty_count} out of {len(self.nuim.sample)} empty samples."
         )
+            with open(cache_path, "w") as f:
+                json.dump(img_labels, f)
 
         def merge_transform(
             image: Tensor, labels: List[Dict[str, Any]], timestamp: str
@@ -657,6 +730,9 @@ class NuImagesDataset(ImageDataset):
             merge_transform=merge_transform,
             **kwargs,
         )
+
+    def __len__(self) -> int:
+        return len(self.img_labels)
 
     def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
         # if isinstance(idx, slice):
@@ -800,8 +876,8 @@ class NuImagesDataset_seg(ImageDataset):
 
     def __init__(
         self,
-        split: Union[Literal["train", "val", "test", "mini"]] = "val",
-        size: Union[Literal["mini", "full"]] = "mini",
+        split: Literal["train", "val", "test", "mini"] = "val",
+        size: Literal["mini", "full"] = "mini",
         **kwargs,
     ):
 
@@ -982,7 +1058,7 @@ class WaymoDataset(ImageDataset):
 
     _CATEGORIES_TO_COCO = {
         "TYPE_UNKNOWN": -1,
-        "TYPE_VEHICLE": 2, 
+        "TYPE_VEHICLE": 2,
         "TYPE_PEDESTRIAN": 0,
         "TYPE_SIGN": 11,
         "TYPE_CYCLIST": 0,
@@ -997,11 +1073,19 @@ class WaymoDataset(ImageDataset):
     def cls_to_category(self, cls: int) -> str:
         return self._CATEGORIES_R[cls]
 
+    def __repr__(self):
+        return f"Waymo Dataset {self.split} split with {len(self.img_labels)} images."
+
+    @persistent_cache(
+        str(project_root_dir() / "data" / "waymo" / "processed" / "waymo_cache.pkl")
+    )
     def __init__(
         self,
-        split: Union[Literal["training", "validation", "testing"]] = "training",
+        split: Literal["training", "validation", "testing"] = "training",
         **kwargs,
     ):
+        self.split = split
+
         root_dir = project_root_dir() / "data" / "waymo"
         self.camera_img_dir = root_dir / f"{split}" / "camera_image"
         self.camera_box_dir = root_dir / f"{split}" / "camera_box"
@@ -1071,7 +1155,7 @@ class WaymoDataset(ImageDataset):
 
             logger.debug(f"Merged DataFrame for {image_file}: {merged_df.shape}\n")
 
-        # Group dataframes by unique identifiers and process them
+            # Group dataframes by unique identifiers and process them
             grouped_df = merged_df.groupby(
                 [
                     "key.segment_context_name",
@@ -1125,7 +1209,7 @@ class WaymoDataset(ImageDataset):
                 class_label = self.cls_to_category(cls)
                 cls = self.category_to_cls(class_label)
                 label = self.category_to_coco(class_label)
-                
+
                 result = ObjectDetectionResultI(
                     score=1.0,
                     cls=cls,
@@ -1239,7 +1323,7 @@ class WaymoDataset_seg(ImageDataset):
 
     def __init__(
         self,
-        split: Union[Literal["training", "validation", "testing"]] = "training",
+        split: Literal["training", "validation", "testing"] = "training",
         **kwargs,
     ):
         root_dir = project_root_dir() / "data" / "waymo"
