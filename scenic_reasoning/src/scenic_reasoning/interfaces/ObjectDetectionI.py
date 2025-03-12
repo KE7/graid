@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Dict, Iterator, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 
 import cv2
 import numpy as np
@@ -294,7 +294,7 @@ class ObjectDetectionUtils:
         debug: bool = False,
         image: Optional[torch.Tensor] = None,
         penalize_for_extra_predicitions: bool = False,
-    ) -> Dict[str, float]:
+    ) -> Dict[Any, Any]:
 
         pred_boxes = []
         pred_scores = []
