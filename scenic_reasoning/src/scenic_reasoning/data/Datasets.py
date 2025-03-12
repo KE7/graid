@@ -119,7 +119,7 @@ class ObjDectDatasetBuilder(Dataset):
                 batch_names = [sample["path"] for sample in batch]   # using path would simpler
 
                 if model is not None:
-                    # labels = model.identify_for_image_as_tensor(batch_images)
+                    # labels = model.identify_for_image_batch(batch_images)
                     labels = model.identify_for_image(batch_images)
                     if labels == [None]:
                         continue
