@@ -3,6 +3,8 @@ import openai
 import re
 import os
 from scenic_reasoning.utilities.common import get_default_device
+import supervision as sv
+import cv2
 
 class PromptingStrategy:
     """Base class for different prompting strategies."""
@@ -43,7 +45,6 @@ class SetOfMarkPrompt(PromptingStrategy):
         Args:
             set_of_mark (list): List of constraints or reference points.
         """
-        import supervision as sv
         from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
         CHECKPOINT_PATH = "sam_vit_h_4b8939.pth"
         print(CHECKPOINT_PATH, "; exist:", os.path.isfile(CHECKPOINT_PATH))
