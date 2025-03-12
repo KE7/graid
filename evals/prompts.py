@@ -1,6 +1,8 @@
 import difflib
 import openai
 import re
+import os
+from scenic_reasoning.utilities.common import get_default_device
 
 class PromptingStrategy:
     """Base class for different prompting strategies."""

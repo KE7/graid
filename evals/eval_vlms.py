@@ -3,7 +3,7 @@ from scenic_reasoning.utilities.common import project_root_dir
 import sqlite3
 import pandas as pd
 import json
-from VLM import GPT
+from vlms import GPT
 from metrics import LLMJudge
 from prompts import SetOfMarkPrompt
 
@@ -39,7 +39,7 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt):
 
 
 if __name__ == "__main__":
-    db_path = DB_PATH / 'bdd_val_yolov8n.sqlite'
+    db_path = DB_PATH / 'bdd_val_yolo11n.sqlite'
     db_path = str(db_path)
     my_vlm = GPT()
     my_metric = LLMJudge()

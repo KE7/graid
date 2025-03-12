@@ -34,13 +34,13 @@ bdd = Bdd100kDataset(
 #     transform=lambda i, l: yolo_nuscene_transform(i, l, new_shape=(896, 1600)),
 # )
 
-waymo = WaymoDataset(split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, (1280, 1920)))
+# waymo = WaymoDataset(split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, (1280, 1920)))
 
 # https://docs.ultralytics.com/models/yolov5/#performance-metrics
 model = Yolo(model="yolo11n.pt")
 # model = Yolo(model="yolovv8n.pt")
 
-for d in [waymo]:  # , nu, waymo]:
+for d in [bdd]:  # , nu, waymo]:
     measurements = ObjectDetectionMeasurements(
         model, d, batch_size=BATCH_SIZE, collate_fn=lambda x: x
     )  # hacky way to avoid RuntimeError: each element in list of batch should be of equal size

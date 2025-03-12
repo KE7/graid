@@ -60,7 +60,7 @@ def generate_db(model, dataset_name, split, conf):
 if __name__ == "__main__":
     ray.init()
 
-    models = [yolo_v8n]
+    models = [yolo_11n]
     # confs = [c for c in np.arange(0.05, 0.90, 0.05)]
     confs = [0.2]
     datasets = ["bdd"]

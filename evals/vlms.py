@@ -1,32 +1,11 @@
-<<<<<<< HEAD:scenic_reasoning/src/scenic_reasoning/eval/vlm.py
 import torch
 from torchvision import transforms
 import base64
-=======
-# import outlines
-# from transformers import LlavaNextForConditionalGeneration
-# from PIL import Image
-
-
-# model = outlines.models.transformers_vision(
-#     "llava-hf/llava-v1.6-mistral-7b-hf",
-#     model_class=LlavaNextForConditionalGeneration,
-# 	device="cuda",
-# )
-
-# description_generator = outlines.generate.text(model)
-# description_generator(
-#     "<image> detailed description:",
-#     [Image.open('../demo/demo.jpg')]
-# )
-
-
->>>>>>> 94556bd1f1bbd43029b506811434f6df4c06f03a:evals/vlm.py
 import requests
 import torch
 from PIL import Image
-
-<<<<<<< HEAD:scenic_reasoning/src/scenic_reasoning/eval/vlm.py
+from dotenv import load_dotenv
+import os
 
 
 class VLM:
@@ -35,6 +14,7 @@ class VLM:
     """
 
     def __init__(self):
+        pass
 
     def encode_image(self, image):
         pass
@@ -53,14 +33,17 @@ class VLM:
 class GPT:
     def __init__(self):
         from openai import OpenAI
-        self.client = OpenAI()
+        load_dotenv()
+        OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+        self.client = OpenAI(api_key=OPENAI_API_KEY)
 
     def encode_image(self, image):
-        if isinstance(image_tensor, torch.Tensor):
+        if isinstance(image, torch.Tensor):
             transform = transforms.ToPILImage()
             pil_image = transform(tensor)
             image_bytes = pil_image.tobytes()
-            return base64_string = base64.b64encode(image_bytes).decode()
+            base64_string = base64.b64encode(image_bytes).decode()
+            return
         elif isinstance(image, str):
             with open(image, "rb") as image_file:
                 return base64.b64encode(image_file.read()).decode("utf-8")
@@ -68,7 +51,7 @@ class GPT:
     def generate_answer(self, image, question: str, prompting_style):
         # reference: https://platform.openai.com/docs/guides/vision
 
-        base64_image = encode_image(image)
+        base64_image = self.encode_image(image)
 
         response = self.client.chat.completions.create(
             model="gpt-4o-mini",
@@ -122,8 +105,8 @@ class Gemini:
         image = self.encode_image(image)
 
         response = client.models.generate_content(
-            model="gemini-2.0-flash-exp",`
-            contents=[question, image])`
+            model="gemini-2.0-flash-exp",
+            contents=[question, image])
         
         return response
     
@@ -131,6 +114,8 @@ class Gemini:
 class Llama:
     def __init__(self):
         from transformers import MllamaForConditionalGeneration, AutoProcessor
+        import os
+        from dotenv import load_dotenv
 
         model_id = "meta-llama/Llama-3.2-11B-Vision"
 
@@ -151,31 +136,3 @@ class Llama:
 
         output = model.generate(**inputs, max_new_tokens=30)
         return processor.decode(output[0])
-=======
-tokenizer = LlamaTokenizer.from_pretrained("lmsys/vicuna-7b-v1.5")
-model = (
-    AutoModelForCausalLM.from_pretrained(
-        "THUDM/cogvlm-base-490-hf",
-        torch_dtype=torch.bfloat16,
-        low_cpu_mem_usage=True,
-        trust_remote_code=True,
-    )
-    .to("cuda")
-    .eval()
-)
-
-image = Image.open("../demo/demo.jpg").convert("RGB")
-inputs = model.build_conversation_input_ids(tokenizer, query="", images=[image])
-inputs = {
-    "input_ids": inputs["input_ids"].unsqueeze(0).to("cuda"),
-    "token_type_ids": inputs["token_type_ids"].unsqueeze(0).to("cuda"),
-    "attention_mask": inputs["attention_mask"].unsqueeze(0).to("cuda"),
-    "images": [[inputs["images"][0].to("cuda").to(torch.bfloat16)]],
-}
-gen_kwargs = {"max_length": 2048, "do_sample": False}
-
-with torch.no_grad():
-    outputs = model.generate(**inputs, **gen_kwargs)
-    outputs = outputs[:, inputs["input_ids"].shape[1] :]
-    print(tokenizer.decode(outputs[0]))
->>>>>>> 94556bd1f1bbd43029b506811434f6df4c06f03a:evals/vlm.py

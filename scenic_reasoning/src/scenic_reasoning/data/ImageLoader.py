@@ -401,6 +401,9 @@ class Bdd100kDataset(ImageDataset):
             image, labels = self.transform(image, labels)
         if self.merge_transform:
             image, labels, timestamp = self.merge_transform(image, labels, timestamp)
+        
+        # import pdb
+        # pdb.set_trace()
 
         return {
             "name": self.img_labels[idx]["name"],
@@ -678,18 +681,15 @@ class NuImagesDataset(ImageDataset):
 
                 # TODO: add error catching logic in case of empty token or token mismatch.
 
-        print(
-            f"{split} has {empty_count} out of {len(self.nuim.sample)} empty samples."
-        )
+            print(
+                f"{split} has {empty_count} out of {len(self.nuim.sample)} empty samples."
+            )
 
             if not cache_path.parent.exists():
                 cache_path.parent.mkdir(parents=True, exist_ok=True)
 
-        logger.debug(
-            f"{split} has {empty_count} out of {len(self.nuim.sample)} empty samples."
-        )
-            with open(cache_path, "w") as f:
-                json.dump(img_labels, f)
+                with open(cache_path, "w") as f:
+                    json.dump(img_labels, f)
 
         def merge_transform(
             image: Tensor, labels: List[Dict[str, Any]], timestamp: str

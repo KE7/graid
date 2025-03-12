@@ -1,7 +1,7 @@
 import os
 import cv2
 import torch
-
+import numpy as np
 import supervision as sv
 from supervision import Detections
 from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
@@ -16,7 +16,7 @@ MODEL_TYPE = "vit_h"
 sam = sam_model_registry[MODEL_TYPE](checkpoint=CHECKPOINT_PATH).to(device=DEVICE)
 mask_generator = SamAutomaticMaskGenerator(sam)
 
-IMAGE_PATH = "../demo/demo.jpg"
+IMAGE_PATH = "../demo/demo2.jpg"
 MIN_AREA_PERCENTAGE = 0.005
 MAX_AREA_PERCENTAGE = 0.05
 
@@ -37,35 +37,6 @@ min_area_mask = (detections.area / image_area) > MIN_AREA_PERCENTAGE
 max_area_mask = (detections.area / image_area) < MAX_AREA_PERCENTAGE
 detections = detections[min_area_mask & max_area_mask]
 
-
-# # setup annotators
-# mask_annotator = sv.MaskAnnotator(
-#     color_lookup=sv.ColorLookup.INDEX,
-#     opacity=0.3
-# )
-# label_annotator = sv.LabelAnnotator(
-#     color_lookup=sv.ColorLookup.INDEX,
-#     text_position=sv.Position.CENTER,
-#     text_scale=0.5,
-#     text_color=sv.Color.WHITE,
-#     color=sv.Color.BLACK,
-#     text_thickness=1,
-#     text_padding=5
-# )
-
-# # annotate
-# labels = [str(i) for i in range(len(detections))]
-
-# annotated_image = mask_annotator.annotate(
-#     scene=image_bgr.copy(), detections=detections)
-# annotated_image = label_annotator.annotate(
-#     scene=annotated_image, detections=detections, labels=labels)
-
-
-
-
-
-import numpy as np
 
 def Find_Center(mask: np.ndarray) -> tuple[int, int]:
     """
@@ -136,61 +107,29 @@ centers = Mark_Allocation(all_masks)
 sorted_idx = np.argsort(detections.area)
 sorted_detections = detections[sorted_idx]
 
-# 7) (Optional) Build text labels
-labels = [f"Mask {i}" for i in range(len(sorted_detections))]
-
-# 8) Annotate:  
-#    - We’ll show the sorted detections in ascending area order,
-#      with their respective centers.
 
 # Create annotators
 mask_annotator = sv.MaskAnnotator(
     color_lookup=sv.ColorLookup.INDEX,
     opacity=0.3
 )
-label_annotator = sv.LabelAnnotator(
-    color_lookup=sv.ColorLookup.INDEX,
-    text_position=sv.Position.CENTER,
-    text_scale=0.5,
-    text_color=sv.Color.WHITE,
-    color=sv.Color.BLACK,
-    text_thickness=1,
-    text_padding=5
-)
-# point_annotator = sv.PointAnnotator(
-#     color_lookup=sv.ColorLookup.INDEX,
-#     radius=4,
-#     thickness=2
-# )
-
-# Prepare a blank detections array if we only need to annotate points/labels
-# empty_det = sv.Detections.empty()
-empty_det = Detections()
-
 # Annotate on a copy of the original image
 annotated_image = image_bgr.copy()
 
 # 8a) Draw the sorted masks
 annotated_image = mask_annotator.annotate(
     scene=annotated_image,
-    detections=sorted_detections
+    detections=detections
 )
 
-# 8b) Draw the centers as small circles
-# annotated_image = point_annotator.annotate(
-#     scene=annotated_image,
-#     detections=empty_det,
-#     points=centers
-# )
-import pdb
-pdb.set_trace()
-# 8c) Annotate labels near the centers
-annotated_image = label_annotator.annotate(
-    scene=annotated_image,
-    detections=empty_det,
-    labels=labels,
-    # you could also pass points=centers if you want them exactly at the same spot
-)
+print(centers, len(centers))
+for idx, (x, y) in enumerate(centers, start=1):
+    # Draw black circular padding
+    cv2.circle(annotated_image, (x, y), 11, (0, 0, 0), -1)  # Black circle
+    
+    # Put white number text on top
+    cv2.putText(annotated_image, str(idx), (x-6, y+6), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
 
 # Finally, save the results
 cv2.imwrite("annotated_image.jpg", annotated_image)
+print("done!")

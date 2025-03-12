@@ -57,7 +57,7 @@ class ObjDectDatasetBuilder(Dataset):
             self.all_sets.append(self.bdd)
         elif dataset == "nuimage":
             self.nu_images = NuImagesDataset(
-                split=self.split, size="full", transform=transform
+                split=self.split, size="all", transform=transform
             )
             self.all_sets.append(self.nu_images)
         elif dataset == "waymo":
@@ -114,8 +114,9 @@ class ObjDectDatasetBuilder(Dataset):
                 dataset, batch_size=batch_size, shuffle=False, collate_fn=lambda x: x
             )
             for batch in tqdm(data_loader, desc="generating dataset..."):
+
                 batch_images = torch.stack([sample["image"] for sample in batch])
-                batch_names = [sample["name"] for sample in batch]
+                batch_names = [sample["path"] for sample in batch]   # using path would simpler
 
                 if model is not None:
                     # labels = model.identify_for_image_as_tensor(batch_images)
