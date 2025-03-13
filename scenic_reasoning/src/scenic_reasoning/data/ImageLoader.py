@@ -688,8 +688,11 @@ class NuImagesDataset(ImageDataset):
             if not cache_path.parent.exists():
                 cache_path.parent.mkdir(parents=True, exist_ok=True)
 
-                with open(cache_path, "w") as f:
-                    json.dump(img_labels, f)
+            logger.debug(
+                f"{split} has {empty_count} out of {len(self.nuim.sample)} empty samples."
+            )
+            with open(cache_path, "w") as f:
+                json.dump(img_labels, f)
 
         def merge_transform(
             image: Tensor, labels: List[Dict[str, Any]], timestamp: str
