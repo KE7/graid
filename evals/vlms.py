@@ -6,13 +6,11 @@ import torch
 from PIL import Image
 from dotenv import load_dotenv
 import os
+import re
+from openai import OpenAI
 
 
 class VLM:
-    """
-    A simple class interface for a Visual Language Model (VLM).
-    """
-
     def __init__(self):
         pass
 
@@ -20,9 +18,6 @@ class VLM:
         pass
 
     def generate_answer(self, image, question: str) -> str:
-        """
-        Given an image and a question, 
-        """
         pass
     
     def parse_answer(self, answer):
@@ -31,11 +26,11 @@ class VLM:
 
 
 class GPT:
-    def __init__(self):
-        from openai import OpenAI
+    def __init__(self, model_name="gpt-4o", port=None):
         load_dotenv()
         OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
         self.client = OpenAI(api_key=OPENAI_API_KEY)
+        self.model_name = model_name
 
     def encode_image(self, image):
         if isinstance(image, torch.Tensor):
@@ -48,26 +43,28 @@ class GPT:
             with open(image, "rb") as image_file:
                 return base64.b64encode(image_file.read()).decode("utf-8")
             
-    def generate_answer(self, image, question: str, prompting_style):
+    def generate_answer(self, image, questions: str, prompting_style):
         # reference: https://platform.openai.com/docs/guides/vision
+
+        image, prompt = prompting_style.generate_prompt(image, question)
 
         base64_image = self.encode_image(image)
 
-        response = self.client.chat.completions.create(
-            model="gpt-4o-mini",
+        completion = self.client.chat.completions.create(
+            model=self.model_name,
             messages=[
                 {
                     "role": "user",
                     "content": [
                         {
                             "type": "text",
-                            "text": question,
+                            "text": prompt,
                         },
                         {
                             "type": "image_url",
                             "image_url": {
                                 "url": f"data:image/jpeg;base64,{base64_image}",
-                                "detail": "auto",  #TODO: low, high, or auto?
+                                "detail": "high",
                                 },
                         },
                     ],
@@ -75,7 +72,9 @@ class GPT:
             ],
         )
 
-        return response.choices[0]
+        responses = completion.choices[0].message.content.split(",")
+
+        return [re.sub(r'[^a-zA-Z]', '', response).strip() for response in responses]
     
     def parse_answer(self, answer):
 
@@ -100,7 +99,7 @@ class Gemini:
             base64_string = base64.b64encode(image_bytes).decode()
             return types.Part.from_bytes(data=base64_string, mime_type="image/jpeg")
     
-    def generate_answer(self, image, question: str):
+    def generate_answer(self, image, question: str, prompting_style):
 
         image = self.encode_image(image)
 
@@ -111,28 +110,24 @@ class Gemini:
         return response
     
 
-class Llama:
-    def __init__(self):
-        from transformers import MllamaForConditionalGeneration, AutoProcessor
-        import os
-        from dotenv import load_dotenv
-
-        model_id = "meta-llama/Llama-3.2-11B-Vision"
-
-        self.model = MllamaForConditionalGeneration.from_pretrained(
-            model_id,
-            torch_dtype=torch.bfloat16,
-            device_map="auto",
+class Qwen(GPT):
+    def __init__(self, model_name="unsloth/Qwen2.5-VL-3B-Instruct-bnb-4bit", port=7000):
+        load_dotenv()
+        openai_api_key = os.getenv("OPENAI_API_KEY")
+        openai_api_base = f"http://localhost:{port}/v1"
+        self.client = OpenAI(
+            api_key=openai_api_key,
+            base_url=openai_api_base,
         )
-        self.processor = AutoProcessor.from_pretrained(model_id)
-
-    def generate_answer(self, image, question):
-
-        url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/0052a70beed5bf71b92610a43a52df6d286cd5f3/diffusers/rabbit.jpg"
-        image = Image.open(requests.get(url, stream=True).raw)
-
-        prompt = f"<|image|><|begin_of_text|>{question}"
-        inputs = processor(image, prompt, return_tensors="pt").to(model.device)
-
-        output = model.generate(**inputs, max_new_tokens=30)
-        return processor.decode(output[0])
+        self.model_name = model_name
+    
+class Llama(GPT):
+    def __init__(self, model_name="meta-llama/Llama-3.2-90B-Vision", port=9000):
+        load_dotenv()
+        openai_api_key = os.getenv("OPENAI_API_KEY")
+        openai_api_base = f"http://localhost:{port}/v1"
+        self.client = OpenAI(
+            api_key=openai_api_key,
+            base_url=openai_api_base,
+        )
+        self.model_name = model_name

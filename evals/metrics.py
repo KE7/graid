@@ -2,6 +2,7 @@ from dotenv import load_dotenv
 import os
 import re
 from guidance import image, models, gen
+import outlines
 
 class EvaluationMetric:
     """Base class for different evaluation metrics."""
@@ -10,7 +11,6 @@ class EvaluationMetric:
         raise NotImplementedError("Each subclass must implement this method.")
 
 class ExactMatch(EvaluationMetric):
-    """Exact match metric."""
     def evaluate(self, pred, gt):
         return 1.0 if pred.strip().lower() == gt.strip().lower() else 0.0
 
@@ -24,24 +24,35 @@ class LLMJudge(EvaluationMetric):
 
 
     def evaluate(self, pred, gt):
-        prompt = f"""
-        Evaluate the following response:
-
-        Expected Answer: {gt}
-        Model's Response: {pred}
-
-        Score the response between 0 (completely incorrect) and 1 (perfectly correct).
-        Provide a short justification.
-        """
 
         prompt = f"""
-        Determine if the prediction matches the ground truth solution:
-        Ground Truth: {gt}
+        Determine if the prediction matches the solution:
+        Solution: {gt}
         Prediction: {pred}
+        Score the prediction with either 0 (incorrect) or 1 (correct).
 
-        Score the response with either 0 (incorrect) or 1 (correct).
+        Here're some examples for you to follow:
+
+        Example 1:
+        Solution: right
+        Prediction: Offtotheright
+        Score: 1
+
+        Example 2:
+        Solution: left
+        Prediction: centered
+        Score: 0
+
+        Example 3:
+        Solution: centered
+        Prediction: looks like it's centered
+        Score: 1
+
+        Example 4:
+        Solution: left
+        Prediction: Empty
+        Score: 0
         """
-
 
         completion = self.client.chat.completions.create(
             model="gpt-4o",
@@ -51,21 +62,41 @@ class LLMJudge(EvaluationMetric):
             ]
             )
 
+        response = completion.choices[0].message.content
+        correctness = re.search(r"[01]", response).group()
 
-        response = completion.choices[0].message
-        correctness = re.search(r"[01]", response)
-
-        return correctness == "1"
+        return correctness == '1'
 
 class ConstraintDecoding(EvaluationMetric):
     """Constraint decoding metric."""
     def __init__(self):
 
-        self.gemini = models.VertexAI("gemini-pro-vision")
+        model_name = "HuggingFaceTB/SmolLM2-360M-Instruct"
+        print(f'downloading {model_name}')
+        self.model = outlines.models.transformers(model_name)
 
-    def generate_prompt(self, image, question):
-        with user():
-            lm = self.gemini + question + image(image)
+    def evaluate(self, pred, gt):
+        prompt = f"""
+        <|im_start|>system
+        You extract information from text.
+        <|im_end|>
 
-        with assistant():
-            lm += gen("answer")
+        <|im_start|>user
+        Determine if the prediction matches the solution:
+        Solution: {gt}
+        Prediction: {pred}
+        Score the prediction with either 0 (incorrect) or 1 (correct).
+
+        <|im_end|>
+        <|im_start|>assistant
+        """
+
+        generator = outlines.generate.choice(self.model, ["0", "1"])
+        correctness = generator(prompt)
+
+        import pdb
+        pdb.set_trace()
+
+        return correctness == '1'
+
+

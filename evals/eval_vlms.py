@@ -3,9 +3,10 @@ from scenic_reasoning.utilities.common import project_root_dir
 import sqlite3
 import pandas as pd
 import json
-from vlms import GPT
-from metrics import LLMJudge
-from prompts import SetOfMarkPrompt
+from vlms import GPT, Qwen
+from metrics import LLMJudge, ConstraintDecoding
+from prompts import SetOfMarkPrompt, ZeroShotPrompt
+import argparse
 
 
 DB_PATH = project_root_dir() / "scenic_reasoning/src/scenic_reasoning/data/databases"
@@ -24,24 +25,40 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt):
 
     conn.close()
 
+    correctness = []
     for table in dataframes:
         for index, row in dataframes[table].iterrows():
             d = row.to_dict()
             image_path, v = d['key'], json.loads(d['value'])
             qa_list = v['qa_list']
-            if not qa_list:
+            if not qa_list or qa_list == 'Question not applicable':
                 continue
 
-            for question, answer in qa_list:
-                pred = my_vlm.generate_answer(image_path, question, my_prompt)
+            questions = [p[0] for p in qa_list]
+            questions = "\n".join([f"{i+1}. {item}" for i, item in enumerate(questions)])
+            answers = [p[1] for p in qa_list]
+            
+            preds = my_vlm.generate_answer(image_path, questions, my_prompt)
+            for pred, answer in zip(preds, answers):
                 correct = my_metric.evaluate(pred, answer)
+                correctness.append(correct)
+    
+    return sum(correctness) / len(correctness)
     
 
 
 if __name__ == "__main__":
-    db_path = DB_PATH / 'bdd_val_yolo11n.sqlite'
-    db_path = str(db_path)
-    my_vlm = GPT()
-    my_metric = LLMJudge()
-    my_prompt = SetOfMarkPrompt()
+    parser = argparse.ArgumentParser(description="Evaluate VLMs using a SQLite database.")
+    parser.add_argument("--db_path", type=str, required=True, help="Path to the SQLite database.")
+    parser.add_argument("--vlm", type=str, required=True, choices=["GPT", "Qwen"], help="VLM to use for generating answers.")
+    parser.add_argument("--metric", type=str, required=True, choices=["LLMJudge", "ConstraintDecoding"], help="Metric to use for evaluating answers.")
+    parser.add_argument("--prompt", type=str, required=True, choices=["SetOfMarkPrompt", "ZeroShotPrompt"], help="Prompt to use for generating questions.")
+
+    args = parser.parse_args()
+
+    db_path = str(DB_PATH / args.db_path)
+    my_vlm = GPT() if args.vlm == "GPT" else Qwen()
+    my_metric = LLMJudge() if args.metric == "LLMJudge" else ConstraintDecoding()
+    my_prompt = SetOfMarkPrompt() if args.prompt == "SetOfMarkPrompt" else ZeroShotPrompt()
+    
     iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt)

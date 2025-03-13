@@ -15,8 +15,11 @@ class PromptingStrategy:
 
 class ZeroShotPrompt(PromptingStrategy):
     """Zero-shot prompting method."""
-    def generate_prompt(self, image, question):
-        return question
+    def generate_prompt(self, image, questions):
+        prompt = f"""Answer the following questions related to the image. Give your answer to each question separated by commas. If you're unable to answer a question, put "Empty" as your answer to this question:
+        {questions}
+        """
+        return image, prompt
 
 class FewShotPrompt(PromptingStrategy):
     """Few-shot prompting method."""
@@ -27,7 +30,7 @@ class FewShotPrompt(PromptingStrategy):
         """
         self.examples = examples
 
-    def generate_prompt(self, query):
+    def generate_prompt(self, image, question):
         if not self.examples:
             raise ValueError("Few-shot examples are required but not provided.")
         
@@ -35,16 +38,12 @@ class FewShotPrompt(PromptingStrategy):
         for i, (inp, out) in enumerate(self.examples):
             prompt += f"Example {i+1}:\nInput: {inp}\nOutput: {out}\n\n"
 
-        prompt += f"Now, answer the following question:\n{query}"
+        prompt += f"Now, answer the following question:\n{question}"
         return prompt
 
+
 class SetOfMarkPrompt(PromptingStrategy):
-    """Set-of-mark prompting method."""
     def __init__(self):
-        """
-        Args:
-            set_of_mark (list): List of constraints or reference points.
-        """
         from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
         CHECKPOINT_PATH = "sam_vit_h_4b8939.pth"
         print(CHECKPOINT_PATH, "; exist:", os.path.isfile(CHECKPOINT_PATH))
@@ -58,15 +57,12 @@ class SetOfMarkPrompt(PromptingStrategy):
         self.MAX_AREA_PERCENTAGE = 0.05
 
     def generate_prompt(self, image, question):
-        # load image
         image_bgr = cv2.imread(image)
         image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
 
-        # segment image
         sam_result = self.mask_generator.generate(image_rgb)
         detections = sv.Detections.from_sam(sam_result=sam_result)
 
-        # filter masks
         height, width, channels = image_bgr.shape
         image_area = height * width
 
@@ -74,28 +70,66 @@ class SetOfMarkPrompt(PromptingStrategy):
         max_area_mask = (detections.area / image_area) < self.MAX_AREA_PERCENTAGE
         detections = detections[min_area_mask & max_area_mask]
 
-        # setup annotators
+        def Find_Center(mask: np.ndarray) -> tuple[int, int]:
+            mask_8u = mask.astype(np.uint8)
+
+            # Distance transform
+            dist = cv2.distanceTransform(mask_8u, distanceType=cv2.DIST_L2, maskSize=3)
+
+            # Find the global maximum in distance map
+            _, _, _, max_loc = cv2.minMaxLoc(dist)
+            return max_loc
+
+
+        def Mark_Allocation(masks: list[np.ndarray]) -> list[tuple[int,int]]:
+            # 1) Sort all masks by ascending area
+            #    (Compute area by summing pixels in each mask.)
+            areas = [mask.sum() for mask in masks]
+            sort_indices = np.argsort(areas)  # ascending
+            sorted_masks = [masks[i] for i in sort_indices]
+
+            # Prepare an "excluded region" mask to carve out overlaps
+            h, w = sorted_masks[0][0].shape
+            excluded = np.zeros((h, w), dtype=np.uint8)
+
+            centers = []
+            for i, mask_ in enumerate(sorted_masks):
+                # Convert to 8-bit for bitwise ops if necessary
+                mask_8u = mask_[0].astype(np.uint8)
+
+                # Exclude overlapping area with previously processed masks
+                # final_mask = mask & NOT(excluded)
+                final_mask = cv2.bitwise_and(mask_8u, cv2.bitwise_not(excluded))
+
+                center_xy = Find_Center(final_mask)
+                centers.append(center_xy)
+
+                excluded = cv2.bitwise_or(excluded, final_mask)
+
+            return centers
+
+
+        all_masks = [detections[i].mask for i in range(len(detections))]
+
+        centers = Mark_Allocation(all_masks)
+
+        # 6) We need to reorder the Detections as well to match the sorted area order
+        sorted_idx = np.argsort(detections.area)
+        sorted_detections = detections[sorted_idx]
+
         mask_annotator = sv.MaskAnnotator(
             color_lookup=sv.ColorLookup.INDEX,
             opacity=0.3
         )
-        label_annotator = sv.LabelAnnotator(
-            color_lookup=sv.ColorLookup.INDEX,
-            text_position=sv.Position.CENTER,
-            text_scale=0.5,
-            text_color=sv.Color.WHITE,
-            color=sv.Color.BLACK,
-            text_thickness=1,
-            text_padding=5
-        )
-
-        # annotate
-        labels = [str(i) for i in range(len(detections))]
+        annotated_image = image_bgr.copy()
 
         annotated_image = mask_annotator.annotate(
-            scene=image_bgr.copy(), detections=detections)
-        annotated_image = label_annotator.annotate(
-            scene=annotated_image, detections=detections, labels=labels)
-        
-        return question, annotated_image
+            scene=annotated_image,
+            detections=detections
+        )
 
+        for idx, (x, y) in enumerate(centers, start=1):
+            cv2.circle(annotated_image, (x, y), 11, (0, 0, 0), -1)
+            cv2.putText(annotated_image, str(idx), (x-6, y+6), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
+
+        return annotated_image, question

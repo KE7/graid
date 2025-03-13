@@ -147,7 +147,7 @@ class ObjDectDatasetBuilder(Dataset):
                             }
                         else:
                             self.dataset[table_name][name] = {
-                                "qa_list": "Question not applicable",
+                                "qa_list": [],
                                 "split": self.split,
                                 "num of labels": len(lbl),
                             }
