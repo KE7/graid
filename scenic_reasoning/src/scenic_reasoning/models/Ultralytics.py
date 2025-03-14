@@ -65,7 +65,7 @@ class Yolo(ObjectDetectionModelI):
         # https://github.com/ultralytics/ultralytics/issues/9912
         image = image[:, [2, 1, 0], ...]
         image = image / 255.0
-        predictions = self._model.predict(image, verbose, device=get_default_device(), **kwargs)
+        predictions = self._model.predict(image, verbose, **kwargs)
         # undo the conversion
         image = image[:, [2, 1, 0], ...]
         image = image * 255.0
@@ -169,7 +169,7 @@ class Yolo(ObjectDetectionModelI):
             boxes_across_frames = []
 
             if len(batch_results) == 0:
-                boxes_across_frames = [None for _ in batch]
+                boxes_across_frames = [[] for _ in batch]
             else:
                 for frame_result in batch_results:
                     per_frame_results = []
@@ -194,7 +194,7 @@ class Yolo(ObjectDetectionModelI):
             yield boxes_across_frames
 
     def to(self, device: Union[str, torch.device]):
-        pass
+        self._model.to(device)
 
     def set_threshold(self, threshold: float):
         self.threshold = threshold
@@ -313,7 +313,7 @@ class Yolo_seg(InstanceSegmentationModelI):
         results = self._model.predict(image, **kwargs)
 
         if results.masks is None:
-            return [None] * (len(image) if isinstance(image, (list, tuple)) else 1)
+            return [] * (len(image) if isinstance(image, (list, tuple)) else 1)
 
         instances = []
 
@@ -419,5 +419,4 @@ class Yolo_seg(InstanceSegmentationModelI):
             yield results_per_frame
 
     def to(self, device: Union[str, torch.device]):
-        # self._model.to(device)
-        pass
+        self._model.to(device)

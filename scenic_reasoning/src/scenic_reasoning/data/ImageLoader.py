@@ -21,7 +21,6 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
 from scenic_reasoning.utilities.coco import inverse_coco_label
 from scenic_reasoning.utilities.common import (
     convert_to_xyxy,
-    persistent_cache,
     project_root_dir,
     read_image,
 )
@@ -137,9 +136,6 @@ class Bdd10kDataset(ImageDataset):
     def category_to_coco_cls(self, category: str) -> int:
         return self._CATEGORIES_TO_COCO[category]
 
-    @persistent_cache(
-        str(project_root_dir() / "data" / "bdd100k" / "processed" / "bdd10k.pkl")
-    )
     def __init__(
         self,
         split: Literal["train", "val", "test"] = "train",
@@ -385,7 +381,7 @@ class Bdd100kDataset(ImageDataset):
                 filter(
                     lambda l: l["category"]
                     in ["other person", "other vehicle", "trail", "trailer"],
-                    label["labels"],
+                    label.get("labels", [])
                 )
             )
         ]
@@ -1079,9 +1075,6 @@ class WaymoDataset(ImageDataset):
     def __repr__(self):
         return f"Waymo Dataset {self.split} split with {len(self.img_labels)} images."
 
-    @persistent_cache(
-        str(project_root_dir() / "data" / "waymo" / "processed" / "waymo_cache.pkl")
-    )
     def __init__(
         self,
         split: Literal["training", "validation", "testing"] = "training",

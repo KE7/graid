@@ -1,9 +1,10 @@
+import gc
 import json
-import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "2,3,4,5"
+
+import psutil
 import time
 from collections import defaultdict
-from typing import Callable, List
+from typing import Any, Callable, Dict, List
 
 import numpy as np
 
@@ -24,7 +25,6 @@ from scenic_reasoning.models.Detectron import Detectron_obj
 from scenic_reasoning.models.Ultralytics import RT_DETR, Yolo
 from scenic_reasoning.utilities.common import (
     get_default_device,
-    persistent_cache,
     project_root_dir,
     yolo_bdd_transform,
     yolo_nuscene_transform,
@@ -32,8 +32,18 @@ from scenic_reasoning.utilities.common import (
 )
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+import argparse
+import pickle
 
+##############################################################################
+# Experiment configuration
+###############################################################################
+BATCH_SIZE = 32
+num_cpu_workers = 8
 
+###############################################################################
+# Model initialization
+################################################################################
 yolo_v10x = Yolo(model="yolov10x.pt")  # 61.4 Mb
 yolo_11x = Yolo(model="yolo11x.pt")  # 109 Mb
 rtdetr = RT_DETR("rtdetr-x.pt")  # 129 Mb
@@ -58,93 +68,71 @@ faster_rcnn_R_50_FPN_3x = Detectron_obj(
 @ray.remote
 class Aggregator:
     def __init__(self):
-        # Dictionary of dicts:
-        # aggregator_data[(dataset, model, conf)] = {
-        #   "sum_mAP_no_penalty": float,
-        #   "count_mAP_no_penalty": int,
-        #   "sum_mAP_penalty": float,
-        #   "count_mAP_penalty": int,
-        #   "TN_no_penalty": int,
-        #   "TN_penalty": int,
-        # }
-        self.aggregator_data = defaultdict(
-            lambda: {
-                "sum_mAP_no_penalty": 0.0,
-                "count_mAP_no_penalty": 0,
-                "sum_mAP_penalty": 0.0,
-                "count_mAP_penalty": 0,
-                "TN_no_penalty": 0,
-                "TN_penalty": 0,
-            }
-        )
+        # Dictionary structure to store measurements for each combination
+        self.aggregator_data = defaultdict(lambda: {
+            "measurements_pen_list": [],
+            "measurements_no_pen_list": []
+        })
 
     def add_image_result(
         self,
         dataset: str,
         model: str,
         conf: float,
-        is_TN_no_penalty: bool,
-        is_TN_penalty: bool,
-        mAP_no_penalty: float,
-        mAP_penalty: float,
+        measurements_pen: dict,
+        measurements_no_pen: dict
     ):
         """
-        Store partial sums/counts for a single image at a particular confidence threshold.
+        Store the full measurement dictionaries for each image.
         """
         key = (dataset, model, conf)
-        data = self.aggregator_data[key]
+        # Append measurements to the appropriate lists
+        pen_size_mb = len(pickle.dumps(measurements_pen)) / (1024 * 1024)
+        no_pen_size_mb = len(pickle.dumps(measurements_no_pen)) / (1024 * 1024)
+        print(f"Pen dict size: {pen_size_mb:.2f} MB, No-pen dict size: {no_pen_size_mb:.2f} MB")
+        self.aggregator_data[key]["measurements_pen_list"].append(measurements_pen)
+        self.aggregator_data[key]["measurements_no_pen_list"].append(measurements_no_pen)
 
-        if is_TN_no_penalty:
-            # If the image was "TN" => no ground-truth and no predictions
-            data["TN_no_penalty"] += 1
-        else:
-            # If not TN, add the mAP to sum and increment count
-            data["sum_mAP_no_penalty"] += mAP_no_penalty
-            data["count_mAP_no_penalty"] += 1
-
-        if is_TN_penalty:
-            data["TN_penalty"] += 1
-        else:
-            data["sum_mAP_penalty"] += mAP_penalty
-            data["count_mAP_penalty"] += 1
+        # print("Current memory usage: {}%".format(psutil.virtual_memory().percent))
+        print("Current number of items in aggregator: {}".format(len(self.aggregator_data)))
 
     def finalize(self):
         """
-        Compute overall average for each (dataset, model, conf).
-        Returns a dict of form:
-          final_output["model//dataset"]["conf"]["avg_mAP_no_penalty"] = ...
+        Compute overall metrics for each (dataset, model, conf) combination.
+        Returns structured output with averages of relevant metrics.
         """
         final_output = {}
-        # self.aggregator_data: keys => (dataset, model, conf)
-        for (dataset, model, conf), stats in self.aggregator_data.items():
-            # Unpack partial sums
-            sum_mAP_no_pen = stats["sum_mAP_no_penalty"]
-            cnt_mAP_no_pen = stats["count_mAP_no_penalty"]
-            sum_mAP_pen = stats["sum_mAP_penalty"]
-            cnt_mAP_pen = stats["count_mAP_penalty"]
-            tn_no_pen = stats["TN_no_penalty"]
-            tn_pen = stats["TN_penalty"]
-
-            # Compute final averages
-            if cnt_mAP_no_pen > 0:
-                avg_mAP_no_pen = sum_mAP_no_pen / cnt_mAP_no_pen
-            else:
-                avg_mAP_no_pen = None  # or 0.0
-
-            if cnt_mAP_pen > 0:
-                avg_mAP_pen = sum_mAP_pen / cnt_mAP_pen
-            else:
-                avg_mAP_pen = None
-
-            # Store in final_output
+        
+        for (dataset, model, conf), data in self.aggregator_data.items():
+            pen_measurements = data["measurements_pen_list"]
+            no_pen_measurements = data["measurements_no_pen_list"]
+            
+            # Count TN cases
+            tn_count_pen = sum(1 for m in pen_measurements if m.get("TN", 0) == 1)
+            tn_count_no_pen = sum(1 for m in no_pen_measurements if m.get("TN", 0) == 1)
+            
+            # Calculate average mAP excluding TN cases
+            non_tn_pen = [m for m in pen_measurements if m.get("TN", 0) != 1]
+            non_tn_no_pen = [m for m in no_pen_measurements if m.get("TN", 0) != 1]
+            
+            avg_map_no_pen = sum((m["map"].item() if m != -1 else 0) for m in non_tn_no_pen) / len(no_pen_measurements)
+            avg_map_pen = sum((m["map"].item() if m != -1 else 0) for m in non_tn_pen) / len(pen_measurements)
+            avg_map_50_no_pen = sum((m["map_50"].item() if m != -1 else 0) for m in non_tn_no_pen) / len(no_pen_measurements)
+            avg_map_75_no_pen = sum((m["map_75"].item() if m != -1 else 0) for m in non_tn_no_pen) / len(no_pen_measurements)
+            
+            # Store results
             key_str = f"{model}//{dataset}"
             if key_str not in final_output:
                 final_output[key_str] = {}
+                
             final_output[key_str][conf] = {
-                "avg_mAP_no_penalty": avg_mAP_no_pen,
-                "avg_mAP_penalty": avg_mAP_pen,
-                "TN_no_penalty_total": tn_no_pen,
-                "TN_penalty_total": tn_pen,
+                "avg_mAP_no_penalty": avg_map_no_pen,
+                "avg_mAP_penalty": avg_map_pen,
+                "avg_map_50_no_penalty": avg_map_50_no_pen,
+                "avg_map_75_no_penalty": avg_map_75_no_pen,
+                "TN_no_penalty_total": tn_count_no_pen,
+                "TN_penalty_total": tn_count_pen,
+                "total_images": len(pen_measurements)
             }
 
         return final_output
@@ -163,19 +151,23 @@ def cpu_metrics_worker(
     """
     while True:
         item = work_queue.get(block=True)
+        print("Current number of items in queue: {}".format(work_queue.qsize()))
 
         # Sentinel: if item is None, no more data => we're done
         if item is None:
             break
 
+        print("Computing metrics...")
+
         dataset = item["dataset"]
         model_name = item["model"]
         odrs_list = item["odrs"]
         gt_list = item["gt"]
+        images = item["images"]
 
         for conf in conf_thresholds:
             # For each image in this batch
-            for odrs, gt in zip(odrs_list, gt_list):
+            for image, odrs, gt in zip(images, odrs_list, gt_list):
                 # Filter predictions by confidence
                 relevant_odrs = [o for o in odrs if o.score >= conf]
 
@@ -187,15 +179,9 @@ def cpu_metrics_worker(
                         class_metrics=True,
                         extended_summary=True,
                         penalize_for_extra_predicitions=False,
+                        image=image,
                     )
                 )
-                is_TN_no_penalty = measurements_no_pen["TN"] == 1
-
-                # If not TN, retrieve mAP
-                if not is_TN_no_penalty:
-                    mAP_no_pen = measurements_no_pen["map"].item()
-                else:
-                    mAP_no_pen = 0.0  # won't matter if it's TN
 
                 # Penalty metrics
                 measurements_pen = ObjectDetectionUtils.compute_metrics_for_single_img(
@@ -204,24 +190,23 @@ def cpu_metrics_worker(
                     class_metrics=True,
                     extended_summary=True,
                     penalize_for_extra_predicitions=True,
+                    image=image,
                 )
-                is_TN_penalty = measurements_pen["TN"] == 1
-
-                if not is_TN_penalty:
-                    mAP_pen = measurements_pen["map"].item()
-                else:
-                    mAP_pen = 0.0
 
                 # Store in aggregator
                 aggregator.add_image_result.remote(
                     dataset=dataset,
                     model=model_name,
                     conf=conf,
-                    is_TN_no_penalty=is_TN_no_penalty,
-                    is_TN_penalty=is_TN_penalty,
-                    mAP_no_penalty=mAP_no_pen,
-                    mAP_penalty=mAP_pen,
+                    measurements_pen=measurements_pen,
+                    measurements_no_pen=measurements_no_pen
                 )
+
+        del odrs_list
+        del gt_list
+        del images
+        del item
+        gc.collect()
 
 
 ################################################################################
@@ -247,7 +232,8 @@ def metric_per_dataset(
     start_time = time.time()
 
     for batch in tqdm(data_loader, desc="processing " + str(dataset)):
-        x = torch.stack([sample["image"] for sample in batch]).to("cuda")
+        images = [sample["image"] for sample in batch]
+        x = torch.stack(images).to(get_default_device())
         y = [sample["labels"] for sample in batch]
 
         predictions = model.identify_for_image_batch(x)
@@ -260,52 +246,77 @@ def metric_per_dataset(
                 "model": str(model),
                 "gt": y,
                 "odrs": predictions,
+                "images": images,
             }
         )
 
-    model.to(device="cpu")
     end_time = time.time()
     print(
         f"[GPU Task] Finished inference: {dataset}, {model} in {end_time - start_time:.2f} seconds"
     )
-    return True
+
+    model.to(device="cpu")
+    if "cuda" in str(get_default_device()):
+        torch.cuda.empty_cache()
+
+    del data_loader
+    del dataset
+    gc.collect()
+    
+    return True  
 
 
 if __name__ == "__main__":
     ray.init()
 
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-d", 
+        "--dataset",
+        type=str,
+        default="nuimages",
+        help="Dataset to evaluate (nuimages, waymo, bdd100k)",
+        choices=["nuimages", "waymo", "bdd100k"]
+    )
+
+    args = parser.parse_args()
+    dataset = args.dataset
+
     # 1) Prepare datasets
     datasets = []
     # NuImages
-    for split in ["mini", "train", "val"]:
-        for size in ["all"]:
+    if dataset == "nuimages":
+        for split in ["mini", "train", "val"]:
+            for size in ["all"]:
+                datasets.append(
+                    lambda split=split, size=size: NuImagesDataset(
+                        split=split,
+                        size=size,
+                        transform=lambda i, l: yolo_nuscene_transform(
+                            i, l, new_shape=(896, 1600)
+                        ),
+                    )
+                )
+    # Waymo
+    elif dataset == "waymo":
+        for split in ["training", "validation"]:
             datasets.append(
-                lambda split=split, size=size: NuImagesDataset(
+                lambda split=split: WaymoDataset(
                     split=split,
-                    size=size,
-                    transform=lambda i, l: yolo_nuscene_transform(
-                        i, l, new_shape=(896, 1600)
-                    ),
+                    transform=lambda i, l: yolo_waymo_transform(i, l, (1280, 1920)),
                 )
             )
-    # Waymo
-    for split in ["training", "validation"]:
-        datasets.append(
-            lambda split=split: WaymoDataset(
-                split=split,
-                transform=lambda i, l: yolo_waymo_transform(i, l, (1280, 1920)),
-            )
-        )
     # BDD100k
-    for split in ["train", "val"]:
-        datasets.append(
-            lambda split=split: Bdd100kDataset(
-                split=split,
-                transform=lambda i, l: yolo_bdd_transform(i, l, new_shape=(768, 1280)),
-                use_original_categories=False,
-                use_extended_annotations=False,
+    elif dataset == "bdd100k":
+        for split in ["train", "val"]:
+            datasets.append(
+                lambda split=split: Bdd100kDataset(
+                    split=split,
+                    transform=lambda i, l: yolo_bdd_transform(i, l, new_shape=(768, 1280)),
+                    use_original_categories=False,
+                    use_extended_annotations=False,
+                )
             )
-        )
 
     models = [
         yolo_v10x,
@@ -316,48 +327,80 @@ if __name__ == "__main__":
     ]
 
     # 3) Confidence thresholds
-    confs = [float(c) for c in np.arange(0.05, 0.90, 0.05)]
+    # confs = [float(c) for c in np.arange(0.05, 0.90, 0.05)]
+    confs = [0.01, 0.5]
     # Optionally set a default threshold in each model:
     for m in models:
         m.set_threshold(confs[0])
 
-    BATCH_SIZE = 32
+   # We'll store final results here
+    final_results = {}
 
-    # 4) Create a global queue
-    work_queue = Queue()
+    # For concurrency, we hold references to all GPU tasks + aggregator states
+    active_pairs = []  # list of dicts with keys: aggregator, queue, gpu_task, cpu_workers, pair_label
 
-    # 5) Create aggregator
-    aggregator = Aggregator.remote()
+    # Launch everything in parallel
+    for dfn in datasets:
+        for m in models:
+            aggregator = Aggregator.remote()
+            queue = Queue()
+            # Start however many CPU workers you want
+            cpu_workers = [
+                cpu_metrics_worker.remote(queue, confs, aggregator)
+                for _ in range(num_cpu_workers)
+            ]
+            # Launch GPU job
+            gpu_task = metric_per_dataset.remote(m, dfn, queue, batch_size=BATCH_SIZE)
 
-    # 6) Launch GPU tasks (parallel) for each (model, dataset)
-    gpu_tasks = []
-    for dataset_fn in datasets:
-        for model in models:
-            gpu_task_id = metric_per_dataset.remote(model, dataset_fn, work_queue, BATCH_SIZE)
-            gpu_tasks.append(gpu_task_id)
+            label = f"{str(m)}-{str(dfn())}"
+            print(f"Starting: {label}")
+            active_pairs.append({
+                "aggregator": aggregator,
+                "queue": queue,
+                "cpu_workers": cpu_workers,
+                "gpu_task": gpu_task,
+                "pair_label": label
+            })
 
-    # 7) Launch a certain number of CPU workers
-    num_cpu_workers = 16
-    cpu_workers = []
-    for _ in range(num_cpu_workers):
-        worker_id = cpu_metrics_worker.remote(work_queue, confs, aggregator)
-        cpu_workers.append(worker_id)
+    # Now wait for GPU tasks as they finish in any order
+    pending_gpu_tasks = [p["gpu_task"] for p in active_pairs]
 
-    # 8) Wait for all GPU tasks to complete
-    ray.get(gpu_tasks)
-    print("All GPU tasks are done. Signaling CPU workers to shut down...")
+    while pending_gpu_tasks:
+        # Wait until at least 1 GPU task is done
+        done, pending_gpu_tasks = ray.wait(pending_gpu_tasks, num_returns=1)
+        completed_gpu_id = done[0]
 
-    # 9) Signal CPU workers to shut down by sending 'None' sentinel
-    for _ in range(num_cpu_workers):
-        work_queue.put(None)
+        # Find the corresponding aggregator/cpu-workers in active_pairs
+        pair_info = next(x for x in active_pairs if x["gpu_task"] == completed_gpu_id)
 
-    # 10) Wait for all CPU workers to exit
-    ray.get(cpu_workers)
+        label = pair_info["pair_label"]
+        aggregator_actor = pair_info["aggregator"]
+        queue_actor = pair_info["queue"]
+        cpu_worker_ids = pair_info["cpu_workers"]
 
-    # 11) Gather final results from aggregator
-    final_results = ray.get(aggregator.finalize.remote())
+        # 1) GPU done => signal CPU workers to shut down
+        for _ in range(len(cpu_worker_ids)):
+            queue_actor.put(None)
 
-    # 12) Write out results to JSON
+        # 2) Wait for CPU workers to exit
+        ray.get(cpu_worker_ids)
+
+        # 3) Finalize aggregator => get result
+        pair_result = ray.get(aggregator_actor.finalize.remote())
+
+        # Store that result in local Python memory
+        final_results[label] = pair_result
+
+        # Drop references so Ray can GC
+        active_pairs.remove(pair_info)
+        del aggregator_actor
+        del queue_actor
+        del cpu_worker_ids
+        gc.collect()
+        print(f"Finished processing: {label}")
+   
+
+    # 5) Save results
     output_file_path = project_root_dir() / "evals" / "results.json"
     with open(output_file_path, "w") as f:
         json.dump(final_results, f, indent=4)
@@ -385,7 +428,7 @@ if __name__ == "__main__":
 # )
 
 
-# @persistent_cache(str(project_root_dir() / "evals" / "eval_models_cache.pkl"))
+# # @persistent_cache(str(project_root_dir() / "evals" / "eval_models_cache.pkl"))
 # @ray.remote(num_gpus=1)
 # def metric_per_dataset(
 #     model: ObjectDetectionModelI,
@@ -402,10 +445,8 @@ if __name__ == "__main__":
 
 #     model.to(device=get_default_device())
 
-#     mAP_at_conf = defaultdict(list)
-#     mAPs_with_penalty_at_conf = defaultdict(list)
-#     TN_count = defaultdict(int)
-#     TN_count_with_penalty = defaultdict(int)
+#     no_pen_measurements = []
+#     pen_measurements = []
 
 #     for batch in tqdm(data_loader, desc="processing " + str(dataset)):
 #         x = torch.stack([sample["image"] for sample in batch])
@@ -432,18 +473,6 @@ if __name__ == "__main__":
 #                         penalize_for_extra_predicitions=False,
 #                     )
 #                 )
-#                 full_image_result = dict()
-#                 full_image_result["image"] = x[idx]
-#                 full_image_result["measurements"] = measurements
-#                 full_image_result["predictions"] = relevant_odrs
-#                 full_image_result["labels"] = gt
-
-#                 if measurements["TN"] == 1:
-#                     print("Both ground truth and predictions are empty. Ignore")
-#                     TN_count[conf] += 1
-#                 else:
-#                     mAP = measurements["map"]
-#                     mAP_at_conf[conf].append(mAP.item())
 
 #                 measurements_with_penalty: dict = (
 #                     ObjectDetectionUtils.compute_metrics_for_single_img(
@@ -455,39 +484,40 @@ if __name__ == "__main__":
 #                         penalize_for_extra_predicitions=True,
 #                     )
 #                 )
-#                 full_result_with_penalty = dict()
-#                 full_result_with_penalty["image"] = x[idx]
-#                 full_result_with_penalty["measurements"] = measurements_with_penalty
-#                 full_result_with_penalty["predictions"] = relevant_odrs
-#                 full_result_with_penalty["labels"] = gt
 
-#                 if measurements_with_penalty["TN"] == 1:
-#                     print("Both ground truth and predictions are empty. Ignore")
-#                     TN_count_with_penalty[conf] += 1
-#                 else:
-#                     mAP = measurements_with_penalty["map"]
-#                     mAPs_with_penalty_at_conf[conf].append(mAP.item())
-
-#     mAPs = {
-#         conf: sum(mAP_at_conf[conf]) / len(mAP_at_conf[conf]) for conf in mAP_at_conf
-#     }
-#     mAPs_with_penalty = {
-#         conf: sum(mAPs_with_penalty_at_conf[conf])
-#         / len(mAPs_with_penalty_at_conf[conf])
-#         for conf in mAPs_with_penalty_at_conf
-#     }
+#                 no_pen_measurements.append(measurements)
+#                 pen_measurements.append(measurements_with_penalty)
 
 #     model.to(device="cpu")
+#     del data_loader
 
-#     return {
-#         "dataset": str(dataset),
+#     # Count TN cases
+#     tn_count_pen = sum(1 for m in pen_measurements if m.get("TN", 0) == 1)
+#     tn_count_no_pen = sum(1 for m in no_pen_measurements if m.get("TN", 0) == 1)
+    
+#     # Calculate average mAP excluding TN cases
+#     non_tn_pen = [m for m in pen_measurements if m.get("TN", 0) != 1]
+#     non_tn_no_pen = [m for m in no_pen_measurements if m.get("TN", 0) != 1]
+    
+#     avg_map_no_pen = sum((m["map"].item() if m != -1 else 0) for m in non_tn_no_pen) / len(no_pen_measurements)
+#     avg_map_pen = sum((m["map"].item() if m != -1 else 0) for m in non_tn_pen) / len(pen_measurements)
+#     avg_map_50_no_pen = sum((m["map_50"].item() if m != -1 else 0) for m in non_tn_no_pen) / len(no_pen_measurements)
+#     avg_map_75_no_pen = sum((m["map_75"].item() if m != -1 else 0) for m in non_tn_no_pen) / len(no_pen_measurements)
+                
+#     output = {
+#         "avg_mAP_no_penalty": avg_map_no_pen,
+#         "avg_mAP_penalty": avg_map_pen,
+#         "avg_map_50_no_penalty": avg_map_50_no_pen,
+#         "avg_map_75_no_penalty": avg_map_75_no_pen,
+#         "TN_no_penalty_total": tn_count_no_pen,
+#         "TN_penalty_total": tn_count_pen,
+#         "total_images": len(pen_measurements),
 #         "model": str(model),
-#         "confidence_thresholds": conf_thresholds,
-#         "average_mAP": mAPs,
-#         "average_mAP_with_penalty": mAPs_with_penalty,
-#         "TNs": TN_count,
-#         "TN_with_penaltys": TN_count_with_penalty,
+#         "dataset": str(dataset),
+#         "confs": conf_thresholds,
 #     }
+#     return output
+    
 
 
 # if __name__ == "__main__":
@@ -533,7 +563,6 @@ if __name__ == "__main__":
 #         faster_rcnn_R_50_FPN_3x,
 #     ]
 #     confs = [float(c) for c in np.arange(0.05, 0.90, 0.05)]
-#     # confs = [0.2, 0.5, 0.7]
 
 #     for model in models:
 #         model.set_threshold(confs[0])
