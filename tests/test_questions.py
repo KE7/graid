@@ -21,6 +21,11 @@ from scenic_reasoning.questions.ObjectDetectionQ import (
     RightMostWidthVsHeight,
     RightOf,
     WidthVsHeight,
+    AreMore,
+    WhichMore,
+    ObjectsInRow,
+    ObjectsInLine,
+    MostClusteredObjects
 )
 from scenic_reasoning.utilities.common import (
     get_default_device,
@@ -62,39 +67,30 @@ niu_original = NuImagesDataset(
     size="mini",
 )
 
-waymo = WaymoDataset(
-    split="validation",
-    # TODO: I think yolo_waymo_transform is broken now
-    # transform=lambda i, l: yolo_waymo_transform(i, l, (640, 1333))
-)
-waymo_original = WaymoDataset(
-    split="validation",
-)
+# waymo = WaymoDataset(
+#     split="validation",
+#     # TODO: I think yolo_waymo_transform is broken now
+#     # transform=lambda i, l: yolo_waymo_transform(i, l, (640, 1333))
+# )
+# waymo_original = WaymoDataset(
+#     split="validation",
+# )
 
-my_dataset = waymo
-original_dataset = waymo_original
+my_dataset = bdd
+original_dataset = bdd_original
 
 q_list = [
-    Quadrants(2, 2),
-    MostAppearance(),
-    IsObjectCentered(),
-    WidthVsHeight(),
-    LargestAppearance(),
-    LeastAppearance(),
-    LeftOf(),
-    RightOf(),
-    LeftMost(),
-    RightMost(),
-    HowMany(),
-    LeftMostWidthVsHeight(),
-    RightMostWidthVsHeight(),
+    MostClusteredObjects()
 ]
-for i in range(10):
+
+for i in range(100):
     print(i)
     data = my_dataset[i]
     image = data["image"]
     image = transforms.ToPILImage()(image)
     labels = data["labels"]
+    path = data['path']
+    print(path)
     # let's filter out labels that are really small.
     # say anything with area less than 1000 pixels
     threshold = 500
@@ -102,7 +98,9 @@ for i in range(10):
     labels = list(filter(lambda x: x.get_area().item() > threshold, labels))
     print("Num labels after filtering: ", len(labels))
     at_least_one_was_applicable = False
+    
     for q in q_list:
+        
         if q.is_applicable(image, labels):
             qa_list = q.apply(image, labels)
             if len(qa_list) == 0:
