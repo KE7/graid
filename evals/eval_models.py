@@ -39,28 +39,50 @@ import pickle
 # Experiment configuration
 ###############################################################################
 BATCH_SIZE = 32
-num_cpu_workers = 8
+num_cpu_workers = 2
 
 ###############################################################################
 # Model initialization
 ################################################################################
-yolo_v10x = Yolo(model="yolov10x.pt")  # 61.4 Mb
-yolo_11x = Yolo(model="yolo11x.pt")  # 109 Mb
-rtdetr = RT_DETR("rtdetr-x.pt")  # 129 Mb
+# yolo_v10x = Yolo(model="yolov10x.pt")  # 61.4 Mb
+# yolo_11x = Yolo(model="yolo11x.pt")  # 109 Mb
+# rtdetr = RT_DETR("rtdetr-x.pt")  # 129 Mb
 
-retinanet_R_101_FPN_3x_config = "COCO-Detection/retinanet_R_101_FPN_3x.yaml"  # 228MB
-retinanet_R_101_FPN_3x_weights = "COCO-Detection/retinanet_R_101_FPN_3x.yaml"
-retinanet_R_101_FPN_3x = Detectron_obj(
-    config_file=retinanet_R_101_FPN_3x_config,
-    weights_file=retinanet_R_101_FPN_3x_weights,
-)
+# retinanet_R_101_FPN_3x_config = "COCO-Detection/retinanet_R_101_FPN_3x.yaml"  # 228MB
+# retinanet_R_101_FPN_3x_weights = "COCO-Detection/retinanet_R_101_FPN_3x.yaml"
+# retinanet_R_101_FPN_3x = Detectron_obj(
+#     config_file=retinanet_R_101_FPN_3x_config,
+#     weights_file=retinanet_R_101_FPN_3x_weights,
+# )
 
-faster_rcnn_R_50_FPN_3x_config = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"  # 167MB
-faster_rcnn_R_50_FPN_3x_weights = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
-faster_rcnn_R_50_FPN_3x = Detectron_obj(
-    config_file=faster_rcnn_R_50_FPN_3x_config,
-    weights_file=faster_rcnn_R_50_FPN_3x_weights,
-)
+# faster_rcnn_R_50_FPN_3x_config = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"  # 167MB
+# faster_rcnn_R_50_FPN_3x_weights = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
+# faster_rcnn_R_50_FPN_3x = Detectron_obj(
+#     config_file=faster_rcnn_R_50_FPN_3x_config,
+#     weights_file=faster_rcnn_R_50_FPN_3x_weights,
+# )
+def build_model(model_name: str) -> ObjectDetectionModelI:
+    """
+    Given a model name, construct and return the corresponding model object.
+    """
+    if model_name == "yolo_v10x":
+        return Yolo(model="yolov10x.pt")  # ~61.4 MB
+    elif model_name == "yolo_11x":
+        return Yolo(model="yolo11x.pt")   # ~109 MB
+    elif model_name == "rtdetr":
+        return RT_DETR("rtdetr-x.pt")     # ~129 MB
+    elif model_name == "retinanet_R_101_FPN_3x":
+        return Detectron_obj(
+            config_file="COCO-Detection/retinanet_R_101_FPN_3x.yaml", # ~228MB
+            weights_file="COCO-Detection/retinanet_R_101_FPN_3x.yaml",
+        )
+    elif model_name == "faster_rcnn_R_50_FPN_3x":
+        return Detectron_obj(
+            config_file="COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml", # ~167MB
+            weights_file="COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml",
+        )
+    else:
+        raise ValueError(f"Unknown model name: {model_name}")
 
 ################################################################################
 # Aggregator Actor
@@ -213,8 +235,35 @@ def cpu_metrics_worker(
 # GPU-based function that does inference only
 ################################################################################
 @ray.remote(num_gpus=1)
+class ModelActor:
+    def __init__(self, model_name: str, conf_threshold: float):
+        self.device = get_default_device()
+        self.model = build_model(model_name)
+        self.model.set_threshold(conf_threshold)
+        self.model.to(self.device)
+        print(f"[ModelActor] Loaded {model_name} on {self.device} with conf={conf_threshold}")
+
+    def identify_for_image_batch(self, x: torch.Tensor) -> List[Any]:
+        x = x.to(self.device)
+        return self.model.identify_for_image_batch(x)
+
+    def __del__(self):
+        print(f"[ModelActor] Deleting {self.model} from {self.device}")
+        self.model.to("cpu")
+        if "cuda" in str(self.device):
+            torch.cuda.empty_cache()
+        del self.model
+        gc.collect()
+
+    def clear_cache(self):
+        if "cuda" in str(self.device):
+            torch.cuda.empty_cache()
+        gc.collect()
+    
+@ray.remote
 def metric_per_dataset(
-    model: ObjectDetectionModelI,
+    model_actor: ModelActor,
+    model_name: str,
     dataset_fn: Callable[[], "ImageDataset"],
     work_queue: Queue,
     batch_size: int = 16,
@@ -227,8 +276,7 @@ def metric_per_dataset(
         dataset, batch_size=batch_size, shuffle=False, collate_fn=lambda x: x
     )
 
-    model.to(device=get_default_device())
-    print(f"[GPU Task] Starting inference: {dataset}, with model {model}")
+    print(f"[GPU Task] Starting inference: {dataset}, with model {model_name}")
     start_time = time.time()
 
     for batch in tqdm(data_loader, desc="processing " + str(dataset)):
@@ -236,14 +284,14 @@ def metric_per_dataset(
         x = torch.stack(images).to(get_default_device())
         y = [sample["labels"] for sample in batch]
 
-        predictions = model.identify_for_image_batch(x)
+        predictions = ray.get(model_actor.identify_for_image_batch.remote(x))
         x = x.cpu()
 
         # Instead of computing CPU metrics here, push to queue
         work_queue.put(
             {
                 "dataset": str(dataset),
-                "model": str(model),
+                "model": model_name,
                 "gt": y,
                 "odrs": predictions,
                 "images": images,
@@ -252,12 +300,10 @@ def metric_per_dataset(
 
     end_time = time.time()
     print(
-        f"[GPU Task] Finished inference: {dataset}, {model} in {end_time - start_time:.2f} seconds"
+        f"[GPU Task] Finished inference: {dataset}, {model_name} in {end_time - start_time:.2f} seconds"
     )
 
-    model.to(device="cpu")
-    if "cuda" in str(get_default_device()):
-        torch.cuda.empty_cache()
+    ray.get(model_actor.clear_cache.remote())
 
     del data_loader
     del dataset
@@ -276,7 +322,8 @@ if __name__ == "__main__":
         type=str,
         default="nuimages",
         help="Dataset to evaluate (nuimages, waymo, bdd100k)",
-        choices=["nuimages", "waymo", "bdd100k"]
+        choices=["nuimages", "waymo", "bdd100k"],
+        required=True,
     )
 
     args = parser.parse_args()
@@ -318,22 +365,17 @@ if __name__ == "__main__":
                 )
             )
 
-    models = [
-        yolo_v10x,
-        yolo_11x,
-        rtdetr,
-        retinanet_R_101_FPN_3x,
-        faster_rcnn_R_50_FPN_3x,
+    confs = [float(c) for c in np.arange(0.05, 0.90, 0.05)]
+    
+    model_names = [
+        "yolo_v10x",
+        # "yolo_11x",
+        # "rtdetr",
+        # "retinanet_R_101_FPN_3x",
+        # "faster_rcnn_R_50_FPN_3x",
     ]
-
-    # 3) Confidence thresholds
-    # confs = [float(c) for c in np.arange(0.05, 0.90, 0.05)]
-    confs = [0.01, 0.5]
-    # Optionally set a default threshold in each model:
-    for m in models:
-        m.set_threshold(confs[0])
-
-   # We'll store final results here
+    model_actors = [(ModelActor.remote(model_name=name, conf_threshold=confs[0]), name) for name in model_names]
+    
     final_results = {}
 
     # For concurrency, we hold references to all GPU tasks + aggregator states
@@ -341,7 +383,7 @@ if __name__ == "__main__":
 
     # Launch everything in parallel
     for dfn in datasets:
-        for m in models:
+        for (name, model_actor) in model_actors:
             aggregator = Aggregator.remote()
             queue = Queue()
             # Start however many CPU workers you want
@@ -350,9 +392,15 @@ if __name__ == "__main__":
                 for _ in range(num_cpu_workers)
             ]
             # Launch GPU job
-            gpu_task = metric_per_dataset.remote(m, dfn, queue, batch_size=BATCH_SIZE)
+            gpu_task = metric_per_dataset.remote(
+                model_actor=model_actor,
+                model_name=name,
+                dataset_fn=dfn,
+                work_queue=queue,
+                batch_size=BATCH_SIZE
+            )
 
-            label = f"{str(m)}-{str(dfn())}"
+            label = f"{name}-{str(dfn())}"
             print(f"Starting: {label}")
             active_pairs.append({
                 "aggregator": aggregator,
