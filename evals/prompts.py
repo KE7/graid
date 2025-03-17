@@ -21,6 +21,15 @@ class ZeroShotPrompt(PromptingStrategy):
         """
         return image, prompt
 
+class CoT(PromptingStrategy):
+    """Zero-shot prompting method."""
+    def generate_prompt(self, image, questions):
+        prompt = f"""Look at the image carefully and think through each question step by step. For each question, explain your reasoning briefly, and then provide your final answer. Separate your final answers for each question with commas. If you cannot answer a question based on the image, write "Empty" for that answer.
+        Here're the questions:
+        {questions}
+        """
+        return image, prompt
+
 class FewShotPrompt(PromptingStrategy):
     """Few-shot prompting method."""
     def __init__(self, examples):
