@@ -141,7 +141,7 @@ class Detectron_obj(ObjectDetectionModelI):
                 image = torch.as_tensor(
                     image.astype("float32").transpose(2, 0, 1)
                 )  # Convert back to CHW
-                image.to(self.cfg.MODEL.DEVICE)
+                image = image.to(self.cfg.MODEL.DEVICE).detach()
                 height, width = image.shape[1:]
                 list_of_images.append(
                     {"image": image, "height": height, "width": width}

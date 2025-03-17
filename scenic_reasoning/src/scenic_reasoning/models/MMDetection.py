@@ -111,12 +111,10 @@ class MMdetection_obj(ObjectDetectionModelI):
 
     def identify_for_image_batch(
         self,
-        image: Union[
-            str, Path, int, Image.Image, list, tuple, np.ndarray, torch.Tensor
-        ],
+        image: Union[ np.ndarray, torch.Tensor],
         debug: bool = False,
         **kwargs,
-    ) -> List[Optional[ObjectDetectionResultI]]:
+    ) -> List[List[ObjectDetectionResultI]]:
         """
         Run object detection on an image or a batch of images.
 
@@ -130,13 +128,53 @@ class MMdetection_obj(ObjectDetectionModelI):
             represents the batch of images, and the inner list represents the
             detections in a particular image.
         """
-        pass
+        if isinstance(image, torch.Tensor):
+            image = image.permute(0, 2, 3, 1).cpu().numpy()
+        elif isinstance(image, np.ndarray):
+            image = image.transpose(0, 2, 3, 1)
+        else:
+            raise ValueError("Image must be a numpy array or a torch tensor.")
+
+        predictions = inference_detector(self._model, image)
+
+        all_objects = []
+        for i in range(predictions.shape[0]):
+            pred = predictions[i]
+            bboxes = pred.pred_instances.bboxes.tolist()
+            labels = pred.pred_instances.labels
+            scores = pred.pred_instances.scores
+            image_hw = pred.pad_shape
+            objects = []
+            for i in range(len(labels)):
+                cls_id = labels[i].item()
+                score = scores[i].item()
+                bbox = bboxes[i]
+                odr = ObjectDetectionResultI(
+                    score=score,
+                    cls=cls_id,
+                    label=coco_label[cls_id],
+                    bbox=bbox,
+                    image_hw=image_hw,
+                    bbox_format=BBox_Format.XYXY,
+                )
+                objects.append(odr)
+            all_objects.append(objects)
+        if debug:
+            for i in range(len(image)):
+                curr_img = image[i]
+                if image.dtype == np.float32:
+                    curr_img = curr_img.astype(np.uint8)
+                ObjectDetectionUtils.show_image_with_detections(
+                    Image.fromarray(curr_img), all_objects[i]
+                )
+        return all_objects
+        
 
     def identify_for_video(
         self,
         video: Union[Iterator[Image.Image], List[Image.Image]],
         batch_size: int = 1,
-    ) -> Iterator[List[Optional[ObjectDetectionResultI]]]:
+    ) -> List[List[ObjectDetectionResultI]]:
         pass
 
     def to(self, device: Union[str, torch.device]):
