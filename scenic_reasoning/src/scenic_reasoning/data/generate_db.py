@@ -4,6 +4,7 @@ import ray
 from scenic_reasoning.data.Datasets import ObjDectDatasetBuilder
 from scenic_reasoning.models.Detectron import Detectron_obj
 from scenic_reasoning.models.Ultralytics import RT_DETR, Yolo
+# from scenic_reasoning.models.MMDetection import MMdetection_obj
 from scenic_reasoning.utilities.common import (
     get_default_device,
     project_root_dir,
@@ -22,28 +23,39 @@ yolo_v8n = Yolo(model="yolov8n.pt")
 yolo_11n = Yolo(model="yolo11n.pt")
 rtdetr = RT_DETR("rtdetr-l.pt")
 
-retinanet_R_101_FPN_3x_config = "COCO-Detection/retinanet_R_101_FPN_3x.yaml"
-retinanet_R_101_FPN_3x_weights = "COCO-Detection/retinanet_R_101_FPN_3x.yaml"
-retinanet_R_101_FPN_3x = Detectron_obj(
-    config_file=retinanet_R_101_FPN_3x_config,
-    weights_file=retinanet_R_101_FPN_3x_weights,
-)
+# retinanet_R_101_FPN_3x_config = "COCO-Detection/retinanet_R_101_FPN_3x.yaml"
+# retinanet_R_101_FPN_3x_weights = "COCO-Detection/retinanet_R_101_FPN_3x.yaml"
+# retinanet_R_101_FPN_3x = Detectron_obj(
+#     config_file=retinanet_R_101_FPN_3x_config,
+#     weights_file=retinanet_R_101_FPN_3x_weights,
+# )
 
-faster_rcnn_R_50_FPN_3x_config = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
-faster_rcnn_R_50_FPN_3x_weights = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
-faster_rcnn_R_50_FPN_3x = Detectron_obj(
-    config_file=faster_rcnn_R_50_FPN_3x_config,
-    weights_file=faster_rcnn_R_50_FPN_3x_weights,
-)
+# faster_rcnn_R_50_FPN_3x_config = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
+# faster_rcnn_R_50_FPN_3x_weights = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
+# faster_rcnn_R_50_FPN_3x = Detectron_obj(
+#     config_file=faster_rcnn_R_50_FPN_3x_config,
+#     weights_file=faster_rcnn_R_50_FPN_3x_weights,
+# )
+
+
+# MMDETECTION_PATH = project_root_dir() / "install" / "mmdetection"
+
+# Co_DETR_config = str(MMDETECTION_PATH / "projects/CO-DETR/configs/codino/co_dino_5scale_swin_l_lsj_16xb1_3x_coco.py")
+# Co_DETR_checkpoint = str(MMDETECTION_PATH / "checkpoints/co_dino_5scale_lsj_swin_large_1x_coco-3af73af2.pth")
+# Co_DETR = MMdetection_obj(Co_DETR_config, Co_DETR_checkpoint)
+
 
 BATCH_SIZE = 8
 
 
 @ray.remote(num_gpus=1)
-def generate_db(model, dataset_name, split, conf):
+def generate_db(dataset_name, split, conf, model=None):
 
-    model.set_threshold(conf)
-    db_name = f"{dataset_name}_{split}_{str(model)}"
+    if model:
+        model.set_threshold(conf)
+        db_name = f"{dataset_name}_{split}_{str(model)}"
+    else:
+        db_name = f"{dataset_name}_{split}_gt"
 
     if dataset_name == "nuimage":
         transform = nuimage_transform
@@ -61,23 +73,22 @@ if __name__ == "__main__":
     # https://github.com/ray-project/ray/issues/3899
     ray.init(_temp_dir='/tmp/ray/graid')
 
-    models = [yolo_v8n]
+    models = [rtdetr]
+    # models = [None]
     # confs = [c for c in np.arange(0.05, 0.90, 0.05)]
-    confs = [0.2]
-    datasets = ["bdd"]
+    confs = [0.8]
+    datasets = ["bdd", "waymo"]
     
     tasks = []
 
     for d in datasets:
         for model in models:
             for conf in confs:
-                task_train = generate_db.remote(model, d, "val", conf)
-                # task_val = generate_db.remote(model, d, "val", conf)
+                task_train = generate_db.remote(d, "train", conf, model=model)
+                task_val = generate_db.remote(d, "val", conf, model=model)
                 tasks.append(task_train)
-                # tasks.append(task_val)
-                break
-            break
-        break
+                tasks.append(task_val)
+        
 
 
     results = ray.get(tasks)
