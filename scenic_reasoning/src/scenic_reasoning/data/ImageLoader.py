@@ -21,6 +21,7 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
 from scenic_reasoning.utilities.coco import inverse_coco_label
 from scenic_reasoning.utilities.common import (
     convert_to_xyxy,
+    persistent_cache,
     project_root_dir,
     read_image,
 )
@@ -1075,6 +1076,7 @@ class WaymoDataset(ImageDataset):
     def __repr__(self):
         return f"Waymo Dataset {self.split} split with {len(self.img_labels)} images."
 
+    @persistent_cache(str(project_root_dir() / "data" / "waymo" / "waymo_cache.pkl"))
     def __init__(
         self,
         split: Literal["training", "validation", "testing"] = "training",

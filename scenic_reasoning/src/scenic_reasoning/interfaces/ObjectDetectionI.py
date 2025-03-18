@@ -289,6 +289,7 @@ class ObjectDetectionUtils:
     def compute_metrics_for_single_img(
         ground_truth: List[ObjectDetectionResultI],
         predictions: List[ObjectDetectionResultI],
+        metric: MeanAveragePrecision = None,
         class_metrics: bool = False,
         extended_summary: bool = False,
         debug: bool = False,
@@ -391,15 +392,23 @@ class ObjectDetectionUtils:
             dict(boxes=boxes, labels=classes, scores=scores)
         ]
 
-        metric = MeanAveragePrecision(
-            class_metrics=class_metrics,
-            extended_summary=extended_summary,
-            box_format="xyxy",
-            iou_type="bbox",
-        )
+        # TODO: This should be pulled out and the caller should pass it in
+        # so that we can avoid the memory leak issue: 
+        # https://github.com/Lightning-AI/torchmetrics/issues/1949
+        need_to_delete_metric = False
+        if metric is None:
+            metric = MeanAveragePrecision(
+                class_metrics=class_metrics,
+                extended_summary=extended_summary,
+                box_format="xyxy",
+                iou_type="bbox",
+            )
+            need_to_delete_metric = True
 
+        # We only need to call update 
         metric.update(target=targets, preds=preds)
 
+        # once we are at the end is when we call compute
         score = metric.compute()
 
         if preds[0]["boxes"].shape == torch.Size([0]) and targets[0][
@@ -409,6 +418,10 @@ class ObjectDetectionUtils:
         else:
             score["TN"] = 0
 
+        if need_to_delete_metric:
+            metric.reset()
+            del metric
+        
         return score
 
     @staticmethod
