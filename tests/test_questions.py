@@ -80,7 +80,7 @@ my_dataset = bdd
 original_dataset = bdd_original
 
 q_list = [
-    MostClusteredObjects()
+    WhichMore()
 ]
 
 for i in range(100):

@@ -1120,11 +1120,10 @@ class AreMore(Question):
         return question_answer_pairs
 
 class WhichMore(Question):
-    # TODO: Create a version of this question that is multiple choice
     def __init__(self) -> None:
         super().__init__(
-            question="Are there more {object_1}(s) or {object_2}(s) in this image?",
-            variables=["object_1", "object_2"],
+            question="Which has the highest count in this image: {object_1}s, {object_2}s, or {object_3}s?",
+            variables=["object_1", "object_2", "objejct_3"],
             predicates=[
                 lambda image, detections: ObjectDetectionPredicates.at_least_x_many_class_detections(
                     image, detections, 2
@@ -1154,20 +1153,37 @@ class WhichMore(Question):
 
         for i in range(len(detected_classes)):
             for j in range(i + 1, len(detected_classes)):
-                object_1, object_2 = detected_classes[i], detected_classes[j]
-                count_1, count_2 = detection_counts[object_1], detection_counts[object_2]
+                for k in range(j + 1, len(detected_classes)):
+                    object_1, object_2, object_3 = (
+                        detected_classes[i],
+                        detected_classes[j],
+                        detected_classes[k],
+                    )
+                    count_1, count_2, count_3 = (
+                        detection_counts[object_1],
+                        detection_counts[object_2],
+                        detection_counts[object_3],
+                    )
 
-                if count_1 > count_2:
-                    answer = object_1
-                elif count_2 > count_1:
-                    answer = object_2
-                else:
-                    continue
+                    max_count = max(count_1, count_2, count_3)
+                    max_objects = []
+                    if count_1 == max_count:
+                        max_objects.append(object_1)
+                    if count_2 == max_count:
+                        max_objects.append(object_2)
+                    if count_3 == max_count:
+                        max_objects.append(object_3)
 
-                question_answer_pairs.append(
-                    (self.question.format(object_1=object_1, object_2=object_2), answer)
-                )
-
+                    if len(max_objects) == 1:
+                        answer = max_objects[0]
+                        question_answer_pairs.append(
+                            (
+                                self.question.format(
+                                    object_1=object_1, object_2=object_2, object_3=object_3
+                                ),
+                                answer,
+                            )
+                        )
         return question_answer_pairs
 
 
@@ -1382,7 +1398,7 @@ class ObjectsInRow(Question):
             variables=[],
             predicates=[
                 lambda image, detections: ObjectDetectionPredicates.at_least_x_many_class_detections(
-                    image, detections, 3
+                    image, detections, 1
                 ),
             ],
         )
@@ -1392,6 +1408,7 @@ class ObjectsInRow(Question):
         image: Image.Image,
         detections: List[ObjectDetectionResultI],
     ) -> List[Tuple[str, str]]:
+        
         if len(detections) < 3:
             return [(self.question, "No")]
 
@@ -1406,6 +1423,7 @@ class ObjectsInRow(Question):
             min_len = min(len1, len2)
 
             # two objects are considered on the same line only if the y overlap is at least 50% of the smaller object.
+            # TODO: add this as a threshold.
             return inter >= 0.5 * min_len
         
         def check_row_alignment(bboxes_sorted):
@@ -1431,10 +1449,11 @@ class ObjectsInLine(Question):
             question="What objects are arranged in a row?",
             variables=[],
             predicates=[
+                # TODO: at least 3 detections
                 lambda image, detections: ObjectDetectionPredicates.at_least_x_many_class_detections(
-                    image, detections, 3
+                    image, detections, 1
                 ),
-                lambda image, detections: ObjectsInLine().apply(image, detections) != "Yes"
+                lambda image, detections: ObjectsInRow().apply(image, detections)[0][1] == "Yes"
             ],
         )
 
@@ -1513,8 +1532,6 @@ class MostClusteredObjects(Question):
         image: Image.Image,
         detections: List[ObjectDetectionResultI],
     ) -> List[Tuple[str, str]]:
-        if len(detections) < 2:
-            return [(self.question, "Not enough objects detected")]
 
         import numpy as np
         from scipy.spatial.distance import pdist, squareform
