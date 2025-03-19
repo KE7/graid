@@ -628,6 +628,7 @@ class NuImagesDataset(ImageDataset):
                 try:
                     img_labels = json.load(f)
                     reprocess = False
+                    print(f"Loading NuImages {split} split from cache.")
                 except json.JSONDecodeError:
                     # delete the file and reprocess
                     cache_path.unlink()
@@ -690,6 +691,8 @@ class NuImagesDataset(ImageDataset):
             )
             with open(cache_path, "w") as f:
                 json.dump(img_labels, f)
+
+            os.chmod(cache_path, 0o777)
 
         def merge_transform(
             image: Tensor, labels: List[Dict[str, Any]], timestamp: str

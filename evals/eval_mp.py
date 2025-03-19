@@ -36,7 +36,7 @@ import tracemalloc
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
 
 allowed_gpus = [0, 1, 2, 3, 5, 6]
-num_cpu_workers = 1
+num_cpu_workers = 4
 BATCH_SIZE = 32
 logger = logging.getLogger("ray")
 
@@ -68,7 +68,7 @@ def producer(
     seed: int = 7,
 ):
     dataset = dataset_fn()
-    
+
     torch.manual_seed(seed)
     gen = torch.Generator()
     gen.manual_seed(seed)
@@ -77,7 +77,6 @@ def producer(
     dataloader = DataLoader(
         dataset, 
         batch_size=batch_size, 
-        shuffle=True, 
         collate_fn=lambda x: x,
         generator=gen,
         sampler=sampler,
@@ -91,7 +90,8 @@ def producer(
     for i, (model, model_name) in enumerate(models):
         model.to("cuda:" + str(i))
 
-    for i, batch in enumerate(tqdm(dataloader, desc="Processing " + str(dataset))):
+    for i, batch in enumerate(tqdm(dataloader, desc="Processing " + str(dataset), total=100)):
+        print(f"[GPU Task] Processing batch {i}")
         if i >= 100:
             print(f"[GPU Task] Finished processing {i} batches")
             break
@@ -121,7 +121,7 @@ def producer(
     )
     logger.info(f"[GPU Task] Finished inference: {dataset}, {model_name} in {end_time - start_time:.2f} seconds")
     # for work_queue in work_queues:
-    for _ in range(num_cpu_workers*2*len(models)):
+    for _ in range(num_cpu_workers*3*len(models)):
         work_queue.put(None)  # Signal completion
 
     torch.cuda.empty_cache()
@@ -135,7 +135,7 @@ def consumer(
     results_queue: Queue,
     confs: List[float],
 ):
-    tracemalloc.start()
+    # tracemalloc.start()
     # metric = MeanAveragePrecision(
     #     class_metrics=True,
     #     extended_summary=True,
@@ -195,20 +195,20 @@ def consumer(
         # del item
         gc.collect()
 
-    snapshot = tracemalloc.take_snapshot()
-    import sys
-    for k, data in results.items():
-        no_pen_list_size = sys.getsizeof(data["metrics_no_pen"])
-        pen_list_size = sys.getsizeof(data["metrics_pen"])
-        print(f"{k}: metrics_no_pen size={no_pen_list_size/1024/1024:.2f} MB, metrics_pen size={pen_list_size/1024/1024:.2f} MB")
+    # snapshot = tracemalloc.take_snapshot()
+    # import sys
+    # for k, data in results.items():
+    #     no_pen_list_size = sys.getsizeof(data["metrics_no_pen"])
+    #     pen_list_size = sys.getsizeof(data["metrics_pen"])
+    #     print(f"{k}: metrics_no_pen size={no_pen_list_size/1024/1024:.2f} MB, metrics_pen size={pen_list_size/1024/1024:.2f} MB")
 
     # here is where we would call metric.compute 
     print(f"[CPU Task] Finished processing")
 
-    top_stats = snapshot.statistics('lineno')
-    print("[ Top 10 ]")
-    for stat in top_stats[:10]:
-        print(stat)
+    # top_stats = snapshot.statistics('lineno')
+    # print("[ Top 10 ]")
+    # for stat in top_stats[:10]:
+    #     print(stat)
     
     results_queue.put(None) # Signal completion
     results_queue.put(results)
@@ -265,9 +265,9 @@ def finalize_aggregator(aggregator):
             "total_samples": len(pen_metrics),
         }
 
-    from pprint import pprint
-    print("Finalizing results: ", final_output)
-    pprint(f"Finalizing done: {final_output}")
+    # from pprint import pprint
+    # print("Finalizing results: ", final_output)
+    # pprint(f"Finalizing done: {final_output}")
     return final_output
 
 def is_gpu_available(id: int = 0, p: float = 0.8) -> bool:
@@ -354,7 +354,7 @@ def main():
         active_pairs = []
 
         # work_queues = [Queue(num_cpu_workers*3) for _ in range(len(models))]
-        work_queue = Queue(num_cpu_workers*2*len(models))
+        work_queue = Queue(num_cpu_workers*3*len(models))
         results_queue = Queue()
 
         for (model, model_name) in models:
