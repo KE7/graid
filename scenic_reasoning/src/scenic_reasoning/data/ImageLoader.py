@@ -384,7 +384,7 @@ class Bdd100kDataset(ImageDataset):
                     in ["other person", "other vehicle", "trail", "trailer"],
                     label.get("labels", [])
                 )
-            )
+            ) and 'labels' in label
         ]
 
     def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
@@ -1188,7 +1188,7 @@ class WaymoDataset(ImageDataset):
                 self.img_labels.append(
                     {
                         "name": group_name,
-                        "path": image_path,
+                        "path": f"{image_path}_{group_name[1]}_{group_name[2]}",
                         "image": img_bytes,
                         "labels": labels,
                         "attributes": {},  # empty for now, can adjust later to add more Waymo related attributes info

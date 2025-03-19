@@ -1,5 +1,5 @@
 import json
-
+import argparse
 import ray
 from scenic_reasoning.data.Datasets import ObjDectDatasetBuilder
 from scenic_reasoning.models.Detectron import Detectron_obj
@@ -45,7 +45,7 @@ rtdetr = RT_DETR("rtdetr-l.pt")
 # Co_DETR = MMdetection_obj(Co_DETR_config, Co_DETR_checkpoint)
 
 
-BATCH_SIZE = 8
+BATCH_SIZE = 16
 
 
 @ray.remote(num_gpus=1)
@@ -63,6 +63,9 @@ def generate_db(dataset_name, split, conf, model=None):
         transform = bdd_transform
     elif dataset_name == "waymo":
         transform = waymo_transform
+    else:
+        print("no such dataset")
+        return
 
     db_builder = ObjDectDatasetBuilder(split=split, dataset=dataset_name, db_name=db_name, transform=transform)
     if not db_builder.is_built():
@@ -70,25 +73,43 @@ def generate_db(dataset_name, split, conf, model=None):
     
 
 if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser(description="Distributed dataset generator with Ray.")
+    parser.add_argument(
+        "--model",
+        type=str,
+        choices=["rtdetr", "none"],
+        default="rtdetr",
+        help="Select which model to use: 'rtdetr' or 'none'."
+    )
+    args = parser.parse_args()
+
+
     # https://github.com/ray-project/ray/issues/3899
     ray.init(_temp_dir='/tmp/ray/graid')
 
-    models = [rtdetr]
+    if args.model == "rtdetr":
+        model = rtdetr
+    elif args.model == "none":
+        model = None
+
+    # models = [rtdetr]
     # models = [None]
     # confs = [c for c in np.arange(0.05, 0.90, 0.05)]
     confs = [0.8]
-    datasets = ["bdd", "waymo"]
+    datasets = ["bdd", "nuimage"]
     
     tasks = []
 
     for d in datasets:
-        for model in models:
-            for conf in confs:
-                task_train = generate_db.remote(d, "train", conf, model=model)
-                task_val = generate_db.remote(d, "val", conf, model=model)
-                tasks.append(task_train)
-                tasks.append(task_val)
-        
-
+        for conf in confs:
+            task_val = generate_db.remote(d, "val", conf, model=model)
+            task_train = generate_db.remote(d, "train", conf, model=model)
+            # generate_db(d, "val", conf, model=model)
+            # generate_db(d, "train", conf, model=model)
+            
+            tasks.append(task_val)
+            tasks.append(task_train)
+                
 
     results = ray.get(tasks)
