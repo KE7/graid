@@ -243,6 +243,13 @@ class ObjectDetectionPredicates:
                 counts[class_name] = counts.get(class_name, 0) + 1
 
         return len(counts) >= x
+    
+    @staticmethod
+    def at_least_x_detections(
+        image: Image, detections: List[ObjectDetectionResultI], x: int
+    ) -> bool:
+        return len(detections) >= 3
+
 
     @staticmethod
     def exists_non_overlapping_detections(
@@ -1017,7 +1024,7 @@ class RightMost(Question):
         # logic to check if the bbox is actually on the right side of the image
         if not (
             rightmost_detection[1][0] > image_width / 2
-            and rightmost_detection[1][2] > image_width / 2
+            and rightmost_detection[1][2] > image_width / 2``
         ):
             logger.debug(
                 "RightMost question not ask-able due to not being on the right side of the image"
@@ -1122,7 +1129,7 @@ class AreMore(Question):
 class WhichMore(Question):
     def __init__(self) -> None:
         super().__init__(
-            question="Which has the highest count in this image: {object_1}s, {object_2}s, or {object_3}s?",
+            question="What appears the most in this image: {object_1}s, {object_2}s, or {object_3}s?",
             variables=["object_1", "object_2", "objejct_3"],
             predicates=[
                 lambda image, detections: ObjectDetectionPredicates.at_least_x_many_class_detections(
@@ -1450,6 +1457,9 @@ class ObjectsInLine(Question):
             variables=[],
             predicates=[
                 # TODO: at least 3 detections
+                lambda image, detections: ObjectDetectionPredicates.at_least_x_detections(
+                    image, detections, 3
+                ),
                 lambda image, detections: ObjectDetectionPredicates.at_least_x_many_class_detections(
                     image, detections, 1
                 ),
