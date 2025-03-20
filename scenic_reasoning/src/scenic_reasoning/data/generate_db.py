@@ -97,7 +97,7 @@ if __name__ == "__main__":
     # models = [None]
     # confs = [c for c in np.arange(0.05, 0.90, 0.05)]
     confs = [0.8]
-    datasets = ["bdd", "nuimage"]
+    datasets = ["waymo"]
     
     tasks = []
 

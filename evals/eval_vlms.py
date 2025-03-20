@@ -3,7 +3,7 @@ from scenic_reasoning.utilities.common import project_root_dir
 import sqlite3
 import pandas as pd
 import json
-from vlms import GPT, Qwen
+from vlms import GPT, Qwen, Llama
 from metrics import LLMJudge, ConstraintDecoding
 from prompts import SetOfMarkPrompt, ZeroShotPrompt
 import argparse
@@ -50,14 +50,20 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate VLMs using a SQLite database.")
     parser.add_argument("--db_name", type=str, default="bdd_val_yolov8n.sqlite", help="Path to the SQLite database.")
-    parser.add_argument("--vlm", type=str, default="GPT", choices=["GPT", "Qwen"], help="VLM to use for generating answers.")
+    parser.add_argument("--vlm", type=str, default="GPT", choices=["GPT", "Qwen", "Llama"], help="VLM to use for generating answers.")
     parser.add_argument("--metric", type=str, default="LLMJudge", choices=["LLMJudge", "ConstraintDecoding"], help="Metric to use for evaluating answers.")
     parser.add_argument("--prompt", type=str, default="ZeroShotPrompt", choices=["SetOfMarkPrompt", "ZeroShotPrompt"], help="Prompt to use for generating questions.")
 
     args = parser.parse_args()
 
     db_path = str(DB_PATH / args.db_name)
-    my_vlm = GPT() if args.vlm == "GPT" else Qwen()
+    if args.vlm == "GPT":
+        my_vlm = GPT()
+    elif args.vlm == "Qwen":
+        my_vlm = Qwen()
+    else:
+        my_vlm = Llama()
+
     my_metric = LLMJudge() if args.metric == "LLMJudge" else ConstraintDecoding()
     my_prompt = SetOfMarkPrompt() if args.prompt == "SetOfMarkPrompt" else ZeroShotPrompt()
     
