@@ -9,7 +9,7 @@ import cv2
 class PromptingStrategy:
     """Base class for different prompting strategies."""
 
-    def generate_prompt(self, query):
+    def generate_prompt(self, image, questions):
         """Abstract method to be implemented by subclasses."""
         raise NotImplementedError("Each subclass must implement this method.")
 

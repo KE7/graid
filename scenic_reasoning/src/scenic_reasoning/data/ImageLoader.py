@@ -1116,6 +1116,8 @@ class WaymoDataset(ImageDataset):
             raise FileNotFoundError(
                 f"No parquet image files found in {self.camera_img_dir}"
             )
+        
+        idx = 0
 
         for image_file in tqdm(camera_image_files, desc="processing Waymo dataset..."):
             box_file = image_file.replace("camera_image", "camera_box")
@@ -1175,7 +1177,7 @@ class WaymoDataset(ImageDataset):
                 for _, row in group_data.iterrows():
                     labels.append(
                         {
-                            "type": row["[CameraBoxComponent].type"],
+                            "type": int(row["[CameraBoxComponent].type"]),
                             "bbox": convert_to_xyxy(
                                 row["[CameraBoxComponent].box.center.x"],
                                 row["[CameraBoxComponent].box.center.y"],
@@ -1185,21 +1187,39 @@ class WaymoDataset(ImageDataset):
                         }
                     )
 
-                self.img_labels.append(
-                    {
-                        "name": group_name,
-                        "path": f"{image_path}_{group_name[1]}_{group_name[2]}",
-                        "image": img_bytes,
-                        "labels": labels,
-                        "attributes": {},  # empty for now, can adjust later to add more Waymo related attributes info
-                        "timestamp": str(frame_timestamp_micros),
-                    }
-                )
+                # Save the current img label according to the idx as a json
+                save_path = project_root_dir() / "data" / f"waymo_{self.split}" / f"{idx}.json"
+                if not save_path.exists():
+                    print("creating idx... ", idx)
+                    with open(save_path, "w") as f:
+                        json.dump({
+                            "name": group_name[0],
+                            "path": f"{image_path}_{group_name[1]}_{group_name[2]}",
+                            "image": base64.b64encode(img_bytes).decode('utf-8'),
+                            "labels": labels,
+                            "attributes": {},  # empty for now, can adjust later to add more Waymo related attributes info
+                            "timestamp": str(frame_timestamp_micros),
+                        }, f)
+                else:
+                    print("exists", idx)
+                idx += 1
+                
 
-        if not self.img_labels:
-            raise ValueError(
-                f"No valid data found in {self.camera_img_dir} and {self.camera_box_dir}"
-            )
+                # self.img_labels.append(
+                #     {
+                #         "name": group_name,
+                #         "path": f"{image_path}_{group_name[1]}_{group_name[2]}",
+                #         "image": img_bytes,
+                #         "labels": labels,
+                #         "attributes": {},  # empty for now, can adjust later to add more Waymo related attributes info
+                #         "timestamp": str(frame_timestamp_micros),
+                #     }
+                # )
+
+        # if not self.img_labels:
+        #     raise ValueError(
+        #         f"No valid data found in {self.camera_img_dir} and {self.camera_box_dir}"
+            # )
 
         def merge_transform(image, labels, attributes, timestamp):
             results = []
@@ -1228,13 +1248,15 @@ class WaymoDataset(ImageDataset):
         super().__init__(
             annotations_file=None,
             img_dir=str(self.camera_img_dir),
-            img_labels=self.img_labels,
+            # img_labels=self.img_labels,
             merge_transform=merge_transform,
             **kwargs,
         )
 
     def __len__(self) -> int:
-        return len(self.img_labels)
+        save_path = project_root_dir() / "data" / f"waymo_{self.split}"
+        return len(os.listdir(save_path))
+        # return len(self.img_labels)
 
     def __getitem__(self, idx: int) -> Dict:
         """Retrieve an image and its annotations."""
@@ -1242,9 +1264,14 @@ class WaymoDataset(ImageDataset):
             raise IndexError(
                 f"Index {idx} out of range for dataset with {len(self.img_labels)} samples."
             )
+        
+        save_path = project_root_dir() / "data" / f"waymo_{self.split}"
+        file_path = os.path.join(save_path, f"{idx}.json")
+        with open(file_path, "r") as f:
+            img_data = json.load(f)
 
         img_data = self.img_labels[idx]
-        img_bytes = img_data["image"]
+        img_bytes = base64.b64decode(img_data["image"])
         labels = img_data["labels"]
         timestamp = img_data["timestamp"]
         attributes = img_data["attributes"]

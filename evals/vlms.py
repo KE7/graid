@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 import os
 import re
 from openai import OpenAI
+import json
 
 
 class VLM:
@@ -121,13 +122,53 @@ class Qwen(GPT):
         )
         self.model_name = model_name
     
-class Llama(GPT):
-    def __init__(self, model_name="meta-llama/Llama-3.2-90B-Vision", port=9000):
-        load_dotenv()
-        openai_api_key = os.getenv("OPENAI_API_KEY")
-        openai_api_base = f"http://localhost:{port}/v1"
-        self.client = OpenAI(
-            api_key=openai_api_key,
-            base_url=openai_api_base,
-        )
-        self.model_name = model_name
+    
+class Llama:
+    def __init__(self, model_name="meta/llama-3.2-90b-vision-instruct-maas"):
+        PROJECT_ID = "graid-451620"
+        REGION = "us-central1"
+        ENDPOINT = "us-central1-aiplatform.googleapis.com"
+        self.model = model_name
+
+        self.url = f"https://{ENDPOINT}/v1beta1/projects/{PROJECT_ID}/locations/{REGION}/endpoints/openapi/chat/completions"
+    
+    def encode_image(self, image):
+        with open(image, "rb") as image_file:
+            return base64.b64encode(image_file.read()).decode("utf-8")
+    
+    def generate_answer(self, image, questions: str, prompting_style):
+        base64_image = self.encode_image(image)
+        image_gcs_url = f"data:image/jpeg;base64,{base64_image}"
+        image, prompt = prompting_style.generate_prompt(image, questions)
+
+        payload = {
+            "model": self.model,
+            "stream": False,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"image_url": {"url": image_gcs_url}, "type": "image_url"},
+                        {"text": prompt, "type": "text"}
+                    ]
+                }
+            ],
+            "max_tokens": 40,
+            "temperature": 0.4,
+            "top_k": 10,
+            "top_p": 0.95,
+            "n": 1
+        }
+
+        token = "ya29.a0AeXRPp4i5tRG4C7my4O7fhQArKY-AZnVSVdduEGTIoKu1udMIyKugBMOwMD0wvPRO5ZLKnz71Agm3hy-eY_tdPY0sp_89FtjMoPU1o9FIN5PKoEAXgEkfePXMnGRIdVY6BbEqIv8b9RBiTmnWJ4IxfeCV5Xr55MywUrA3QD85H-McieSaCgYKAcUSARMSFQHGX2Mi3Qh92adRxW2kG66kOqRG3g0183"
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
+
+        response = requests.post(self.url, headers=headers, json=payload)
+        if response.status_code == 200:
+            return response.json()["choices"][0]["message"]["content"]
+        else:
+            print(f"Error {response.status_code}: {response.text}")
+        
