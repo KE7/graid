@@ -1079,7 +1079,7 @@ class WaymoDataset(ImageDataset):
     def __repr__(self):
         return f"Waymo Dataset {self.split} split with {len(self.img_labels)} images."
 
-    @persistent_cache(str(project_root_dir() / "data" / "waymo" / "waymo_cache.pkl"))
+    # @persistent_cache(str(project_root_dir() / "data" / "waymo" / "waymo_cache.pkl"))
     def __init__(
         self,
         split: Literal["training", "validation", "testing"] = "training",
@@ -1119,7 +1119,7 @@ class WaymoDataset(ImageDataset):
         
         idx = 0
 
-        for image_file in tqdm(camera_image_files, desc="processing Waymo dataset..."):
+        for image_file in tqdm(camera_image_files[:1], desc="processing Waymo dataset..."):
             box_file = image_file.replace("camera_image", "camera_box")
             image_path = self.camera_img_dir / image_file
             box_path = self.camera_box_dir / box_file
@@ -1260,7 +1260,7 @@ class WaymoDataset(ImageDataset):
 
     def __getitem__(self, idx: int) -> Dict:
         """Retrieve an image and its annotations."""
-        if idx >= len(self.img_labels):
+        if idx >= self.__len__():
             raise IndexError(
                 f"Index {idx} out of range for dataset with {len(self.img_labels)} samples."
             )
@@ -1270,7 +1270,7 @@ class WaymoDataset(ImageDataset):
         with open(file_path, "r") as f:
             img_data = json.load(f)
 
-        img_data = self.img_labels[idx]
+        # img_data = self.img_labels[idx]
         img_bytes = base64.b64decode(img_data["image"])
         labels = img_data["labels"]
         timestamp = img_data["timestamp"]
