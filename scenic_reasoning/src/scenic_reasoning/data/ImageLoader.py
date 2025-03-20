@@ -1195,7 +1195,7 @@ class WaymoDataset(ImageDataset):
                         json.dump({
                             "name": group_name[0],
                             "path": f"{image_path}_{group_name[1]}_{group_name[2]}",
-                            "image": base64.b64encode(img_bytes).decode('utf-8'),
+                            "image":  base64.b64encode(img_bytes),
                             "labels": labels,
                             "attributes": {},  # empty for now, can adjust later to add more Waymo related attributes info
                             "timestamp": str(frame_timestamp_micros),
@@ -1270,6 +1270,8 @@ class WaymoDataset(ImageDataset):
         with open(file_path, "r") as f:
             img_data = json.load(f)
 
+        # import pdb
+        # pdb.set_trace()
         # img_data = self.img_labels[idx]
         img_bytes = base64.b64decode(img_data["image"])
         labels = img_data["labels"]
