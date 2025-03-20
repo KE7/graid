@@ -1119,7 +1119,7 @@ class WaymoDataset(ImageDataset):
         
         idx = 0
 
-        for image_file in tqdm(camera_image_files[:1], desc="processing Waymo dataset..."):
+        for image_file in tqdm(camera_image_files, desc="processing Waymo dataset..."):
             box_file = image_file.replace("camera_image", "camera_box")
             image_path = self.camera_img_dir / image_file
             box_path = self.camera_box_dir / box_file
@@ -1195,7 +1195,7 @@ class WaymoDataset(ImageDataset):
                         json.dump({
                             "name": group_name[0],
                             "path": f"{image_path}_{group_name[1]}_{group_name[2]}",
-                            "image":  base64.b64encode(img_bytes),
+                            "image":  base64.b64encode(img_bytes).decode('utf-8'),
                             "labels": labels,
                             "attributes": {},  # empty for now, can adjust later to add more Waymo related attributes info
                             "timestamp": str(frame_timestamp_micros),

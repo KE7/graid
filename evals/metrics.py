@@ -23,30 +23,30 @@ class LLMJudge(EvaluationMetric):
         self.client = OpenAI(api_key=OPENAI_API_KEY)
 
 
-    def evaluate(self, pred, gt):
+    def evaluate(self, preds, gts):
 
         prompt = f"""
         Determine if the prediction matches the solution:
-        Solution: {gt}
-        Prediction: {pred}
-        Score the prediction with either 0 (incorrect) or 1 (correct).
+        Solution: {gts}
+        Prediction: {preds}
+        Score each prediction with either 0 (incorrect) or 1 (correct). Give a score for each prediction separated by commas. Don't include any other numbers in your response besides the score.
 
         Here're some examples for you to follow:
 
         Example 1:
-        Solution: right
-        Prediction: Offtotheright
-        Score: 1
+        Solution: right, left
+        Prediction: Offtotheright, there's a care on the right
+        Score: 1, 0
 
         Example 2:
-        Solution: left
-        Prediction: centered
-        Score: 0
+        Solution: left, centered
+        Prediction: centered, No car is detected in the image
+        Score: 0, 0
 
         Example 3:
-        Solution: centered
-        Prediction: looks like it's centered
-        Score: 1
+        Solution: centered, right
+        Prediction: looks like it's centered, it's on the right of the image
+        Score: 1, 1
 
         Example 4:
         Solution: left
@@ -63,9 +63,11 @@ class LLMJudge(EvaluationMetric):
             )
 
         response = completion.choices[0].message.content
-        correctness = re.search(r"[01]", response).group()
+        response = re.sub(r'\b\d+\.', '', response)    # remove numbers followed by a period
+        numbers = re.findall(r'\d+', response)
+        correctness = [int(num) for num in numbers]
 
-        return correctness == '1'
+        return correctness
 
 class ConstraintDecoding(EvaluationMetric):
     """Constraint decoding metric."""

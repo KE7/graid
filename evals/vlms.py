@@ -47,7 +47,7 @@ class GPT:
     def generate_answer(self, image, questions: str, prompting_style):
         # reference: https://platform.openai.com/docs/guides/vision
 
-        image, prompt = prompting_style.generate_prompt(image, question)
+        image, prompt = prompting_style.generate_prompt(image, questions)
 
         base64_image = self.encode_image(image)
 
@@ -122,7 +122,7 @@ class Qwen(GPT):
         )
         self.model_name = model_name
     
-    
+
 class Llama:
     def __init__(self, model_name="meta/llama-3.2-90b-vision-instruct-maas"):
         PROJECT_ID = "graid-451620"
@@ -160,7 +160,7 @@ class Llama:
             "n": 1
         }
 
-        token = "ya29.a0AeXRPp4i5tRG4C7my4O7fhQArKY-AZnVSVdduEGTIoKu1udMIyKugBMOwMD0wvPRO5ZLKnz71Agm3hy-eY_tdPY0sp_89FtjMoPU1o9FIN5PKoEAXgEkfePXMnGRIdVY6BbEqIv8b9RBiTmnWJ4IxfeCV5Xr55MywUrA3QD85H-McieSaCgYKAcUSARMSFQHGX2Mi3Qh92adRxW2kG66kOqRG3g0183"
+        token = "ya29.a0AeXRPp5nJwkzW0eTPX2HfEMtUyFdHFkp7D5xIAquGUJJXH5Z1IV7QbZIwYRWiEoKdsziQ59QC_5vOClIkrlQ67kIcFYR7TfH2S8uUWA7OD82ZAAUvg7Ddbo1qYcoo38VlOSWfO64L1cG0unoicWMBzr_a9GqD_8u58ZB_bBf6VmqdPb6aCgYKAcQSARMSFQHGX2MiiJvvWAO38EhVswJWAjVfhQ0183"
         headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json"
@@ -171,4 +171,5 @@ class Llama:
             return response.json()["choices"][0]["message"]["content"]
         else:
             print(f"Error {response.status_code}: {response.text}")
+            return None
         
