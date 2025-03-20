@@ -2,7 +2,9 @@ import json
 import os
 from pathlib import Path
 from typing import Optional
-
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import gc
 import numpy as np
 import torch
 from PIL import Image
@@ -17,6 +19,8 @@ from sqlitedict import SqliteDict
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
+
+lock = threading.Lock()
 
 class ObjDectDatasetBuilder(Dataset):
     DEFAULT_DB_PATH = Path(__file__).resolve().parent / "databases"
@@ -98,59 +102,125 @@ class ObjDectDatasetBuilder(Dataset):
                 return self.dataset[d][idx]
             idx -= len(self.dataset[d])
         raise IndexError("Index out of range")
+    
 
     def build(self, model: Optional[ObjectDetectionModelI] = None, batch_size: int = 1):
-        
 
+        def process_batch(batch):
+            batch_images = torch.stack([sample["image"] for sample in batch])
+            batch_names = [sample["path"] for sample in batch]
+
+            if model is not None:
+                labels = model.identify_for_image(batch_images)
+                if labels == [None]:
+                    return
+            else:
+                labels = [sample["labels"] for sample in batch]
+
+            for j, lbl in enumerate(labels):
+                image = batch_images[j].permute(1, 2, 0).cpu().numpy()
+                image = Image.fromarray(image.astype(np.uint8))
+                name = batch_names[j]
+                for question in self.questions:
+                    table_name = str(question)
+                    if question.is_applicable(image, lbl):
+                        qa_list = question.apply(image, lbl)
+                    else:
+                        qa_list = []
+
+                    entry = {
+                        "qa_list": qa_list,
+                        "split": self.split,
+                        "num of labels": len(lbl),
+                    }
+
+                    
+                    # with self.lock:
+                    self.dataset[table_name][name] = entry
+            
+            print("Batch done!!!")
+            del batch_images, labels, image
+            gc.collect()
+
+                    
         if self.has_been_built:
             print("Dataset has already been built.")
             return
 
         for dataset in self.all_sets:
-            print("Generating dataset...")
-
-            
             data_loader = DataLoader(
                 dataset, batch_size=batch_size, shuffle=False, collate_fn=lambda x: x
             )
-            for batch in tqdm(data_loader, desc="generating dataset..."):
 
-                batch_images = torch.stack([sample["image"] for sample in batch])
-                batch_names = [sample["path"] for sample in batch]   # using path would simpler
+            max_workers = 20
+            inflight_futures = []
 
-                if model is not None:
-                    # labels = model.identify_for_image_batch(batch_images)
-                    labels = model.identify_for_image(batch_images)
-                    if labels == [None]:
-                        continue
-                else:
-                    labels = [sample["labels"] for sample in batch]
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                data_iter = iter(tqdm(data_loader))
 
-                for j, lbl in enumerate(labels):
-                    image = batch_images[j].permute(1, 2, 0).numpy()
-                    image = Image.fromarray(image.astype(np.uint8))
-                    name = batch_names[j]
-                    for question in self.questions:
-                        table_name = str(question)
+                # Start with an initial batch of tasks (fill the pool)
+                for _ in range(max_workers):
+                    try:
+                        batch = next(data_iter)
+                        inflight_futures.append(executor.submit(process_batch, batch))
+                    except StopIteration:
+                        break  # dataset might have fewer than max_workers batches
 
-                        if question.is_applicable(image, lbl):
-                            qa_list = question.apply(image, lbl)
-                            # because of Python semantics, sqlitedict cannot
-                            # know when a mutable SqliteDict-backed entry
-                            # was modified in RAM. You'll need to explicitly
-                            # assign the mutated object back to SqliteDict:
-                            # https://github.com/piskvorky/sqlitedict
-                            self.dataset[table_name][name] = {
-                                "qa_list": qa_list,
-                                "split": self.split,
-                                "num of labels": len(lbl),
-                            }
-                        else:
-                            self.dataset[table_name][name] = {
-                                "qa_list": [],
-                                "split": self.split,
-                                "num of labels": len(lbl),
-                            }
+                # As futures complete, submit new tasks
+                while inflight_futures:
+                    for future in as_completed(inflight_futures):
+                        inflight_futures.remove(future)
+                        future.result()  # catch exceptions here if needed
+
+                        try:
+                            batch = next(data_iter)
+                            inflight_futures.append(executor.submit(process_batch, batch))
+                        except StopIteration:
+                            continue
+
+            # with ThreadPoolExecutor(max_workers=10) as executor:
+            #     executor.map(process_batch, tqdm(data_loader))
+
+
+
+            # for batch in tqdm(data_loader, desc="generating dataset..."):
+
+            #     batch_images = torch.stack([sample["image"] for sample in batch])
+            #     batch_names = [sample["path"] for sample in batch]   # using path would simpler
+
+            #     if model is not None:
+            #         # labels = model.identify_for_image_batch(batch_images)
+            #         labels = model.identify_for_image(batch_images)
+            #         if labels == [None]:
+            #             continue
+            #     else:
+            #         labels = [sample["labels"] for sample in batch]
+
+            #     for j, lbl in enumerate(labels):
+            #         image = batch_images[j].permute(1, 2, 0).cpu().numpy()
+            #         image = Image.fromarray(image.astype(np.uint8))
+            #         name = batch_names[j]
+            #         for question in self.questions:
+            #             table_name = str(question)
+
+            #             if question.is_applicable(image, lbl):
+            #                 qa_list = question.apply(image, lbl)
+            #                 # because of Python semantics, sqlitedict cannot
+            #                 # know when a mutable SqliteDict-backed entry
+            #                 # was modified in RAM. You'll need to explicitly
+            #                 # assign the mutated object back to SqliteDict:
+            #                 # https://github.com/piskvorky/sqlitedict
+            #                 self.dataset[table_name][name] = {
+            #                     "qa_list": qa_list,
+            #                     "split": self.split,
+            #                     "num of labels": len(lbl),
+            #                 }
+            #             else:
+            #                 self.dataset[table_name][name] = {
+            #                     "qa_list": [],
+            #                     "split": self.split,
+            #                     "num of labels": len(lbl),
+            #                 }
 
         for table_name in self.dataset:
             if not self.dataset[table_name]:

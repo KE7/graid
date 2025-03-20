@@ -21,6 +21,7 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
 from scenic_reasoning.utilities.coco import inverse_coco_label
 from scenic_reasoning.utilities.common import (
     convert_to_xyxy,
+    persistent_cache,
     project_root_dir,
     read_image,
 )
@@ -383,7 +384,7 @@ class Bdd100kDataset(ImageDataset):
                     in ["other person", "other vehicle", "trail", "trailer"],
                     label.get("labels", [])
                 )
-            )
+            ) and 'labels' in label
         ]
 
     def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
@@ -627,6 +628,7 @@ class NuImagesDataset(ImageDataset):
                 try:
                     img_labels = json.load(f)
                     reprocess = False
+                    print(f"Loading NuImages {split} split from cache.")
                 except json.JSONDecodeError:
                     # delete the file and reprocess
                     cache_path.unlink()
@@ -689,6 +691,8 @@ class NuImagesDataset(ImageDataset):
             )
             with open(cache_path, "w") as f:
                 json.dump(img_labels, f)
+
+            os.chmod(cache_path, 0o777)
 
         def merge_transform(
             image: Tensor, labels: List[Dict[str, Any]], timestamp: str
@@ -1075,6 +1079,7 @@ class WaymoDataset(ImageDataset):
     def __repr__(self):
         return f"Waymo Dataset {self.split} split with {len(self.img_labels)} images."
 
+    @persistent_cache(str(project_root_dir() / "data" / "waymo" / "waymo_cache.pkl"))
     def __init__(
         self,
         split: Literal["training", "validation", "testing"] = "training",
@@ -1183,7 +1188,7 @@ class WaymoDataset(ImageDataset):
                 self.img_labels.append(
                     {
                         "name": group_name,
-                        "path": image_path,
+                        "path": f"{image_path}_{group_name[1]}_{group_name[2]}",
                         "image": img_bytes,
                         "labels": labels,
                         "attributes": {},  # empty for now, can adjust later to add more Waymo related attributes info

@@ -49,14 +49,14 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate VLMs using a SQLite database.")
-    parser.add_argument("--db_path", type=str, required=True, help="Path to the SQLite database.")
-    parser.add_argument("--vlm", type=str, required=True, choices=["GPT", "Qwen"], help="VLM to use for generating answers.")
-    parser.add_argument("--metric", type=str, required=True, choices=["LLMJudge", "ConstraintDecoding"], help="Metric to use for evaluating answers.")
-    parser.add_argument("--prompt", type=str, required=True, choices=["SetOfMarkPrompt", "ZeroShotPrompt"], help="Prompt to use for generating questions.")
+    parser.add_argument("--db_name", type=str, default="bdd_val_yolov8n.sqlite", help="Path to the SQLite database.")
+    parser.add_argument("--vlm", type=str, default="GPT", choices=["GPT", "Qwen"], help="VLM to use for generating answers.")
+    parser.add_argument("--metric", type=str, default="LLMJudge", choices=["LLMJudge", "ConstraintDecoding"], help="Metric to use for evaluating answers.")
+    parser.add_argument("--prompt", type=str, default="ZeroShotPrompt", choices=["SetOfMarkPrompt", "ZeroShotPrompt"], help="Prompt to use for generating questions.")
 
     args = parser.parse_args()
 
-    db_path = str(DB_PATH / args.db_path)
+    db_path = str(DB_PATH / args.db_name)
     my_vlm = GPT() if args.vlm == "GPT" else Qwen()
     my_metric = LLMJudge() if args.metric == "LLMJudge" else ConstraintDecoding()
     my_prompt = SetOfMarkPrompt() if args.prompt == "SetOfMarkPrompt" else ZeroShotPrompt()

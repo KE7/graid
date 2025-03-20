@@ -1,9 +1,10 @@
 import json
-
+import argparse
 import ray
 from scenic_reasoning.data.Datasets import ObjDectDatasetBuilder
 from scenic_reasoning.models.Detectron import Detectron_obj
 from scenic_reasoning.models.Ultralytics import RT_DETR, Yolo
+# from scenic_reasoning.models.MMDetection import MMdetection_obj
 from scenic_reasoning.utilities.common import (
     get_default_device,
     project_root_dir,
@@ -22,28 +23,39 @@ yolo_v8n = Yolo(model="yolov8n.pt")
 yolo_11n = Yolo(model="yolo11n.pt")
 rtdetr = RT_DETR("rtdetr-l.pt")
 
-retinanet_R_101_FPN_3x_config = "COCO-Detection/retinanet_R_101_FPN_3x.yaml"
-retinanet_R_101_FPN_3x_weights = "COCO-Detection/retinanet_R_101_FPN_3x.yaml"
-retinanet_R_101_FPN_3x = Detectron_obj(
-    config_file=retinanet_R_101_FPN_3x_config,
-    weights_file=retinanet_R_101_FPN_3x_weights,
-)
+# retinanet_R_101_FPN_3x_config = "COCO-Detection/retinanet_R_101_FPN_3x.yaml"
+# retinanet_R_101_FPN_3x_weights = "COCO-Detection/retinanet_R_101_FPN_3x.yaml"
+# retinanet_R_101_FPN_3x = Detectron_obj(
+#     config_file=retinanet_R_101_FPN_3x_config,
+#     weights_file=retinanet_R_101_FPN_3x_weights,
+# )
 
-faster_rcnn_R_50_FPN_3x_config = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
-faster_rcnn_R_50_FPN_3x_weights = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
-faster_rcnn_R_50_FPN_3x = Detectron_obj(
-    config_file=faster_rcnn_R_50_FPN_3x_config,
-    weights_file=faster_rcnn_R_50_FPN_3x_weights,
-)
+# faster_rcnn_R_50_FPN_3x_config = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
+# faster_rcnn_R_50_FPN_3x_weights = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
+# faster_rcnn_R_50_FPN_3x = Detectron_obj(
+#     config_file=faster_rcnn_R_50_FPN_3x_config,
+#     weights_file=faster_rcnn_R_50_FPN_3x_weights,
+# )
 
-BATCH_SIZE = 8
+
+# MMDETECTION_PATH = project_root_dir() / "install" / "mmdetection"
+
+# Co_DETR_config = str(MMDETECTION_PATH / "projects/CO-DETR/configs/codino/co_dino_5scale_swin_l_lsj_16xb1_3x_coco.py")
+# Co_DETR_checkpoint = str(MMDETECTION_PATH / "checkpoints/co_dino_5scale_lsj_swin_large_1x_coco-3af73af2.pth")
+# Co_DETR = MMdetection_obj(Co_DETR_config, Co_DETR_checkpoint)
+
+
+BATCH_SIZE = 16
 
 
 @ray.remote(num_gpus=1)
-def generate_db(model, dataset_name, split, conf):
+def generate_db(dataset_name, split, conf, model=None):
 
-    model.set_threshold(conf)
-    db_name = f"{dataset_name}_{split}_{str(model)}"
+    if model:
+        model.set_threshold(conf)
+        db_name = f"{dataset_name}_{split}_{str(model)}"
+    else:
+        db_name = f"{dataset_name}_{split}_gt"
 
     if dataset_name == "nuimage":
         transform = nuimage_transform
@@ -51,6 +63,9 @@ def generate_db(model, dataset_name, split, conf):
         transform = bdd_transform
     elif dataset_name == "waymo":
         transform = waymo_transform
+    else:
+        print("no such dataset")
+        return
 
     db_builder = ObjDectDatasetBuilder(split=split, dataset=dataset_name, db_name=db_name, transform=transform)
     if not db_builder.is_built():
@@ -58,25 +73,43 @@ def generate_db(model, dataset_name, split, conf):
     
 
 if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser(description="Distributed dataset generator with Ray.")
+    parser.add_argument(
+        "--model",
+        type=str,
+        choices=["rtdetr", "none"],
+        default="rtdetr",
+        help="Select which model to use: 'rtdetr' or 'none'."
+    )
+    args = parser.parse_args()
+
+
+    # https://github.com/ray-project/ray/issues/3899
     ray.init(_temp_dir='/tmp/ray/graid')
 
-    models = [yolo_v8n]
+    if args.model == "rtdetr":
+        model = rtdetr
+    elif args.model == "none":
+        model = None
+
+    # models = [rtdetr]
+    # models = [None]
     # confs = [c for c in np.arange(0.05, 0.90, 0.05)]
-    confs = [0.2]
-    datasets = ["bdd"]
+    confs = [0.8]
+    datasets = ["bdd", "nuimage"]
     
     tasks = []
 
     for d in datasets:
-        for model in models:
-            for conf in confs:
-                task_train = generate_db.remote(model, d, "val", conf)
-                # task_val = generate_db.remote(model, d, "val", conf)
-                tasks.append(task_train)
-                # tasks.append(task_val)
-                break
-            break
-        break
-
+        for conf in confs:
+            task_val = generate_db.remote(d, "val", conf, model=model)
+            task_train = generate_db.remote(d, "train", conf, model=model)
+            # generate_db(d, "val", conf, model=model)
+            # generate_db(d, "train", conf, model=model)
+            
+            tasks.append(task_val)
+            tasks.append(task_train)
+                
 
     results = ray.get(tasks)
