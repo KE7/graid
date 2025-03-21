@@ -48,7 +48,7 @@ rtdetr = RT_DETR("rtdetr-l.pt")
 BATCH_SIZE = 16
 
 
-@ray.remote(num_gpus=1)
+# @ray.remote(num_gpus=1)
 def generate_db(dataset_name, split, conf, model=None):
 
     if model:
@@ -79,14 +79,14 @@ if __name__ == "__main__":
         "--model",
         type=str,
         choices=["rtdetr", "none"],
-        default="rtdetr",
+        default="none",
         help="Select which model to use: 'rtdetr' or 'none'."
     )
     args = parser.parse_args()
 
 
     # https://github.com/ray-project/ray/issues/3899
-    ray.init(_temp_dir='/tmp/ray/graid')
+    # ray.init(_temp_dir='/tmp/ray/graid')
 
     if args.model == "rtdetr":
         model = rtdetr
@@ -103,8 +103,8 @@ if __name__ == "__main__":
 
     for d in datasets:
         for conf in confs:
-            task_val = generate_db.remote(d, "val", conf, model=model)
-            task_train = generate_db.remote(d, "train", conf, model=model)
+            task_val = generate_db(d, "val", conf, model=model)
+            task_train = generate_db(d, "train", conf, model=model)
             # generate_db(d, "val", conf, model=model)
             # generate_db(d, "train", conf, model=model)
             

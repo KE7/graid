@@ -6,6 +6,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import gc
 import numpy as np
+from scenic_reasoning.utilities.common import project_root_dir
 import torch
 from PIL import Image
 from scenic_reasoning.data.ImageLoader import (
@@ -23,7 +24,7 @@ from tqdm import tqdm
 lock = threading.Lock()
 
 class ObjDectDatasetBuilder(Dataset):
-    DEFAULT_DB_PATH = Path(__file__).resolve().parent / "databases"
+    DEFAULT_DB_PATH = project_root_dir() / "data" / "databases2"
 
     def __init__(
         self,
@@ -49,9 +50,11 @@ class ObjDectDatasetBuilder(Dataset):
             self.dataset[table_name] = SqliteDict(
                 str(db_path),
                 tablename=table_name,
-                autocommit=True,
+                autocommit=False,
                 encode=json.dumps,
                 decode=json.loads,
+                # journal_mode="WAL",  # Write-Ahead Logging for better concurrency
+                timeout=60,
             )
             self.dataset[table_name].commit()
 
@@ -106,7 +109,7 @@ class ObjDectDatasetBuilder(Dataset):
 
     def build(self, model: Optional[ObjectDetectionModelI] = None, batch_size: int = 1):
 
-        def process_batch(batch):
+        def process_batch(base_idx, batch):
             batch_images = torch.stack([sample["image"] for sample in batch])
             batch_names = [sample["path"] for sample in batch]
 
@@ -117,12 +120,17 @@ class ObjDectDatasetBuilder(Dataset):
             else:
                 labels = [sample["labels"] for sample in batch]
 
+            tables_accessed = set()
+
             for j, lbl in enumerate(labels):
                 image = batch_images[j].permute(1, 2, 0).cpu().numpy()
                 image = Image.fromarray(image.astype(np.uint8))
-                name = batch_names[j]
+                # image.show()  # for debugging
+                name = f"{int(base_idx + j)}.pkl"
+                print(f"Processing {name}...")
                 for question in self.questions:
                     table_name = str(question)
+                    tables_accessed.add(table_name)
                     if question.is_applicable(image, lbl):
                         qa_list = question.apply(image, lbl)
                     else:
@@ -139,8 +147,8 @@ class ObjDectDatasetBuilder(Dataset):
                     self.dataset[table_name][name] = entry
             
             print("Batch done!!!")
-            del batch_images, labels, image
-            gc.collect()
+            for table_name in tables_accessed:
+                self.dataset[table_name].commit()  # commit after processing each batch
 
                     
         if self.has_been_built:
@@ -149,32 +157,39 @@ class ObjDectDatasetBuilder(Dataset):
 
         for dataset in self.all_sets:
             data_loader = DataLoader(
-                dataset, batch_size=batch_size, shuffle=False, collate_fn=lambda x: x
+                dataset, 
+                batch_size=batch_size, 
+                shuffle=False, 
+                collate_fn=lambda x: x, 
+                num_workers=8
             )
 
-            max_workers = 20
+            max_workers = 2
             inflight_futures = []
 
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                data_iter = iter(tqdm(data_loader))
+                data_iter = iter(tqdm(enumerate(data_loader)))
 
                 # Start with an initial batch of tasks (fill the pool)
                 for _ in range(max_workers):
                     try:
-                        batch = next(data_iter)
-                        inflight_futures.append(executor.submit(process_batch, batch))
+                        base_idx, batch = next(data_iter)
+                        inflight_futures.append(
+                            executor.submit(process_batch, base_idx * batch_size, batch)
+                        )
                     except StopIteration:
-                        break  # dataset might have fewer than max_workers batches
+                        break
 
                 # As futures complete, submit new tasks
                 while inflight_futures:
                     for future in as_completed(inflight_futures):
                         inflight_futures.remove(future)
-                        future.result()  # catch exceptions here if needed
-
+                        future.result()
                         try:
-                            batch = next(data_iter)
-                            inflight_futures.append(executor.submit(process_batch, batch))
+                            base_idx, batch = next(data_iter)
+                            inflight_futures.append(
+                                executor.submit(process_batch, base_idx * batch_size, batch)
+                            )
                         except StopIteration:
                             continue
 

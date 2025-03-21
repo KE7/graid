@@ -3,6 +3,7 @@ import io
 import json
 import logging
 import os
+import pickle
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
@@ -66,7 +67,7 @@ class ImageDataset(Dataset):
     def __len__(self) -> int:
         return len(self.img_labels)
 
-    def __getitem__(self):
+    def __getitem__(self, idx: int):
         raise NotImplementedError("Subclasses must implement __getitem__")
 
 
@@ -1083,6 +1084,7 @@ class WaymoDataset(ImageDataset):
     def __init__(
         self,
         split: Literal["training", "validation", "testing"] = "training",
+        rebuild: bool = False,
         **kwargs,
     ):
         self.split = split
@@ -1119,103 +1121,105 @@ class WaymoDataset(ImageDataset):
         
         idx = 0
 
-        for image_file in tqdm(camera_image_files, desc="processing Waymo dataset..."):
-            box_file = image_file.replace("camera_image", "camera_box")
-            image_path = self.camera_img_dir / image_file
-            box_path = self.camera_box_dir / box_file
+        if rebuild:
+            for image_file in tqdm(camera_image_files, desc="processing Waymo dataset..."):
+                box_file = image_file.replace("camera_image", "camera_box")
+                image_path = self.camera_img_dir / image_file
+                box_path = self.camera_box_dir / box_file
 
-            # Check if the box file exists
-            if not os.path.exists(box_path):
-                logger.warning(f"Box file not found for {image_file}: {box_path}")
-                continue
+                # Check if the box file exists
+                if not os.path.exists(box_path):
+                    logger.warning(f"Box file not found for {image_file}: {box_path}")
+                    continue
 
-            # Load the dataframes
-            image_df = pd.read_parquet(image_path)
-            box_df = pd.read_parquet(box_path)
+                # Load the dataframes
+                image_df = pd.read_parquet(image_path)
+                box_df = pd.read_parquet(box_path)
 
-            unique_images_df = box_df.groupby(
-                [
-                    "key.segment_context_name",
-                    "key.frame_timestamp_micros",
-                    "key.camera_name",
-                ]
-            )
-            # Merge image and box data
-            merged_df = pd.merge(
-                image_df,
-                box_df,
-                on=[
-                    "key.segment_context_name",
-                    "key.frame_timestamp_micros",
-                    "key.camera_name",
-                ],
-                how="inner",
-            )
+                unique_images_df = box_df.groupby(
+                    [
+                        "key.segment_context_name",
+                        "key.frame_timestamp_micros",
+                        "key.camera_name",
+                    ]
+                )
+                # Merge image and box data
+                merged_df = pd.merge(
+                    image_df,
+                    box_df,
+                    on=[
+                        "key.segment_context_name",
+                        "key.frame_timestamp_micros",
+                        "key.camera_name",
+                    ],
+                    how="inner",
+                )
 
-            if merged_df.empty:
-                logger.warning(f"No matches found for {image_file} and {box_file}.")
-                continue
+                if merged_df.empty:
+                    logger.warning(f"No matches found for {image_file} and {box_file}.")
+                    continue
 
-            logger.debug(f"Merged DataFrame for {image_file}: {merged_df.shape}\n")
+                logger.debug(f"Merged DataFrame for {image_file}: {merged_df.shape}\n")
 
-            # Group dataframes by unique identifiers and process them
-            grouped_df = merged_df.groupby(
-                [
-                    "key.segment_context_name",
-                    "key.frame_timestamp_micros",
-                    "key.camera_name",
-                ]
-            )
+                # Group dataframes by unique identifiers and process them
+                grouped_df = merged_df.groupby(
+                    [
+                        "key.segment_context_name",
+                        "key.frame_timestamp_micros",
+                        "key.camera_name",
+                    ]
+                )
 
-            for group_name, group_data in grouped_df:
-                # Each group has one unique image frame, in which all the detected objects belong to
-                image_data = group_data.iloc[0]
-                img_bytes = image_data["[CameraImageComponent].image"]
-                frame_timestamp_micros = image_data["key.frame_timestamp_micros"]
+                for group_name, group_data in grouped_df:
+                    # Each group has one unique image frame, in which all the detected objects belong to
+                    image_data = group_data.iloc[0]
+                    img_bytes = image_data["[CameraImageComponent].image"]
+                    frame_timestamp_micros = image_data["key.frame_timestamp_micros"]
 
-                labels = []
-                for _, row in group_data.iterrows():
-                    labels.append(
-                        {
-                            "type": int(row["[CameraBoxComponent].type"]),
-                            "bbox": convert_to_xyxy(
-                                row["[CameraBoxComponent].box.center.x"],
-                                row["[CameraBoxComponent].box.center.y"],
-                                row["[CameraBoxComponent].box.size.x"],
-                                row["[CameraBoxComponent].box.size.y"],
-                            ),
-                        }
-                    )
+                    labels = []
+                    for _, row in group_data.iterrows():
+                        labels.append(
+                            {
+                                "type": int(row["[CameraBoxComponent].type"]),
+                                "bbox": convert_to_xyxy(
+                                    row["[CameraBoxComponent].box.center.x"],
+                                    row["[CameraBoxComponent].box.center.y"],
+                                    row["[CameraBoxComponent].box.size.x"],
+                                    row["[CameraBoxComponent].box.size.y"],
+                                ),
+                            }
+                        )
 
-                # Save the current img label according to the idx as a json
-                save_path = project_root_dir() / "data" / f"waymo_{self.split}" / f"{idx}.json"
-                if not save_path.exists():
-                    print("creating idx... ", idx)
-                    with open(save_path, "w") as f:
-                        json.dump({
-                            "name": group_name[0],
-                            "path": f"{image_path}_{group_name[1]}_{group_name[2]}",
-                            "image":  base64.b64encode(img_bytes).decode('utf-8'),
-                            "labels": labels,
-                            "attributes": {},  # empty for now, can adjust later to add more Waymo related attributes info
-                            "timestamp": str(frame_timestamp_micros),
-                        }, f)
-                else:
-                    print("exists", idx)
-                idx += 1
-                
+                    # Save the current img label according to the idx as a pickle file
+                    save_path = project_root_dir() / "data" / f"waymo__{self.split}" / f"{idx}.pkl"
+                    save_path.parent.mkdir(parents=True, exist_ok=True)
+                    if not save_path.exists():
+                        print("creating idx... ", idx)
+                        with open(save_path, "wb") as f:
+                            pickle.dump({
+                                "name": group_name[0],
+                                "path": f"{image_path}_{group_name[1]}_{group_name[2]}",
+                                "image": img_bytes,
+                                "labels": labels,
+                                "attributes": {},
+                                "timestamp": str(frame_timestamp_micros),
+                            }, f)
+                    else:
+                        print("exists", idx)
+                    idx += 1
+                    
 
-                # self.img_labels.append(
-                #     {
-                #         "name": group_name,
-                #         "path": f"{image_path}_{group_name[1]}_{group_name[2]}",
-                #         "image": img_bytes,
-                #         "labels": labels,
-                #         "attributes": {},  # empty for now, can adjust later to add more Waymo related attributes info
-                #         "timestamp": str(frame_timestamp_micros),
-                #     }
-                # )
-
+                    # self.img_labels.append(
+                    #     {
+                    #         "name": group_name,
+                    #         "path": f"{image_path}_{group_name[1]}_{group_name[2]}",
+                    #         "image": img_bytes,
+                    #         "labels": labels,
+                    #         "attributes": {},  # empty for now, can adjust later to add more Waymo related attributes info
+                    #         "timestamp": str(frame_timestamp_micros),
+                    #     }
+                    # )
+        
         # if not self.img_labels:
         #     raise ValueError(
         #         f"No valid data found in {self.camera_img_dir} and {self.camera_box_dir}"
@@ -1254,7 +1258,7 @@ class WaymoDataset(ImageDataset):
         )
 
     def __len__(self) -> int:
-        save_path = project_root_dir() / "data" / f"waymo_{self.split}"
+        save_path = project_root_dir() / "data" / f"waymo__{self.split}"
         return len(os.listdir(save_path))
         # return len(self.img_labels)
 
@@ -1265,15 +1269,15 @@ class WaymoDataset(ImageDataset):
                 f"Index {idx} out of range for dataset with {len(self.img_labels)} samples."
             )
         
-        save_path = project_root_dir() / "data" / f"waymo_{self.split}"
-        file_path = os.path.join(save_path, f"{idx}.json")
-        with open(file_path, "r") as f:
-            img_data = json.load(f)
+        save_path = project_root_dir() / "data" / f"waymo__{self.split}"
+        file_path = os.path.join(save_path, f"{idx}.pkl")
+        with open(file_path, "rb") as f:
+            img_data = pickle.load(f)
 
         # import pdb
         # pdb.set_trace()
         # img_data = self.img_labels[idx]
-        img_bytes = base64.b64decode(img_data["image"])
+        img_bytes = img_data["image"]
         labels = img_data["labels"]
         timestamp = img_data["timestamp"]
         attributes = img_data["attributes"]
