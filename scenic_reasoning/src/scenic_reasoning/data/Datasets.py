@@ -50,11 +50,9 @@ class ObjDectDatasetBuilder(Dataset):
             self.dataset[table_name] = SqliteDict(
                 str(db_path),
                 tablename=table_name,
-                autocommit=False,
+                autocommit=True,
                 encode=json.dumps,
                 decode=json.loads,
-                # journal_mode="WAL",  # Write-Ahead Logging for better concurrency
-                timeout=60,
             )
             self.dataset[table_name].commit()
 
