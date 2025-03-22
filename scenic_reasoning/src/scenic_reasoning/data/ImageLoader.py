@@ -777,7 +777,7 @@ class NuImagesDataset(ImageDataset):
             return (image, results, attributes, timestamp)
 
         super().__init__(
-            img_labels=img_labels,
+            # img_labels=img_labels,
             img_dir=img_dir,
             merge_transform=merge_transform,
             **kwargs,
