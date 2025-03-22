@@ -1,9 +1,10 @@
-import sqlite3
-from scenic_reasoning.utilities.common import project_root_dir
-import pandas as pd
-import json
-from tqdm import tqdm
 import argparse
+import json
+import sqlite3
+
+import pandas as pd
+from scenic_reasoning.utilities.common import project_root_dir
+from tqdm import tqdm
 
 # db_name = "bdd_train_rtdetr-l.sqlite"
 # DB_PATH = project_root_dir() / "scenic_reasoning/src/scenic_reasoning/data/databases"
@@ -43,19 +44,22 @@ import argparse
 #     json.dump(q_count, f, indent=4)
 
 
-
 def main():
-    parser = argparse.ArgumentParser(description="Count questions in SQLite database tables.")
+    parser = argparse.ArgumentParser(
+        description="Count questions in SQLite database tables."
+    )
     parser.add_argument(
         "--db_name",
         type=str,
         required=True,
-        help="The SQLite database name (e.g., bdd_train_rtdetr-l.sqlite)"
+        help="The SQLite database name (e.g., bdd_train_rtdetr-l.sqlite)",
     )
     args = parser.parse_args()
 
     db_name = args.db_name
-    DB_PATH = project_root_dir() / "scenic_reasoning/src/scenic_reasoning/data/databases"
+    DB_PATH = (
+        project_root_dir() / "scenic_reasoning/src/scenic_reasoning/data/databases"
+    )
     db_path = DB_PATH / db_name
 
     if not db_path.exists():
@@ -78,10 +82,10 @@ def main():
         count = 0
         for index, row in tqdm(df.iterrows(), total=len(df)):
             d = row.to_dict()
-            image_path, v = d['key'], json.loads(d['value'])
-            qa_list = v['qa_list']
+            image_path, v = d["key"], json.loads(d["value"])
+            qa_list = v["qa_list"]
 
-            if not qa_list or qa_list == 'Question not applicable':
+            if not qa_list or qa_list == "Question not applicable":
                 continue
 
             questions = [p[0] for p in qa_list]
@@ -94,7 +98,7 @@ def main():
 
     # Save JSON
     output_path = f"{db_name[:-7]}_q_counts.json"
-    with open(output_path, 'w') as f:
+    with open(output_path, "w") as f:
         json.dump(q_count, f, indent=4)
 
     print(f"Counts saved to {output_path}")

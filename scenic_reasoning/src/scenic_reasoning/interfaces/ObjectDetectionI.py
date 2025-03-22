@@ -393,7 +393,7 @@ class ObjectDetectionUtils:
         ]
 
         # TODO: This should be pulled out and the caller should pass it in
-        # so that we can avoid the memory leak issue: 
+        # so that we can avoid the memory leak issue:
         # https://github.com/Lightning-AI/torchmetrics/issues/1949
         need_to_delete_metric = False
         if metric is None:
@@ -405,7 +405,7 @@ class ObjectDetectionUtils:
             )
             need_to_delete_metric = True
 
-        # We only need to call update 
+        # We only need to call update
         metric.update(target=targets, preds=preds)
 
         # once we are at the end is when we call compute
@@ -421,7 +421,7 @@ class ObjectDetectionUtils:
         if need_to_delete_metric:
             metric.reset()
             del metric
-        
+
         return score
 
     @staticmethod
@@ -714,7 +714,10 @@ class ObjectDetectionModelI(ABC):
     @abstractmethod
     def identify_for_video(
         self,
-        video: Union[Iterator[Union[np.ndarray, torch.Tensor]], List[Union[np.ndarray, torch.Tensor]]],
+        video: Union[
+            Iterator[Union[np.ndarray, torch.Tensor]],
+            List[Union[np.ndarray, torch.Tensor]],
+        ],
         batch_size: int = 1,
     ) -> Iterator[List[Optional[ObjectDetectionResultI]]]:
         pass

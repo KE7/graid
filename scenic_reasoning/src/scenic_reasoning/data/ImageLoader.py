@@ -383,9 +383,10 @@ class Bdd100kDataset(ImageDataset):
                 filter(
                     lambda l: l["category"]
                     in ["other person", "other vehicle", "trail", "trailer"],
-                    label.get("labels", [])
+                    label.get("labels", []),
                 )
-            ) and 'labels' in label
+            )
+            and "labels" in label
         ]
 
         # Save each element of the img_labels as its own pickle file
@@ -430,7 +431,7 @@ class Bdd100kDataset(ImageDataset):
             image, labels = self.transform(image, labels)
         if self.merge_transform:
             image, labels, timestamp = self.merge_transform(image, labels, timestamp)
-        
+
         # import pdb
         # pdb.set_trace()
 
@@ -1172,11 +1173,13 @@ class WaymoDataset(ImageDataset):
             raise FileNotFoundError(
                 f"No parquet image files found in {self.camera_img_dir}"
             )
-        
+
         idx = 0
 
         if rebuild:
-            for image_file in tqdm(camera_image_files, desc="processing Waymo dataset..."):
+            for image_file in tqdm(
+                camera_image_files, desc="processing Waymo dataset..."
+            ):
                 box_file = image_file.replace("camera_image", "camera_box")
                 image_path = self.camera_img_dir / image_file
                 box_path = self.camera_box_dir / box_file
@@ -1245,23 +1248,31 @@ class WaymoDataset(ImageDataset):
                         )
 
                     # Save the current img label according to the idx as a pickle file
-                    save_path = project_root_dir() / "data" / f"waymo__{self.split}" / f"{idx}.pkl"
+                    save_path = (
+                        project_root_dir()
+                        / "data"
+                        / f"waymo__{self.split}"
+                        / f"{idx}.pkl"
+                    )
                     save_path.parent.mkdir(parents=True, exist_ok=True)
                     if not save_path.exists():
                         print("creating idx... ", idx)
                         with open(save_path, "wb") as f:
-                            pickle.dump({
-                                "name": group_name[0],
-                                "path": f"{image_path}_{group_name[1]}_{group_name[2]}",
-                                "image": img_bytes,
-                                "labels": labels,
-                                "attributes": {},
-                                "timestamp": str(frame_timestamp_micros),
-                            }, f)
+                            os.chmod(save_path, 0o777)
+                            pickle.dump(
+                                {
+                                    "name": group_name[0],
+                                    "path": f"{image_path}_{group_name[1]}_{group_name[2]}",
+                                    "image": img_bytes,
+                                    "labels": labels,
+                                    "attributes": {},
+                                    "timestamp": str(frame_timestamp_micros),
+                                },
+                                f,
+                            )
                     else:
                         print("exists", idx)
                     idx += 1
-                    
 
                     # self.img_labels.append(
                     #     {
@@ -1273,11 +1284,11 @@ class WaymoDataset(ImageDataset):
                     #         "timestamp": str(frame_timestamp_micros),
                     #     }
                     # )
-        
+
         # if not self.img_labels:
         #     raise ValueError(
         #         f"No valid data found in {self.camera_img_dir} and {self.camera_box_dir}"
-            # )
+        # )
 
         def merge_transform(image, labels, attributes, timestamp):
             results = []
@@ -1322,7 +1333,7 @@ class WaymoDataset(ImageDataset):
             raise IndexError(
                 f"Index {idx} out of range for dataset with {len(self.img_labels)} samples."
             )
-        
+
         save_path = project_root_dir() / "data" / f"waymo__{self.split}"
         file_path = os.path.join(save_path, f"{idx}.pkl")
         with open(file_path, "rb") as f:
