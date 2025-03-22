@@ -5,7 +5,7 @@ import logging
 import time
 import tracemalloc
 from collections import defaultdict
-from typing import Callable, List, Tuple
+from typing import Callable, List
 
 import numpy as np
 import ray
@@ -24,7 +24,6 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
 from scenic_reasoning.models.Detectron import Detectron_obj
 from scenic_reasoning.models.Ultralytics import RT_DETR, Yolo
 from scenic_reasoning.utilities.common import (
-    get_default_device,
     yolo_bdd_transform,
     yolo_nuscene_transform,
     yolo_waymo_transform,
@@ -34,7 +33,7 @@ from torchmetrics.detection.mean_ap import MeanAveragePrecision
 from tqdm import tqdm
 
 allowed_gpus = [0, 1, 2, 3, 5, 6]
-num_cpu_workers = 4
+num_cpu_workers = 1 # must be one 
 BATCH_SIZE = 32
 logger = logging.getLogger("ray")
 
@@ -57,9 +56,10 @@ faster_rcnn_R_50_FPN_3x = Detectron_obj(
 )
 
 
-@ray.remote(num_gpus=5)
+@ray.remote(num_gpus=1)
 def producer(
-    models: List[Tuple[ObjectDetectionModelI]],
+    model: ObjectDetectionModelI,
+    model_name: str,
     dataset_fn: Callable[[], ImageDataset],
     work_queue: Queue,
     batch_size: int,
@@ -82,37 +82,37 @@ def producer(
 
     print(f"[GPU Task] Starting inference: {dataset}")
     start_time = time.time()
-
-    # print all available gpus
-    print(f"Available GPUs: {torch.cuda.device_count()}")
-    for i, (model, model_name) in enumerate(models):
-        model.to("cuda:" + str(i))
+    model.to("cuda:0")
+    # # print all available gpus
+    # print(f"Available GPUs: {torch.cuda.device_count()}")
+    # for i, (model, model_name) in enumerate(models):
+    #     model.to("cuda:" + str(i))
 
     for i, batch in enumerate(
         tqdm(dataloader, desc="Processing " + str(dataset), total=100)
     ):
         print(f"[GPU Task] Processing batch {i}")
-        if i >= 100:
-            print(f"[GPU Task] Finished processing {i} batches")
-            break
+        # if i >= 100:
+        #     print(f"[GPU Task] Finished processing {i} batches")
+        #     break
         images = [sample["image"] for sample in batch]
         # x = torch.stack(images).to(get_default_device())
         x = torch.stack(images)
         y = [sample["labels"] for sample in batch]
 
-        for i, (model, model_name) in enumerate(models):
-            x = x.to("cuda:" + str(i))
-            predictions = model.identify_for_image_batch(x)
-            work_queue.put(
-                {
-                    "dataset": str(dataset),
-                    "model": model_name,
-                    "gt": y,
-                    "odrs": predictions,
-                    "images": images,
-                }
-            )
-            print(f"[GPU Task] Sent batch item to CPU worker: {model_name}")
+        # for i, (model, model_name) in enumerate(models):
+        #     x = x.to("cuda:" + str(i))
+        predictions = model.identify_for_image_batch(x)
+        work_queue.put(
+            {
+                "dataset": str(dataset),
+                "model": model_name,
+                "gt": y,
+                "odrs": predictions,
+                "images": images,
+            }
+        )
+        print(f"[GPU Task] Sent batch item to CPU worker: {model_name}")
         print(f"Current work queue size: {work_queue.qsize()}")
 
     end_time = time.time()
@@ -123,7 +123,7 @@ def producer(
         f"[GPU Task] Finished inference: {dataset}, {model_name} in {end_time - start_time:.2f} seconds"
     )
     # for work_queue in work_queues:
-    for _ in range(num_cpu_workers * 3 * len(models)):
+    for _ in range(num_cpu_workers * 3):
         work_queue.put(None)  # Signal completion
 
     torch.cuda.empty_cache()
@@ -137,15 +137,32 @@ def consumer(
     work_queue: Queue,
     results_queue: Queue,
     confs: List[float],
+    assigned_dataset: str,
+    assigned_model: str,
 ):
-    # tracemalloc.start()
+    tracemalloc.start()
     # metric = MeanAveragePrecision(
     #     class_metrics=True,
     #     extended_summary=True,
     #     box_format="xyxy",
     #     iou_type="bbox",
     # )
-    results = dict()
+    metrics_with_pen = dict()
+    metrics_no_pen = dict()
+    for conf in confs:
+        metrics_no_pen[conf] = MeanAveragePrecision(
+            class_metrics=True,
+            extended_summary=True,
+            box_format="xyxy",
+            iou_type="bbox",
+        )
+        metrics_with_pen[conf] = MeanAveragePrecision(
+            class_metrics=True,
+            extended_summary=True,
+            box_format="xyxy",
+            iou_type="bbox",
+        )
+    true_negs = defaultdict(int)
     while True:
         print(
             f"[CPU Task] Waiting for batch item. Work queue remaining size: {work_queue.qsize()}"
@@ -162,6 +179,8 @@ def consumer(
         )
         dataset = item["dataset"]
         model_name = item["model"]
+        assert dataset == assigned_dataset, f"Dataset mismatch: {dataset} != {assigned_dataset}"
+        assert model_name == assigned_model, f"Model mismatch: {model_name} != {assigned_model}"
         gt_list = item["gt"]
         odrs_list = item["odrs"]
         images = item["images"]
@@ -169,42 +188,48 @@ def consumer(
         for conf in confs:
             for image, odrs, gt in zip(images, odrs_list, gt_list):
                 key = (dataset, model_name, conf)
-                relevant_odrs = [o for o in odrs if o.score >= conf]
+                index = len(odrs)
+                for i, o in enumerate(odrs):
+                    if o.score < conf:
+                        index = i
+                        break
+                relevant_odrs = odrs[:index]
 
-                metrics_no_pen = ObjectDetectionUtils.compute_metrics_for_single_img(
+                tn_no_pen = ObjectDetectionUtils.compute_metrics_for_single_img(
                     relevant_odrs,
                     gt,
-                    # metric=metric,
+                    metric=metrics_no_pen[conf],
                     class_metrics=True,
                     extended_summary=True,
                     penalize_for_extra_predicitions=False,
                     image=image,
                 )
-                metrics_pen = ObjectDetectionUtils.compute_metrics_for_single_img(
+                ObjectDetectionUtils.compute_metrics_for_single_img(
                     relevant_odrs,
                     gt,
-                    # metric=metric,
+                    metric=metrics_with_pen[conf],
                     class_metrics=True,
                     extended_summary=True,
                     penalize_for_extra_predicitions=True,
                     image=image,
                 )
 
-                if key not in results:
-                    results[key] = {
-                        "metrics_no_pen": [],
-                        "metrics_pen": [],
-                    }
-                results[key]["metrics_no_pen"].append(metrics_no_pen)
-                results[key]["metrics_pen"].append(metrics_pen)
+                true_negs[conf] += tn_no_pen["TN"]
+                # if key not in results:
+                #     results[key] = {
+                #         "metrics_no_pen": [],
+                #         "metrics_pen": [],
+                #     }
+                # results[key]["metrics_no_pen"].append(metrics_no_pen)
+                # results[key]["metrics_pen"].append(metrics_pen)
 
-        # del images
-        # del gt_list
-        # del odrs_list
-        # del item
-        gc.collect()
+        del images
+        del gt_list
+        del odrs_list
+        del item
+        # gc.collect()
 
-    # snapshot = tracemalloc.take_snapshot()
+    snapshot = tracemalloc.take_snapshot()
     # import sys
     # for k, data in results.items():
     #     no_pen_list_size = sys.getsizeof(data["metrics_no_pen"])
@@ -212,15 +237,36 @@ def consumer(
     #     print(f"{k}: metrics_no_pen size={no_pen_list_size/1024/1024:.2f} MB, metrics_pen size={pen_list_size/1024/1024:.2f} MB")
 
     # here is where we would call metric.compute
+    
+    # results_queue.put(
+    #     results
+    # )
+    no_pen_scores = defaultdict(dict)
+    pen_scores = defaultdict(dict)
+    for conf in confs:
+        no_pen_scores[conf] = metrics_no_pen[conf].compute()
+        no_pen_scores[conf]["TN"] = true_negs[conf]     
+        pen_scores[conf] = metrics_with_pen[conf].compute()
+        pen_scores[conf]["TN"] = true_negs[conf]
+        metrics_no_pen[conf].reset()
+        metrics_with_pen[conf].reset()
+        del metrics_no_pen[conf]
+        del metrics_with_pen[conf]
+
     print(f"[CPU Task] Finished processing")
 
-    # top_stats = snapshot.statistics('lineno')
-    # print("[ Top 10 ]")
-    # for stat in top_stats[:10]:
-    #     print(stat)
+    top_stats = snapshot.statistics('lineno')
+    print("[ Top 10 ]")
+    for stat in top_stats[:10]:
+        print(stat)
 
+    final_results = dict()
+    final_results[(assigned_dataset, assigned_model)] = {
+        "metrics_no_pen": no_pen_scores,
+        "metrics_pen": pen_scores,
+    }
+    results_queue.put(final_results)
     results_queue.put(None)  # Signal completion
-    results_queue.put(results)
 
 
 def aggregate_results(results_queue, num_workers):
@@ -364,20 +410,24 @@ def main():
     ]
 
     # final_output = dict()
+    work_queues = dict()
+    gpu_workers = []
 
     for dfn in datasets:
         active_pairs = []
 
-        # work_queues = [Queue(num_cpu_workers*3) for _ in range(len(models))]
-        work_queue = Queue(num_cpu_workers * 3 * len(models))
+        # work_queues = [Queue(num_cpu_workers * 3) for _ in range(len(models))]
+        # work_queue = Queue(num_cpu_workers * 3 * len(models))
         results_queue = Queue()
 
         for model, model_name in models:
             # work_queue = Queue(num_cpu_workers*3)
             # results_queue = Queue()
+            current_work_queue = Queue(num_cpu_workers * 10)
+            work_queues[(model_name, str(dfn()))] = current_work_queue
 
             cpu_workers = [
-                consumer.remote(work_queue, results_queue, confs)
+                consumer.remote(current_work_queue, results_queue, confs, str(dfn()), model_name)
                 for _ in range(num_cpu_workers)
             ]
 
@@ -392,14 +442,24 @@ def main():
                 }
             )
 
-        gpu_workers = [
-            producer.remote(
-                models,
-                dfn,
-                work_queue,
-                BATCH_SIZE,
+            gpu_workers.append(
+                producer.remote(
+                    model,
+                    model_name,
+                    dfn,
+                    current_work_queue,
+                    BATCH_SIZE,
+                )
             )
-        ]
+
+        # gpu_workers = [
+        #     producer.remote(
+        #         models,
+        #         dfn,
+        #         work_queue,
+        #         BATCH_SIZE,
+        #     )
+        # ]
 
         ray.get(gpu_workers)
         # all_gpu_workers = [gpu_worker for p in active_pairs for gpu_worker in p["gpu_workers"]]
@@ -412,10 +472,11 @@ def main():
         ray.get(all_cpu_workers)
         gc.collect()
         for pair in active_pairs:
-            result = aggregate_results(pair["results_queue"], num_cpu_workers)
-            final_output = finalize_aggregator(result)
+            # result = aggregate_results(pair["results_queue"], num_cpu_workers)
+            # final_output = finalize_aggregator(result)
+            result = pair["results_queue"].get()
             with open(f"{pair['pair_label']}.json", "w") as f:
-                json.dump(final_output, f, indent=2)
+                json.dump(result, f, indent=2)
 
         del dfn
         gc.collect()
