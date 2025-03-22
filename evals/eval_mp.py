@@ -398,7 +398,7 @@ def main():
                 )
             )
 
-    confs = [float(c) for c in np.arange(0.05, 0.90, 0.05)]
+    confs = [float(c) for c in np.arange(0.10, 0.95, 0.10)]
 
     # 2) Prepare models
     models = [
