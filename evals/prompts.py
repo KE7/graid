@@ -1,10 +1,12 @@
 import difflib
-import openai
-import re
 import os
-from scenic_reasoning.utilities.common import get_default_device
-import supervision as sv
+import re
+
 import cv2
+import openai
+import supervision as sv
+from scenic_reasoning.utilities.common import get_default_device
+
 
 class PromptingStrategy:
     """Base class for different prompting strategies."""
@@ -13,16 +15,20 @@ class PromptingStrategy:
         """Abstract method to be implemented by subclasses."""
         raise NotImplementedError("Each subclass must implement this method.")
 
+
 class ZeroShotPrompt(PromptingStrategy):
     """Zero-shot prompting method."""
+
     def generate_prompt(self, image, questions):
         prompt = f"""Answer the following questions related to the image. Give your answer to each question separated by commas. If you're unable to answer a question, put "Empty" as your answer to this question:
         {questions}
         """
         return image, prompt
 
+
 class CoT(PromptingStrategy):
     """Zero-shot prompting method."""
+
     def generate_prompt(self, image, questions):
         prompt = f"""Look at the image carefully and think through each question step by step. For each question, explain your reasoning briefly, and then provide your final answer. Separate your final answers for each question with commas. If you cannot answer a question based on the image, write "Empty" for that answer.
         Here're the questions:
@@ -30,8 +36,10 @@ class CoT(PromptingStrategy):
         """
         return image, prompt
 
+
 class FewShotPrompt(PromptingStrategy):
     """Few-shot prompting method."""
+
     def __init__(self, examples):
         """
         Args:
@@ -42,7 +50,7 @@ class FewShotPrompt(PromptingStrategy):
     def generate_prompt(self, image, question):
         if not self.examples:
             raise ValueError("Few-shot examples are required but not provided.")
-        
+
         prompt = "Here are some examples:\n"
         for i, (inp, out) in enumerate(self.examples):
             prompt += f"Example {i+1}:\nInput: {inp}\nOutput: {out}\n\n"
@@ -53,14 +61,21 @@ class FewShotPrompt(PromptingStrategy):
 
 class SetOfMarkPrompt(PromptingStrategy):
     def __init__(self):
-        from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
+        from segment_anything import (
+            SamAutomaticMaskGenerator,
+            SamPredictor,
+            sam_model_registry,
+        )
+
         CHECKPOINT_PATH = "sam_vit_h_4b8939.pth"
         print(CHECKPOINT_PATH, "; exist:", os.path.isfile(CHECKPOINT_PATH))
 
         DEVICE = get_default_device()
         MODEL_TYPE = "vit_h"
 
-        sam = sam_model_registry[MODEL_TYPE](checkpoint=CHECKPOINT_PATH).to(device=DEVICE)
+        sam = sam_model_registry[MODEL_TYPE](checkpoint=CHECKPOINT_PATH).to(
+            device=DEVICE
+        )
         self.mask_generator = SamAutomaticMaskGenerator(sam)
         self.MIN_AREA_PERCENTAGE = 0.005
         self.MAX_AREA_PERCENTAGE = 0.05
@@ -89,8 +104,7 @@ class SetOfMarkPrompt(PromptingStrategy):
             _, _, _, max_loc = cv2.minMaxLoc(dist)
             return max_loc
 
-
-        def Mark_Allocation(masks: list[np.ndarray]) -> list[tuple[int,int]]:
+        def Mark_Allocation(masks: list[np.ndarray]) -> list[tuple[int, int]]:
             # 1) Sort all masks by ascending area
             #    (Compute area by summing pixels in each mask.)
             areas = [mask.sum() for mask in masks]
@@ -117,7 +131,6 @@ class SetOfMarkPrompt(PromptingStrategy):
 
             return centers
 
-
         all_masks = [detections[i].mask for i in range(len(detections))]
 
         centers = Mark_Allocation(all_masks)
@@ -127,18 +140,25 @@ class SetOfMarkPrompt(PromptingStrategy):
         sorted_detections = detections[sorted_idx]
 
         mask_annotator = sv.MaskAnnotator(
-            color_lookup=sv.ColorLookup.INDEX,
-            opacity=0.3
+            color_lookup=sv.ColorLookup.INDEX, opacity=0.3
         )
         annotated_image = image_bgr.copy()
 
         annotated_image = mask_annotator.annotate(
-            scene=annotated_image,
-            detections=detections
+            scene=annotated_image, detections=detections
         )
 
         for idx, (x, y) in enumerate(centers, start=1):
             cv2.circle(annotated_image, (x, y), 11, (0, 0, 0), -1)
-            cv2.putText(annotated_image, str(idx), (x-6, y+6), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
+            cv2.putText(
+                annotated_image,
+                str(idx),
+                (x - 6, y + 6),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.4,
+                (255, 255, 255),
+                1,
+                cv2.LINE_AA,
+            )
 
         return annotated_image, question

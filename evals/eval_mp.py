@@ -1,15 +1,16 @@
-import ray
-from ray.util.queue import Queue
+import argparse
 import gc
 import json
-
+import logging
 import time
+import tracemalloc
 from collections import defaultdict
 from typing import Callable, List, Tuple
 
 import numpy as np
-
+import ray
 import torch
+from ray.util.queue import Queue
 from scenic_reasoning.data.ImageLoader import (
     Bdd100kDataset,
     ImageDataset,
@@ -29,11 +30,8 @@ from scenic_reasoning.utilities.common import (
     yolo_waymo_transform,
 )
 from torch.utils.data import DataLoader
-from tqdm import tqdm
-import argparse
-import logging
-import tracemalloc
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
+from tqdm import tqdm
 
 allowed_gpus = [0, 1, 2, 3, 5, 6]
 num_cpu_workers = 4
@@ -75,8 +73,8 @@ def producer(
     sampler = torch.utils.data.RandomSampler(dataset, generator=gen)
 
     dataloader = DataLoader(
-        dataset, 
-        batch_size=batch_size, 
+        dataset,
+        batch_size=batch_size,
         collate_fn=lambda x: x,
         generator=gen,
         sampler=sampler,
@@ -90,7 +88,9 @@ def producer(
     for i, (model, model_name) in enumerate(models):
         model.to("cuda:" + str(i))
 
-    for i, batch in enumerate(tqdm(dataloader, desc="Processing " + str(dataset), total=100)):
+    for i, batch in enumerate(
+        tqdm(dataloader, desc="Processing " + str(dataset), total=100)
+    ):
         print(f"[GPU Task] Processing batch {i}")
         if i >= 100:
             print(f"[GPU Task] Finished processing {i} batches")
@@ -119,15 +119,18 @@ def producer(
     print(
         f"[GPU Task] Finished inference: {dataset}, {model_name} in {end_time - start_time:.2f} seconds"
     )
-    logger.info(f"[GPU Task] Finished inference: {dataset}, {model_name} in {end_time - start_time:.2f} seconds")
+    logger.info(
+        f"[GPU Task] Finished inference: {dataset}, {model_name} in {end_time - start_time:.2f} seconds"
+    )
     # for work_queue in work_queues:
-    for _ in range(num_cpu_workers*3*len(models)):
+    for _ in range(num_cpu_workers * 3 * len(models)):
         work_queue.put(None)  # Signal completion
 
     torch.cuda.empty_cache()
     del dataset
     del dataloader
     gc.collect()
+
 
 @ray.remote(num_cpus=1)
 def consumer(
@@ -144,24 +147,30 @@ def consumer(
     # )
     results = dict()
     while True:
-        print(f"[CPU Task] Waiting for batch item. Work queue remaining size: {work_queue.qsize()}")
+        print(
+            f"[CPU Task] Waiting for batch item. Work queue remaining size: {work_queue.qsize()}"
+        )
         item = work_queue.get()
-        print(f"[CPU Task] Received batch item. Work queue remaining size: {work_queue.qsize()}")
+        print(
+            f"[CPU Task] Received batch item. Work queue remaining size: {work_queue.qsize()}"
+        )
         if item is None:
             break
 
-        print(f"[CPU Task] Processing batch item from: {item['dataset']}, {item['model']}")
+        print(
+            f"[CPU Task] Processing batch item from: {item['dataset']}, {item['model']}"
+        )
         dataset = item["dataset"]
         model_name = item["model"]
         gt_list = item["gt"]
         odrs_list = item["odrs"]
         images = item["images"]
-        
+
         for conf in confs:
             for image, odrs, gt in zip(images, odrs_list, gt_list):
                 key = (dataset, model_name, conf)
                 relevant_odrs = [o for o in odrs if o.score >= conf]
-                
+
                 metrics_no_pen = ObjectDetectionUtils.compute_metrics_for_single_img(
                     relevant_odrs,
                     gt,
@@ -169,7 +178,7 @@ def consumer(
                     class_metrics=True,
                     extended_summary=True,
                     penalize_for_extra_predicitions=False,
-                    image=image,    
+                    image=image,
                 )
                 metrics_pen = ObjectDetectionUtils.compute_metrics_for_single_img(
                     relevant_odrs,
@@ -202,24 +211,26 @@ def consumer(
     #     pen_list_size = sys.getsizeof(data["metrics_pen"])
     #     print(f"{k}: metrics_no_pen size={no_pen_list_size/1024/1024:.2f} MB, metrics_pen size={pen_list_size/1024/1024:.2f} MB")
 
-    # here is where we would call metric.compute 
+    # here is where we would call metric.compute
     print(f"[CPU Task] Finished processing")
 
     # top_stats = snapshot.statistics('lineno')
     # print("[ Top 10 ]")
     # for stat in top_stats[:10]:
     #     print(stat)
-    
-    results_queue.put(None) # Signal completion
+
+    results_queue.put(None)  # Signal completion
     results_queue.put(results)
 
 
 def aggregate_results(results_queue, num_workers):
     aggregator = defaultdict(lambda: {"metrics_no_pen": [], "metrics_pen": []})
-    
+
     finished_workers = 0
     while finished_workers < num_workers:
-        print(f"Wating for results: {finished_workers}/{num_workers}. Results queue remaining size: {results_queue.qsize()}")
+        print(
+            f"Wating for results: {finished_workers}/{num_workers}. Results queue remaining size: {results_queue.qsize()}"
+        )
         result = results_queue.get()
         if result is None:
             finished_workers = finished_workers + 1
@@ -230,6 +241,7 @@ def aggregate_results(results_queue, num_workers):
             aggregator[key]["metrics_pen"].extend(metrics["metrics_pen"])
 
     return aggregator
+
 
 def finalize_aggregator(aggregator):
     final_output = dict()
@@ -244,7 +256,7 @@ def finalize_aggregator(aggregator):
         avg_map_pen = sum([m["map"] for m in pen_metrics]) / len(pen_metrics)
         avg_map_50_pen = sum([m["map_50"] for m in pen_metrics]) / len(pen_metrics)
         avg_map_75_pen = sum([m["map_75"] for m in pen_metrics]) / len(pen_metrics)
-        
+
         avg_map = sum([m["map"] for m in no_pen_metrics]) / len(no_pen_metrics)
         avg_map_50 = sum([m["map_50"] for m in no_pen_metrics]) / len(no_pen_metrics)
         avg_map_75 = sum([m["map_75"] for m in no_pen_metrics]) / len(no_pen_metrics)
@@ -270,6 +282,7 @@ def finalize_aggregator(aggregator):
     # pprint(f"Finalizing done: {final_output}")
     return final_output
 
+
 def is_gpu_available(id: int = 0, p: float = 0.8) -> bool:
     """
     Check if a GPU on the specified device ID has at least p% memory available.
@@ -289,7 +302,7 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "-d", 
+        "-d",
         "--dataset",
         type=str,
         default="nuimages",
@@ -331,14 +344,16 @@ def main():
             datasets.append(
                 lambda split=split: Bdd100kDataset(
                     split=split,
-                    transform=lambda i, l: yolo_bdd_transform(i, l, new_shape=(768, 1280)),
+                    transform=lambda i, l: yolo_bdd_transform(
+                        i, l, new_shape=(768, 1280)
+                    ),
                     use_original_categories=False,
                     use_extended_annotations=False,
                 )
             )
 
     confs = [float(c) for c in np.arange(0.05, 0.90, 0.05)]
-    
+
     # 2) Prepare models
     models = [
         (yolo_v10x, "yolo_v10x"),
@@ -354,25 +369,28 @@ def main():
         active_pairs = []
 
         # work_queues = [Queue(num_cpu_workers*3) for _ in range(len(models))]
-        work_queue = Queue(num_cpu_workers*3*len(models))
+        work_queue = Queue(num_cpu_workers * 3 * len(models))
         results_queue = Queue()
 
-        for (model, model_name) in models:
+        for model, model_name in models:
             # work_queue = Queue(num_cpu_workers*3)
             # results_queue = Queue()
 
             cpu_workers = [
-                consumer.remote(work_queue, results_queue, confs) for _ in range(num_cpu_workers)
+                consumer.remote(work_queue, results_queue, confs)
+                for _ in range(num_cpu_workers)
             ]
 
             label = f"{model_name}-{str(dfn())}"
-            active_pairs.append({
-                "pair_label": label,
-                "cpu_workers": cpu_workers,
-                # "gpu_workers": gpu_workers,
-                # "work_queue": work_queue,
-                "results_queue": results_queue,
-            })
+            active_pairs.append(
+                {
+                    "pair_label": label,
+                    "cpu_workers": cpu_workers,
+                    # "gpu_workers": gpu_workers,
+                    # "work_queue": work_queue,
+                    "results_queue": results_queue,
+                }
+            )
 
         gpu_workers = [
             producer.remote(
@@ -387,8 +405,10 @@ def main():
         # all_gpu_workers = [gpu_worker for p in active_pairs for gpu_worker in p["gpu_workers"]]
         # ray.get(all_gpu_workers)
         gc.collect()
-        
-        all_cpu_workers = [cpu_worker for p in active_pairs for cpu_worker in p["cpu_workers"]]
+
+        all_cpu_workers = [
+            cpu_worker for p in active_pairs for cpu_worker in p["cpu_workers"]
+        ]
         ray.get(all_cpu_workers)
         gc.collect()
         for pair in active_pairs:

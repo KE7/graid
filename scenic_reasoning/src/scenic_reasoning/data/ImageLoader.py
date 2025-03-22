@@ -1251,7 +1251,7 @@ class WaymoDataset(ImageDataset):
                     save_path = (
                         project_root_dir()
                         / "data"
-                        / f"waymo__{self.split}"
+                        / f"waymo_{self.split}"
                         / f"{idx}.pkl"
                     )
                     save_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1323,7 +1323,7 @@ class WaymoDataset(ImageDataset):
         )
 
     def __len__(self) -> int:
-        save_path = project_root_dir() / "data" / f"waymo__{self.split}"
+        save_path = project_root_dir() / "data" / f"waymo_{self.split}"
         return len(os.listdir(save_path))
         # return len(self.img_labels)
 
@@ -1334,7 +1334,7 @@ class WaymoDataset(ImageDataset):
                 f"Index {idx} out of range for dataset with {len(self.img_labels)} samples."
             )
 
-        save_path = project_root_dir() / "data" / f"waymo__{self.split}"
+        save_path = project_root_dir() / "data" / f"waymo_{self.split}"
         file_path = os.path.join(save_path, f"{idx}.pkl")
         with open(file_path, "rb") as f:
             img_data = pickle.load(f)

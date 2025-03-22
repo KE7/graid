@@ -1,16 +1,17 @@
-from sqlitedict import SqliteDict
-from scenic_reasoning.utilities.common import project_root_dir
-import sqlite3
-import pandas as pd
-import json
-from vlms import GPT, Qwen, Llama
-from metrics import LLMJudge, ConstraintDecoding
-from prompts import SetOfMarkPrompt, ZeroShotPrompt
 import argparse
-from tqdm import tqdm
+import json
+import sqlite3
 
+import pandas as pd
+from metrics import ConstraintDecoding, LLMJudge
+from prompts import SetOfMarkPrompt, ZeroShotPrompt
+from scenic_reasoning.utilities.common import project_root_dir
+from sqlitedict import SqliteDict
+from tqdm import tqdm
+from vlms import GPT, Llama, Qwen
 
 DB_PATH = project_root_dir() / "scenic_reasoning/src/scenic_reasoning/data/databases"
+
 
 def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt):
     conn = sqlite3.connect(db_path)
@@ -22,20 +23,22 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt):
     dataframes = {}
     for table in tables:
         df = pd.read_sql(f"SELECT * FROM '{table}'", conn)
-        dataframes[table] = df 
+        dataframes[table] = df
 
     conn.close()
 
     correctness = []
     q_count = 0
     for table in dataframes:
-        for index, row in tqdm(dataframes[table].iterrows(), total=len(dataframes[table])):
-            if q_count >= 1000:
+        for index, row in tqdm(
+            dataframes[table].iterrows(), total=len(dataframes[table])
+        ):
+            if q_count == 1000:
                 break
             d = row.to_dict()
-            image_path, v = d['key'], json.loads(d['value'])
-            qa_list = v['qa_list']
-            if not qa_list or qa_list == 'Question not applicable':
+            image_path, v = d["key"], json.loads(d["value"])
+            qa_list = v["qa_list"]
+            if not qa_list or qa_list == "Question not applicable":
                 continue
 
             questions = [p[0] for p in qa_list]
@@ -55,17 +58,40 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt):
             except:
                 return sum(correctness) / len(correctness), q_count
 
-    
     return sum(correctness) / len(correctness), q_count
-    
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Evaluate VLMs using a SQLite database.")
-    parser.add_argument("--db_name", type=str, default="bdd_val_rtdetr-l.sqlite", help="Path to the SQLite database.")
-    parser.add_argument("--vlm", type=str, default="Llama", choices=["GPT", "Qwen", "Llama"], help="VLM to use for generating answers.")
-    parser.add_argument("--metric", type=str, default="LLMJudge", choices=["LLMJudge", "ConstraintDecoding"], help="Metric to use for evaluating answers.")
-    parser.add_argument("--prompt", type=str, default="ZeroShotPrompt", choices=["SetOfMarkPrompt", "ZeroShotPrompt"], help="Prompt to use for generating questions.")
+    parser = argparse.ArgumentParser(
+        description="Evaluate VLMs using a SQLite database."
+    )
+    parser.add_argument(
+        "--db_name",
+        type=str,
+        default="bdd_val_rtdetr-l.sqlite",
+        help="Path to the SQLite database.",
+    )
+    parser.add_argument(
+        "--vlm",
+        type=str,
+        default="Llama",
+        choices=["GPT", "Qwen", "Llama"],
+        help="VLM to use for generating answers.",
+    )
+    parser.add_argument(
+        "--metric",
+        type=str,
+        default="LLMJudge",
+        choices=["LLMJudge", "ConstraintDecoding"],
+        help="Metric to use for evaluating answers.",
+    )
+    parser.add_argument(
+        "--prompt",
+        type=str,
+        default="ZeroShotPrompt",
+        choices=["SetOfMarkPrompt", "ZeroShotPrompt"],
+        help="Prompt to use for generating questions.",
+    )
 
     args = parser.parse_args()
 
@@ -78,8 +104,10 @@ if __name__ == "__main__":
         my_vlm = Llama()
 
     my_metric = LLMJudge() if args.metric == "LLMJudge" else ConstraintDecoding()
-    my_prompt = SetOfMarkPrompt() if args.prompt == "SetOfMarkPrompt" else ZeroShotPrompt()
-    
+    my_prompt = (
+        SetOfMarkPrompt() if args.prompt == "SetOfMarkPrompt" else ZeroShotPrompt()
+    )
+
     acc, q_count = iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt)
     print(f"Accuracy: {acc}")
     print(f"Total questions: {q_count}")
@@ -87,4 +115,3 @@ if __name__ == "__main__":
     with open(result_file, "w") as f:
         f.write(f"Accuracy: {acc}\n")
         f.write(f"Total questions: {q_count}\n")
-        

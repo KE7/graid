@@ -21,16 +21,26 @@ from scenic_reasoning.utilities.common import (
 )
 from tqdm import tqdm
 
-
 MMDETECTION_PATH = project_root_dir() / "install" / "mmdetection"
 
-GDINO_config = str(MMDETECTION_PATH / "configs/mm_grounding_dino/grounding_dino_swin-l_pretrain_obj365_goldg.py")
-GDINO_checkpoint = str(MMDETECTION_PATH / "checkpoints/grounding_dino_swin-l_pretrain_obj365_goldg-34dcdc53.pth")
+GDINO_config = str(
+    MMDETECTION_PATH
+    / "configs/mm_grounding_dino/grounding_dino_swin-l_pretrain_obj365_goldg.py"
+)
+GDINO_checkpoint = str(
+    MMDETECTION_PATH
+    / "checkpoints/grounding_dino_swin-l_pretrain_obj365_goldg-34dcdc53.pth"
+)
 GDINO = MMdetection_obj(GDINO_config, GDINO_checkpoint)
 # TODO: should we adjust the confidence level?
 
-Co_DETR_config = str(MMDETECTION_PATH / "projects/CO-DETR/configs/codino/co_dino_5scale_swin_l_lsj_16xb1_3x_coco.py")
-Co_DETR_checkpoint = str(MMDETECTION_PATH / "checkpoints/co_dino_5scale_lsj_swin_large_1x_coco-3af73af2.pth")
+Co_DETR_config = str(
+    MMDETECTION_PATH
+    / "projects/CO-DETR/configs/codino/co_dino_5scale_swin_l_lsj_16xb1_3x_coco.py"
+)
+Co_DETR_checkpoint = str(
+    MMDETECTION_PATH / "checkpoints/co_dino_5scale_lsj_swin_large_1x_coco-3af73af2.pth"
+)
 Co_DETR = MMdetection_obj(Co_DETR_config, Co_DETR_checkpoint)
 # use the second score threshold
 

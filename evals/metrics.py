@@ -1,27 +1,33 @@
-from dotenv import load_dotenv
 import os
 import re
-from guidance import image, models, gen
+
 import outlines
+from dotenv import load_dotenv
+from guidance import gen, image, models
+
 
 class EvaluationMetric:
     """Base class for different evaluation metrics."""
+
     def evaluate(self, pred, gt):
         """Abstract method to be implemented by subclasses."""
         raise NotImplementedError("Each subclass must implement this method.")
+
 
 class ExactMatch(EvaluationMetric):
     def evaluate(self, pred, gt):
         return 1.0 if pred.strip().lower() == gt.strip().lower() else 0.0
 
+
 class LLMJudge(EvaluationMetric):
     """LLM-as-a-judge evaluation metric."""
+
     def __init__(self, llm_model="gpt-4"):
         from openai import OpenAI
+
         load_dotenv()
         OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
         self.client = OpenAI(api_key=OPENAI_API_KEY)
-
 
     def evaluate(self, preds, gts):
 
@@ -58,23 +64,27 @@ class LLMJudge(EvaluationMetric):
             model="gpt-4o",
             messages=[
                 {"role": "developer", "content": "You are a helpful assistant."},
-                {"role": "user", "content": prompt}
-            ]
-            )
+                {"role": "user", "content": prompt},
+            ],
+        )
 
         response = completion.choices[0].message.content
-        response = re.sub(r'\b\d+\.', '', response)    # remove numbers followed by a period
-        numbers = re.findall(r'\d+', response)
+        response = re.sub(
+            r"\b\d+\.", "", response
+        )  # remove numbers followed by a period
+        numbers = re.findall(r"\d+", response)
         correctness = [int(num) for num in numbers]
 
         return correctness
 
+
 class ConstraintDecoding(EvaluationMetric):
     """Constraint decoding metric."""
+
     def __init__(self):
 
         model_name = "HuggingFaceTB/SmolLM2-360M-Instruct"
-        print(f'downloading {model_name}')
+        print(f"downloading {model_name}")
         self.model = outlines.models.transformers(model_name)
 
     def evaluate(self, pred, gt):
@@ -97,8 +107,7 @@ class ConstraintDecoding(EvaluationMetric):
         correctness = generator(prompt)
 
         import pdb
+
         pdb.set_trace()
 
-        return correctness == '1'
-
-
+        return correctness == "1"
