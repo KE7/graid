@@ -88,6 +88,7 @@ if __name__ == "__main__":
         default="none",
         help="Select which model to use: 'rtdetr' or 'none'.",
     )
+
     args = parser.parse_args()
 
     # https://github.com/ray-project/ray/issues/3899
@@ -102,7 +103,7 @@ if __name__ == "__main__":
     # models = [None]
     # confs = [c for c in np.arange(0.05, 0.90, 0.05)]
     confs = [0.8]
-    datasets = ["nuimage"]
+    datasets = ["bdd", "nuimage"]
 
     tasks = []
 

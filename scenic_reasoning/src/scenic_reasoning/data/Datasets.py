@@ -27,7 +27,7 @@ lock = threading.Lock()
 
 
 class ObjDectDatasetBuilder(Dataset):
-    DEFAULT_DB_PATH = project_root_dir() / "data" / "databases2"
+    DEFAULT_DB_PATH = project_root_dir() / "data" / "database_new"
 
     def __init__(
         self,
@@ -38,10 +38,6 @@ class ObjDectDatasetBuilder(Dataset):
     ):
         self.split = split
         self.questions = ALL_QUESTIONS
-        self.questions.append(Quadrants(2, 2))
-        self.questions.append(Quadrants(2, 3))
-        self.questions.append(Quadrants(3, 2))
-        self.questions.append(Quadrants(3, 3))
 
         self.writer_queue = queue.Queue()
 
@@ -272,7 +268,7 @@ class ObjDectDatasetBuilder(Dataset):
                 num_workers=8,
             )
 
-            max_workers = 50
+            max_workers = 10
             inflight_futures = []
 
             writer_thread = threading.Thread(target=buffered_writer, daemon=True)

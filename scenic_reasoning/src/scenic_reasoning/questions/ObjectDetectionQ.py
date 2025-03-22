@@ -1622,4 +1622,10 @@ ALL_QUESTIONS = [
     MostClusteredObjects(),
     WhichMore(),
     AreMore(),
+    Quadrants(2, 2),
+    Quadrants(2, 3),
+    Quadrants(3, 2),
+    Quadrants(3, 3),
+    LeftMostWidthVsHeight(),
+    RightMostWidthVsHeight()
 ]
