@@ -50,7 +50,7 @@ class Yolo(ObjectDetectionModelI):
         if isinstance(image, np.ndarray):
             # Convert numpy array to tensor
             image = torch.from_numpy(image).float()
-        
+
         if len(image.shape) == 3:
             # If image is a single image, add batch dimension
             image = image.unsqueeze(0)
@@ -137,10 +137,7 @@ class Yolo(ObjectDetectionModelI):
             detections in a particular image.
         """
         return self.identify_for_image(
-            image=image,
-            debug=debug,
-            verbose=verbose,
-            **kwargs
+            image=image, debug=debug, verbose=verbose, **kwargs
         )
 
     def identify_for_video(

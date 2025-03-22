@@ -36,8 +36,6 @@ class MMdetection_obj(ObjectDetectionModelI):
         # set class_agnostic to True to avoid overlaps: https://github.com/open-mmlab/mmdetection/issues/6254
         self._model.test_cfg.rcnn.nms.class_agnostic = True
 
-        
-
     def collect_env(self):
         """Collect the information of the running environments."""
         env_info = collect_base_env()
@@ -111,7 +109,7 @@ class MMdetection_obj(ObjectDetectionModelI):
 
     def identify_for_image_batch(
         self,
-        image: Union[ np.ndarray, torch.Tensor],
+        image: Union[np.ndarray, torch.Tensor],
         debug: bool = False,
         **kwargs,
     ) -> List[List[ObjectDetectionResultI]]:
@@ -168,7 +166,6 @@ class MMdetection_obj(ObjectDetectionModelI):
                     Image.fromarray(curr_img), all_objects[i]
                 )
         return all_objects
-        
 
     def identify_for_video(
         self,

@@ -1,9 +1,11 @@
-import json
 import argparse
+import json
+
 import ray
 from scenic_reasoning.data.Datasets import ObjDectDatasetBuilder
 from scenic_reasoning.models.Detectron import Detectron_obj
 from scenic_reasoning.models.Ultralytics import RT_DETR, Yolo
+
 # from scenic_reasoning.models.MMDetection import MMdetection_obj
 from scenic_reasoning.utilities.common import (
     get_default_device,
@@ -45,7 +47,7 @@ rtdetr = RT_DETR("rtdetr-l.pt")
 # Co_DETR = MMdetection_obj(Co_DETR_config, Co_DETR_checkpoint)
 
 
-BATCH_SIZE = 16
+BATCH_SIZE = 64
 
 
 # @ray.remote(num_gpus=1)
@@ -67,23 +69,26 @@ def generate_db(dataset_name, split, conf, model=None):
         print("no such dataset")
         return
 
-    db_builder = ObjDectDatasetBuilder(split=split, dataset=dataset_name, db_name=db_name, transform=transform)
+    db_builder = ObjDectDatasetBuilder(
+        split=split, dataset=dataset_name, db_name=db_name, transform=transform
+    )
     if not db_builder.is_built():
         db_builder.build(model=model, batch_size=BATCH_SIZE)
-    
+
 
 if __name__ == "__main__":
 
-    parser = argparse.ArgumentParser(description="Distributed dataset generator with Ray.")
+    parser = argparse.ArgumentParser(
+        description="Distributed dataset generator with Ray."
+    )
     parser.add_argument(
         "--model",
         type=str,
         choices=["rtdetr", "none"],
         default="none",
-        help="Select which model to use: 'rtdetr' or 'none'."
+        help="Select which model to use: 'rtdetr' or 'none'.",
     )
     args = parser.parse_args()
-
 
     # https://github.com/ray-project/ray/issues/3899
     # ray.init(_temp_dir='/tmp/ray/graid')
@@ -97,8 +102,8 @@ if __name__ == "__main__":
     # models = [None]
     # confs = [c for c in np.arange(0.05, 0.90, 0.05)]
     confs = [0.8]
-    datasets = ["waymo"]
-    
+    datasets = ["nuimage"]
+
     tasks = []
 
     for d in datasets:
@@ -107,9 +112,8 @@ if __name__ == "__main__":
             task_train = generate_db(d, "train", conf, model=model)
             # generate_db(d, "val", conf, model=model)
             # generate_db(d, "train", conf, model=model)
-            
+
             tasks.append(task_val)
             tasks.append(task_train)
-                
 
     results = ray.get(tasks)
