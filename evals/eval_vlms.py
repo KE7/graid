@@ -30,7 +30,7 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt):
     q_count = 0
     for table in dataframes:
         for index, row in tqdm(dataframes[table].iterrows(), total=len(dataframes[table])):
-            if q_count == 1000:
+            if q_count >= 1000:
                 break
             d = row.to_dict()
             image_path, v = d['key'], json.loads(d['value'])
