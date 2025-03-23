@@ -58,7 +58,7 @@ def main():
 
     db_name = args.db_name
     DB_PATH = (
-        project_root_dir() / "scenic_reasoning/src/scenic_reasoning/data/databases"
+        project_root_dir() / "data/databases3"
     )
     db_path = DB_PATH / db_name
 

@@ -52,7 +52,7 @@ def choose_best(camera_image_files, split):
         raise FileNotFoundError(f"No parquet image files found in {camera_img_dir}")
 
     data = {}
-    for image_file in tqdm(camera_image_files, desc="Processing images"):
+    for i, image_file in enumerate(tqdm(camera_image_files, desc="Processing images")):
         box_file = image_file.replace("camera_image", "camera_box")
         image_path = camera_img_dir / image_file
         box_path = camera_box_dir / box_file
@@ -131,6 +131,7 @@ def choose_best(camera_image_files, split):
             "score": best_score,
             "image": base64.b64encode(image).decode("utf-8"),
             "bboxes": bboxes,
+            "index": i + idx
         }
 
     output_file = f"{split}_best_frames.json"

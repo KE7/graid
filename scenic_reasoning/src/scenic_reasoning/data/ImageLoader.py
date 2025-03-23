@@ -666,56 +666,59 @@ class NuImagesDataset(ImageDataset):
         #             # delete the file and reprocess
         #             cache_path.unlink()
         #             img_labels = []
-        # if reprocess:
-        #     empty_count = 0
-        #     img_labels = []
-        #     for i in tqdm(
-        #         range(len(self.nuim.sample)),
-        #         desc="Processing NuImage dataset...",  # len(self.nuim.sample)
-        #     ):
-        #         # see: https://www.nuscenes.org/tutorials/nuimages_tutorial.html
-        #         sample = self.nuim.sample[i]
-        #         sample_token = sample["token"]
-        #         key_camera_token = sample["key_camera_token"]
-        #         object_tokens, surface_tokens = self.nuim.list_anns(
-        #             sample_token, verbose=False
-        #         )  # verbose off to avoid excessive print statement
-        #         if object_tokens == []:
-        #             empty_count += 1
-        #             continue
+        idx = 0
+        if reprocess:
+            empty_count = 0
+            img_labels = []
+            for i in tqdm(
+                range(len(self.nuim.sample)),
+                desc="Processing NuImage dataset...",  # len(self.nuim.sample)
+            ):
+                # see: https://www.nuscenes.org/tutorials/nuimages_tutorial.html
+                sample = self.nuim.sample[i]
+                sample_token = sample["token"]
+                key_camera_token = sample["key_camera_token"]
+                object_tokens, surface_tokens = self.nuim.list_anns(
+                    sample_token, verbose=False
+                )  # verbose off to avoid excessive print statement
+                if object_tokens == []:
+                    empty_count += 1
+                    continue
 
-        #         object_data = []
-        #         for object_token in object_tokens:
-        #             obj = self.nuim.get("object_ann", object_token)
-        #             category_token = obj["category_token"]
-        #             attribute_tokens = obj["attribute_tokens"]
-        #             attributes = []
-        #             for attribute_token in attribute_tokens:
-        #                 attribute = self.nuim.get("attribute", attribute_token)
-        #                 attributes.append(attribute)
+                object_data = []
+                for object_token in object_tokens:
+                    obj = self.nuim.get("object_ann", object_token)
+                    category_token = obj["category_token"]
+                    attribute_tokens = obj["attribute_tokens"]
+                    attributes = []
+                    for attribute_token in attribute_tokens:
+                        attribute = self.nuim.get("attribute", attribute_token)
+                        attributes.append(attribute)
 
-        #             category = self.nuim.get("category", category_token)["name"]
-        #             obj["category"] = category
-        #             obj["attributes"] = attributes
-        #             object_data.append(obj)
+                    category = self.nuim.get("category", category_token)["name"]
+                    obj["category"] = category
+                    obj["attributes"] = attributes
+                    object_data.append(obj)
 
-        #         sample_data = self.nuim.get("sample_data", key_camera_token)
-        #         img_filename = sample_data["filename"]
-        #         timestamp = sample_data["timestamp"]
+                sample_data = self.nuim.get("sample_data", key_camera_token)
+                img_filename = sample_data["filename"]
+                timestamp = sample_data["timestamp"]
 
-        #         save_path = project_root_dir() / "data" / f"nuimages_{self.split}" / f"{i}.pkl"
-        #         save_path.parent.mkdir(parents=True, exist_ok=True)
-        #         if not save_path.exists():
-        #             print("creating idx... ", i)
-        #             with open(save_path, "wb") as f:
-        #                 pickle.dump({
-        #                     "filename": img_filename,
-        #                     "labels": object_data,
-        #                     "timestamp": timestamp,
-        #                 }, f)
-        #             os.chmod(save_path, 0o777)
-        #         else:
-        #             print("exists", i)
+                save_path = project_root_dir() / "data" / f"nuimages_{self.split}" / f"{idx}.pkl"
+                save_path.parent.mkdir(parents=True, exist_ok=True)
+                if not save_path.exists():
+                    print("creating idx... ", idx)
+                    with open(save_path, "wb") as f:
+                        pickle.dump({
+                            "filename": img_filename,
+                            "labels": object_data,
+                            "timestamp": timestamp,
+                        }, f)
+                    os.chmod(save_path, 0o777)
+                else:
+                    print("exists", idx)
+                
+                idx += 1
 
 
                 # img_labels.append(
@@ -728,9 +731,9 @@ class NuImagesDataset(ImageDataset):
 
                 # TODO: add error catching logic in case of empty token or token mismatch.
 
-            # print(
-            #     f"{split} has {empty_count} out of {len(self.nuim.sample)} empty samples."
-            # )
+            print(
+                f"{split} has {empty_count} out of {len(self.nuim.sample)} empty samples."
+            )
 
             # if not cache_path.parent.exists():
             #     cache_path.parent.mkdir(parents=True, exist_ok=True)
