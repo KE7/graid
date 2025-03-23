@@ -33,8 +33,9 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt):
         for index, row in tqdm(
             dataframes[table].iterrows(), total=len(dataframes[table])
         ):
-            if q_count == 1000:
-                break
+            if q_count >= 1000:
+                return sum(correctness) / len(correctness), q_count
+                
             d = row.to_dict()
             image_path, v = d["key"], json.loads(d["value"])
             qa_list = v["qa_list"]
