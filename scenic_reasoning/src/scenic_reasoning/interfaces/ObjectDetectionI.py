@@ -413,16 +413,20 @@ class ObjectDetectionUtils:
             score = metric.compute()
             score["TN"] = 0
             for p, t in zip(preds, targets):
-                if p["boxes"].shape == torch.Size([0]) and t["boxes"].shape == torch.Size([0]):
+                if p["boxes"].shape == torch.Size([0]) and t[
+                    "boxes"
+                ].shape == torch.Size([0]):
                     score["TN"] += 1
             metric.reset()
             del metric
             return score
-        
+
         else:
             tn = 0
             for p, t in zip(preds, targets):
-                if p["boxes"].shape == torch.Size([0]) and t["boxes"].shape == torch.Size([0]):
+                if p["boxes"].shape == torch.Size([0]) and t[
+                    "boxes"
+                ].shape == torch.Size([0]):
                     tn += 1
             return {"TN": tn}
 

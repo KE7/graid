@@ -33,8 +33,8 @@ from torchmetrics.detection.mean_ap import MeanAveragePrecision
 from tqdm import tqdm
 
 allowed_gpus = [0, 1, 2, 3, 5, 6]
-num_cpu_workers = 1 # must be one 
-BATCH_SIZE = 32
+num_cpu_workers = 1  # must be one
+BATCH_SIZE = 16
 logger = logging.getLogger("ray")
 
 yolo_v10x = Yolo(model="yolov10x.pt")  # 61.4 Mb
@@ -60,13 +60,11 @@ faster_rcnn_R_50_FPN_3x = Detectron_obj(
 def producer(
     model: ObjectDetectionModelI,
     model_name: str,
-    dataset_fn: Callable[[], ImageDataset],
+    dataset: ImageDataset,
     work_queue: Queue,
     batch_size: int,
     seed: int = 7,
 ):
-    dataset = dataset_fn()
-
     torch.manual_seed(seed)
     gen = torch.Generator()
     gen.manual_seed(seed)
@@ -88,13 +86,8 @@ def producer(
     # for i, (model, model_name) in enumerate(models):
     #     model.to("cuda:" + str(i))
 
-    for i, batch in enumerate(
-        tqdm(dataloader, desc="Processing " + str(dataset), total=100)
-    ):
+    for i, batch in enumerate(tqdm(dataloader, desc="Processing " + str(dataset))):
         print(f"[GPU Task] Processing batch {i}")
-        # if i >= 100:
-        #     print(f"[GPU Task] Finished processing {i} batches")
-        #     break
         images = [sample["image"] for sample in batch]
         # x = torch.stack(images).to(get_default_device())
         x = torch.stack(images)
@@ -123,8 +116,7 @@ def producer(
         f"[GPU Task] Finished inference: {dataset}, {model_name} in {end_time - start_time:.2f} seconds"
     )
     # for work_queue in work_queues:
-    for _ in range(num_cpu_workers * 3):
-        work_queue.put(None)  # Signal completion
+    work_queue.put(None)  # Signal completion
 
     torch.cuda.empty_cache()
     del dataset
@@ -140,7 +132,7 @@ def consumer(
     assigned_dataset: str,
     assigned_model: str,
 ):
-    tracemalloc.start()
+    # tracemalloc.start()
     # metric = MeanAveragePrecision(
     #     class_metrics=True,
     #     extended_summary=True,
@@ -169,7 +161,7 @@ def consumer(
         )
         item = work_queue.get()
         print(
-            f"[CPU Task] Received batch item. Work queue remaining size: {work_queue.qsize()}"
+            f"[CPU Task] Received batch workable-item ({item != None}). Work queue remaining size: {work_queue.qsize()}"
         )
         if item is None:
             break
@@ -179,15 +171,19 @@ def consumer(
         )
         dataset = item["dataset"]
         model_name = item["model"]
-        assert dataset == assigned_dataset, f"Dataset mismatch: {dataset} != {assigned_dataset}"
-        assert model_name == assigned_model, f"Model mismatch: {model_name} != {assigned_model}"
+        assert (
+            dataset == assigned_dataset
+        ), f"Dataset mismatch: {dataset} != {assigned_dataset}"
+        assert (
+            model_name == assigned_model
+        ), f"Model mismatch: {model_name} != {assigned_model}"
         gt_list = item["gt"]
         odrs_list = item["odrs"]
         images = item["images"]
 
         for conf in confs:
             for image, odrs, gt in zip(images, odrs_list, gt_list):
-                key = (dataset, model_name, conf)
+                # key = (dataset, model_name, conf)
                 index = len(odrs)
                 for i, o in enumerate(odrs):
                     if o.score < conf:
@@ -229,7 +225,7 @@ def consumer(
         del item
         # gc.collect()
 
-    snapshot = tracemalloc.take_snapshot()
+    # snapshot = tracemalloc.take_snapshot()
     # import sys
     # for k, data in results.items():
     #     no_pen_list_size = sys.getsizeof(data["metrics_no_pen"])
@@ -237,17 +233,16 @@ def consumer(
     #     print(f"{k}: metrics_no_pen size={no_pen_list_size/1024/1024:.2f} MB, metrics_pen size={pen_list_size/1024/1024:.2f} MB")
 
     # here is where we would call metric.compute
-    
+
     # results_queue.put(
     #     results
     # )
     no_pen_scores = defaultdict(dict)
     pen_scores = defaultdict(dict)
-    for conf in confs:
+    for conf in tqdm(confs, desc="Computing COCO metrics..."):
         no_pen_scores[conf] = metrics_no_pen[conf].compute()
-        no_pen_scores[conf]["TN"] = true_negs[conf]     
+        no_pen_scores[conf]["TN"] = true_negs[conf]
         pen_scores[conf] = metrics_with_pen[conf].compute()
-        pen_scores[conf]["TN"] = true_negs[conf]
         metrics_no_pen[conf].reset()
         metrics_with_pen[conf].reset()
         del metrics_no_pen[conf]
@@ -255,18 +250,19 @@ def consumer(
 
     print(f"[CPU Task] Finished processing")
 
-    top_stats = snapshot.statistics('lineno')
-    print("[ Top 10 ]")
-    for stat in top_stats[:10]:
-        print(stat)
+    # top_stats = snapshot.statistics('lineno')
+    # print("[ Top 10 ]")
+    # for stat in top_stats[:10]:
+    #     print(stat)
 
     final_results = dict()
-    final_results[(assigned_dataset, assigned_model)] = {
+    key = f"{assigned_model}-{assigned_dataset}"
+    final_results[key] = {
         "metrics_no_pen": no_pen_scores,
         "metrics_pen": pen_scores,
     }
     results_queue.put(final_results)
-    results_queue.put(None)  # Signal completion
+    # results_queue.put(None)  # Signal completion
 
 
 def aggregate_results(results_queue, num_workers):
@@ -343,6 +339,21 @@ def is_gpu_available(id: int = 0, p: float = 0.8) -> bool:
         return False
 
 
+def convert_for_json(obj):
+    if isinstance(obj, torch.Tensor):
+        return obj.cpu().numpy().tolist()
+    elif isinstance(obj, dict):
+        return {
+            (k if isinstance(k, str) else str(k)): convert_for_json(v)
+            for k, v in obj.items()
+        }
+    elif isinstance(obj, (list, tuple)):
+        return [convert_for_json(item) for item in obj]
+    elif hasattr(obj, "__dict__"):
+        return obj.__dict__
+    return obj
+
+
 def main():
     ray.init()
 
@@ -367,7 +378,7 @@ def main():
         for split in ["val"]:
             for size in ["all"]:
                 datasets.append(
-                    lambda split=split, size=size: NuImagesDataset(
+                    NuImagesDataset(
                         split=split,
                         size=size,
                         transform=lambda i, l: yolo_nuscene_transform(
@@ -379,7 +390,7 @@ def main():
     elif dataset == "waymo":
         for split in ["validation"]:
             datasets.append(
-                lambda split=split: WaymoDataset(
+                WaymoDataset(
                     split=split,
                     transform=lambda i, l: yolo_waymo_transform(i, l, (1280, 1920)),
                 )
@@ -388,7 +399,7 @@ def main():
     elif dataset == "bdd100k":
         for split in ["val"]:
             datasets.append(
-                lambda split=split: Bdd100kDataset(
+                Bdd100kDataset(
                     split=split,
                     transform=lambda i, l: yolo_bdd_transform(
                         i, l, new_shape=(768, 1280)
@@ -412,33 +423,35 @@ def main():
     # final_output = dict()
     work_queues = dict()
     gpu_workers = []
+    results_queue = Queue()
 
-    for dfn in datasets:
+    for dataset in datasets:
         active_pairs = []
 
         # work_queues = [Queue(num_cpu_workers * 3) for _ in range(len(models))]
         # work_queue = Queue(num_cpu_workers * 3 * len(models))
-        results_queue = Queue()
 
         for model, model_name in models:
             # work_queue = Queue(num_cpu_workers*3)
             # results_queue = Queue()
             current_work_queue = Queue(num_cpu_workers * 10)
-            work_queues[(model_name, str(dfn()))] = current_work_queue
+            work_queues[(model_name, str(dataset))] = current_work_queue
 
             cpu_workers = [
-                consumer.remote(current_work_queue, results_queue, confs, str(dfn()), model_name)
+                consumer.remote(
+                    current_work_queue, results_queue, confs, str(dataset), model_name
+                )
                 for _ in range(num_cpu_workers)
             ]
 
-            label = f"{model_name}-{str(dfn())}"
+            label = f"{model_name}-{str(dataset)}"
             active_pairs.append(
                 {
                     "pair_label": label,
                     "cpu_workers": cpu_workers,
                     # "gpu_workers": gpu_workers,
                     # "work_queue": work_queue,
-                    "results_queue": results_queue,
+                    # "results_queue": results_queue,
                 }
             )
 
@@ -446,7 +459,7 @@ def main():
                 producer.remote(
                     model,
                     model_name,
-                    dfn,
+                    dataset,
                     current_work_queue,
                     BATCH_SIZE,
                 )
@@ -470,16 +483,14 @@ def main():
             cpu_worker for p in active_pairs for cpu_worker in p["cpu_workers"]
         ]
         ray.get(all_cpu_workers)
+        print("All CPU workers finished.")
         gc.collect()
         for pair in active_pairs:
             # result = aggregate_results(pair["results_queue"], num_cpu_workers)
             # final_output = finalize_aggregator(result)
-            result = pair["results_queue"].get()
+            result = results_queue.get()
             with open(f"{pair['pair_label']}.json", "w") as f:
-                json.dump(result, f, indent=2)
-
-        del dfn
-        gc.collect()
+                json.dump(convert_for_json(result), f, indent=2)
 
     # for k, v in final_output.items():
     #     with open(f"{k}.json", "w") as f:

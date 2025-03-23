@@ -211,7 +211,7 @@ class ObjDectDatasetBuilder(Dataset):
                 image = Image.fromarray(image.astype(np.uint8))
                 # image.show()  # for debugging
                 name = f"{int(base_idx + j)}.pkl"
-                print(f"Processing {name}...")
+                # print(f"Processing {name}...")
                 for question in self.questions:
                     table_name = str(question)
                     if question.is_applicable(image, lbl):
@@ -271,7 +271,7 @@ class ObjDectDatasetBuilder(Dataset):
             max_workers = 10
             inflight_futures = []
 
-            writer_thread = threading.Thread(target=buffered_writer, daemon=True)
+            writer_thread = threading.Thread(target=writer, daemon=True)
             writer_thread.start()
 
             with ThreadPoolExecutor(max_workers=max_workers) as executor:

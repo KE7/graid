@@ -106,8 +106,4 @@ class ConstraintDecoding(EvaluationMetric):
         generator = outlines.generate.choice(self.model, ["0", "1"])
         correctness = generator(prompt)
 
-        import pdb
-
-        pdb.set_trace()
-
         return correctness == "1"

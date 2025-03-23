@@ -1,20 +1,15 @@
 import argparse
-import json
 
-import ray
 from scenic_reasoning.data.Datasets import ObjDectDatasetBuilder
 from scenic_reasoning.models.Detectron import Detectron_obj
 from scenic_reasoning.models.Ultralytics import RT_DETR, Yolo
 
 # from scenic_reasoning.models.MMDetection import MMdetection_obj
 from scenic_reasoning.utilities.common import (
-    get_default_device,
-    project_root_dir,
     yolo_bdd_transform,
     yolo_nuscene_transform,
     yolo_waymo_transform,
 )
-from tqdm import tqdm
 
 bdd_transform = lambda i, l: yolo_bdd_transform(i, l, new_shape=(768, 1280))
 nuimage_transform = lambda i, l: yolo_nuscene_transform(i, l, new_shape=(896, 1600))
@@ -109,12 +104,10 @@ if __name__ == "__main__":
 
     for d in datasets:
         for conf in confs:
-            task_val = generate_db(d, "val", conf, model=model)
+            # task_val = generate_db(d, "val", conf, model=model)
             task_train = generate_db(d, "train", conf, model=model)
             # generate_db(d, "val", conf, model=model)
             # generate_db(d, "train", conf, model=model)
 
-            tasks.append(task_val)
-            tasks.append(task_train)
-
-    results = ray.get(tasks)
+            # tasks.append(task_val)
+            # tasks.append(task_train)

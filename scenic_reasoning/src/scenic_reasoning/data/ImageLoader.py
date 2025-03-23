@@ -305,6 +305,7 @@ class Bdd100kDataset(ImageDataset):
         split: Literal["train", "val", "test"] = "train",
         use_original_categories: bool = True,
         use_extended_annotations: bool = True,
+        rebuild: bool = False,
         **kwargs,
     ):
         self.split = split
@@ -376,44 +377,48 @@ class Bdd100kDataset(ImageDataset):
         # finally, filter out following labels
         #   'other person', 'other vehicle' and 'trail'
         # because they are uncertain objects: https://github.com/bdd100k/bdd100k/blob/master/bdd100k/common/typing.py#L4
-        # self.img_labels = [
-        #     label
-        #     for label in self.img_labels
-        #     if not any(
-        #         filter(
-        #             lambda l: l["category"]
-        #             in ["other person", "other vehicle", "trail", "trailer"],
-        #             label.get("labels", []),
-        #         )
-        #     )
-        #     and "labels" in label
-        # ]
+        self.img_labels = [
+            label
+            for label in self.img_labels
+            if not any(
+                filter(
+                    lambda l: l["category"]
+                    in ["other person", "other vehicle", "trail", "trailer"],
+                    label.get("labels", []),
+                )
+            )
+            and "labels" in label
+        ]
 
         # Save each element of the img_labels as its own pickle file
         save_dir = project_root_dir() / "data" / f"bdd_{self.split}"
         save_dir.mkdir(parents=True, exist_ok=True)
+        os.chmod(save_dir, 0o777)
 
-        # for idx, label in tqdm(enumerate(self.img_labels), total=len(self.img_labels)):
-        #     save_path = save_dir / f"{idx}.pkl"
-        #     if not save_path.exists():
-        #         print("creating idx... ", idx)
-        #         with open(save_path, "wb") as f:
-        #             pickle.dump({
-        #                 "name": label["name"],
-        #                 "labels": label["labels"],
-        #                 "timestamp": label["timestamp"],
-        #             }, f)
-        #             os.chmod(save_path, 0o777)
-        #     else:
-        #         print("exists", idx)
-
+        if rebuild:
+            for idx, label in tqdm(
+                enumerate(self.img_labels),
+                total=len(self.img_labels),
+                desc="Pre-Processing BDD100K dataset...",
+            ):
+                save_path = save_dir / f"{idx}.pkl"
+                print("creating idx... ", idx)
+                with open(save_path, "wb") as f:
+                    pickle.dump(
+                        {
+                            "name": label["name"],
+                            "labels": label["labels"],
+                            "timestamp": label["timestamp"],
+                        },
+                        f,
+                    )
+                    os.chmod(save_path, 0o777)
 
     def __len__(self) -> int:
         save_path = project_root_dir() / "data" / f"bdd_{self.split}"
         return len(os.listdir(save_path))
 
     def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
-
         save_path = project_root_dir() / "data" / f"bdd_{self.split}" / f"{idx}.pkl"
 
         if not save_path.exists():
@@ -431,9 +436,6 @@ class Bdd100kDataset(ImageDataset):
             image, labels = self.transform(image, labels)
         if self.merge_transform:
             image, labels, timestamp = self.merge_transform(image, labels, timestamp)
-
-        # import pdb
-        # pdb.set_trace()
 
         return {
             "name": self.img_labels[idx]["name"],
@@ -627,6 +629,7 @@ class NuImagesDataset(ImageDataset):
         self,
         split: Literal["train", "val", "test", "mini"] = "val",
         size: Literal["mini", "full"] = "full",
+        rebuild: bool = False,
         **kwargs,
     ):
         from nuimages import NuImages
@@ -654,22 +657,12 @@ class NuImagesDataset(ImageDataset):
             lazy=True,  # verbose off to avoid excessive print statement
         )
 
-        cache_path = root_dir / "processed" / f"img_labels_{split}.json"
-        reprocess = True
-        # if cache_path.exists():
-        #     with open(cache_path, "r") as f:
-        #         try:
-        #             img_labels = json.load(f)
-        #             reprocess = False
-        #             print(f"Loading NuImages {split} split from cache.")
-        #         except json.JSONDecodeError:
-        #             # delete the file and reprocess
-        #             cache_path.unlink()
-        #             img_labels = []
-        idx = 0
-        if reprocess:
+        if rebuild:
+            save_path_parent = project_root_dir() / "data" / f"nuimages_{self.split}"
+            save_path_parent.mkdir(parents=True, exist_ok=True)
+            os.chmod(save_path_parent, 0o777)
+
             empty_count = 0
-            img_labels = []
             for i in tqdm(
                 range(len(self.nuim.sample)),
                 desc="Processing NuImage dataset...",  # len(self.nuim.sample)
@@ -704,47 +697,24 @@ class NuImagesDataset(ImageDataset):
                 img_filename = sample_data["filename"]
                 timestamp = sample_data["timestamp"]
 
-                save_path = project_root_dir() / "data" / f"nuimages_{self.split}" / f"{idx}.pkl"
-                save_path.parent.mkdir(parents=True, exist_ok=True)
-                if not save_path.exists():
-                    print("creating idx... ", idx)
-                    with open(save_path, "wb") as f:
-                        pickle.dump({
+                save_path = save_path_parent / f"{i}.pkl"
+                print("creating idx... ", i)
+                with open(save_path, "wb") as f:
+                    pickle.dump(
+                        {
                             "filename": img_filename,
                             "labels": object_data,
                             "timestamp": timestamp,
-                        }, f)
-                    os.chmod(save_path, 0o777)
-                else:
-                    print("exists", idx)
-                
-                idx += 1
-
-
-                # img_labels.append(
-                #     {
-                #         "filename": img_filename,
-                #         "labels": object_data,
-                #         "timestamp": timestamp,
-                #     }
-                # )
+                        },
+                        f,
+                    )
+                os.chmod(save_path, 0o777)
 
                 # TODO: add error catching logic in case of empty token or token mismatch.
 
             print(
                 f"{split} has {empty_count} out of {len(self.nuim.sample)} empty samples."
             )
-
-            # if not cache_path.parent.exists():
-            #     cache_path.parent.mkdir(parents=True, exist_ok=True)
-
-            # logger.debug(
-            #     f"{split} has {empty_count} out of {len(self.nuim.sample)} empty samples."
-            # )
-            # with open(cache_path, "w") as f:
-            #     json.dump(img_labels, f)
-
-            # os.chmod(cache_path, 0o777)
 
         def merge_transform(
             image: Tensor, labels: List[Dict[str, Any]], timestamp: str
@@ -780,7 +750,6 @@ class NuImagesDataset(ImageDataset):
             return (image, results, attributes, timestamp)
 
         super().__init__(
-            # img_labels=img_labels,
             img_dir=img_dir,
             merge_transform=merge_transform,
             **kwargs,
@@ -796,7 +765,9 @@ class NuImagesDataset(ImageDataset):
         #     labels = self.img_labels[idx][0]["labels"]
         #     timestamp = self.img_labels[idx][0]["timestamp"]
         # else:
-        save_path = project_root_dir() / "data" / f"nuimages_{self.split}" / f"{idx}.pkl"
+        save_path = (
+            project_root_dir() / "data" / f"nuimages_{self.split}" / f"{idx}.pkl"
+        )
         if not save_path.exists():
             raise FileNotFoundError(f"File not found: {save_path}")
         with open(save_path, "rb") as f:
@@ -1138,7 +1109,6 @@ class WaymoDataset(ImageDataset):
     def __repr__(self):
         return f"Waymo Dataset {self.split} split with {len(self.img_labels)} images."
 
-    # @persistent_cache(str(project_root_dir() / "data" / "waymo" / "waymo_cache.pkl"))
     def __init__(
         self,
         split: Literal["training", "validation", "testing"] = "training",
@@ -1159,19 +1129,12 @@ class WaymoDataset(ImageDataset):
                 f"Directories not found: {self.camera_img_dir}, {self.camera_box_dir}"
             )
 
-        # Initialize img_labels
         self.img_labels = []
 
-        # Get the camera image files in the directory
         camera_image_files = [
             f for f in os.listdir(self.camera_img_dir) if f.endswith(".parquet")
         ]
 
-        # camera_image_files = camera_image_files[
-        #     :10
-        # ]  # TODO: doing this because using the entire validation gives us memory issue. Need to change later.
-
-        # Check if image files are found
         if not camera_image_files:
             raise FileNotFoundError(
                 f"No parquet image files found in {self.camera_img_dir}"
@@ -1180,8 +1143,12 @@ class WaymoDataset(ImageDataset):
         idx = 0
 
         if rebuild:
+            save_path_parent = project_root_dir() / "data" / f"waymo_{self.split}"
+            save_path_parent.mkdir(parents=True, exist_ok=True)
+            os.chmod(save_path_parent, 0o777)
+
             for image_file in tqdm(
-                camera_image_files, desc="processing Waymo dataset..."
+                camera_image_files, desc="Pre-Processing Waymo dataset..."
             ):
                 box_file = image_file.replace("camera_image", "camera_box")
                 image_path = self.camera_img_dir / image_file
@@ -1251,13 +1218,7 @@ class WaymoDataset(ImageDataset):
                         )
 
                     # Save the current img label according to the idx as a pickle file
-                    save_path = (
-                        project_root_dir()
-                        / "data"
-                        / f"waymo_{self.split}"
-                        / f"{idx}.pkl"
-                    )
-                    save_path.parent.mkdir(parents=True, exist_ok=True)
+                    save_path = save_path_parent / f"{idx}.pkl"
                     if not save_path.exists():
                         print("creating idx... ", idx)
                         with open(save_path, "wb") as f:
@@ -1273,25 +1234,7 @@ class WaymoDataset(ImageDataset):
                                 },
                                 f,
                             )
-                    else:
-                        print("exists", idx)
                     idx += 1
-
-                    # self.img_labels.append(
-                    #     {
-                    #         "name": group_name,
-                    #         "path": f"{image_path}_{group_name[1]}_{group_name[2]}",
-                    #         "image": img_bytes,
-                    #         "labels": labels,
-                    #         "attributes": {},  # empty for now, can adjust later to add more Waymo related attributes info
-                    #         "timestamp": str(frame_timestamp_micros),
-                    #     }
-                    # )
-
-        # if not self.img_labels:
-        #     raise ValueError(
-        #         f"No valid data found in {self.camera_img_dir} and {self.camera_box_dir}"
-        # )
 
         def merge_transform(image, labels, attributes, timestamp):
             results = []
@@ -1342,9 +1285,6 @@ class WaymoDataset(ImageDataset):
         with open(file_path, "rb") as f:
             img_data = pickle.load(f)
 
-        # import pdb
-        # pdb.set_trace()
-        # img_data = self.img_labels[idx]
         img_bytes = img_data["image"]
         labels = img_data["labels"]
         timestamp = img_data["timestamp"]

@@ -4,7 +4,7 @@ import json
 import logging
 import time
 from collections import defaultdict
-from typing import Callable, List
+from typing import List
 
 import numpy as np
 import ray
@@ -23,17 +23,17 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
 from scenic_reasoning.models.Detectron import Detectron_obj
 from scenic_reasoning.models.Ultralytics import RT_DETR, Yolo
 from scenic_reasoning.utilities.common import (
-    get_default_device,
     yolo_bdd_transform,
     yolo_nuscene_transform,
     yolo_waymo_transform,
 )
 from torch.utils.data import DataLoader
+from torchmetrics.detection.mean_ap import MeanAveragePrecision
 from tqdm import tqdm
 
-allowed_gpus = [0, 1, 2, 3, 5, 6]
-num_cpu_workers = 8
-BATCH_SIZE = 32
+
+num_cpu_workers = 1  # must be one
+BATCH_SIZE = 16
 logger = logging.getLogger("ray")
 
 yolo_v10x = Yolo(model="yolov10x.pt")  # 61.4 Mb
@@ -59,21 +59,32 @@ faster_rcnn_R_50_FPN_3x = Detectron_obj(
 def producer(
     model: ObjectDetectionModelI,
     model_name: str,
-    dataset_fn: Callable[[], ImageDataset],
+    dataset: ImageDataset,
     work_queue: Queue,
     batch_size: int,
+    seed: int = 7,
 ):
-    dataset = dataset_fn()
+    torch.manual_seed(seed)
+    gen = torch.Generator()
+    gen.manual_seed(seed)
+    sampler = torch.utils.data.RandomSampler(dataset, generator=gen)
+
     dataloader = DataLoader(
-        dataset, batch_size=batch_size, shuffle=False, collate_fn=lambda x: x
+        dataset,
+        batch_size=batch_size,
+        collate_fn=lambda x: x,
+        generator=gen,
+        sampler=sampler,
     )
 
-    print(f"[GPU Task] Starting inference: {dataset}, with model {model_name}")
+    print(f"[GPU Task] Starting inference: {dataset}")
     start_time = time.time()
+    model.to("cuda:0")
 
-    for batch in tqdm(dataloader, desc="Processing " + str(dataset)):
+    for i, batch in enumerate(tqdm(dataloader, desc="Processing " + str(dataset))):
+        print(f"[GPU Task] Processing batch {i}")
         images = [sample["image"] for sample in batch]
-        x = torch.stack(images).to(get_default_device())
+        x = torch.stack(images)
         y = [sample["labels"] for sample in batch]
 
         predictions = model.identify_for_image_batch(x)
@@ -86,7 +97,8 @@ def producer(
                 "images": images,
             }
         )
-        x = x.cpu()
+        print(f"[GPU Task] Sent batch item to CPU worker: {model_name}")
+        print(f"Current work queue size: {work_queue.qsize()}")
 
     end_time = time.time()
     print(
@@ -95,8 +107,7 @@ def producer(
     logger.info(
         f"[GPU Task] Finished inference: {dataset}, {model_name} in {end_time - start_time:.2f} seconds"
     )
-    for _ in range(num_cpu_workers):
-        work_queue.put(None)  # Signal completion
+    work_queue.put(None)  # Signal completion
 
     torch.cuda.empty_cache()
     del dataset
@@ -106,13 +117,36 @@ def producer(
 
 @ray.remote(num_cpus=1)
 def consumer(
-    work_queue,
-    results_queue,
+    work_queue: Queue,
+    results_queue: Queue,
     confs: List[float],
+    assigned_dataset: str,
+    assigned_model: str,
 ):
-    results = dict()
+    metrics_with_pen = dict()
+    metrics_no_pen = dict()
+    for conf in confs:
+        metrics_no_pen[conf] = MeanAveragePrecision(
+            class_metrics=True,
+            extended_summary=True,
+            box_format="xyxy",
+            iou_type="bbox",
+        )
+        metrics_with_pen[conf] = MeanAveragePrecision(
+            class_metrics=True,
+            extended_summary=True,
+            box_format="xyxy",
+            iou_type="bbox",
+        )
+    true_negs = defaultdict(int)
     while True:
+        print(
+            f"[CPU Task] Waiting for batch item. Work queue remaining size: {work_queue.qsize()}"
+        )
         item = work_queue.get()
+        print(
+            f"[CPU Task] Received batch workable-item ({item != None}). Work queue remaining size: {work_queue.qsize()}"
+        )
         if item is None:
             break
 
@@ -121,110 +155,73 @@ def consumer(
         )
         dataset = item["dataset"]
         model_name = item["model"]
+        assert (
+            dataset == assigned_dataset
+        ), f"Dataset mismatch: {dataset} != {assigned_dataset}"
+        assert (
+            model_name == assigned_model
+        ), f"Model mismatch: {model_name} != {assigned_model}"
         gt_list = item["gt"]
         odrs_list = item["odrs"]
         images = item["images"]
 
         for conf in confs:
             for image, odrs, gt in zip(images, odrs_list, gt_list):
-                key = (dataset, model_name, conf)
-                relevant_odrs = [o for o in odrs if o.score >= conf]
+                # key = (dataset, model_name, conf)
+                index = len(odrs)
+                for i, o in enumerate(odrs):
+                    if o.score < conf:
+                        index = i
+                        break
+                relevant_odrs = odrs[:index]
 
-                metrics_no_pen = ObjectDetectionUtils.compute_metrics_for_single_img(
+                tn_no_pen = ObjectDetectionUtils.compute_metrics_for_single_img(
                     relevant_odrs,
                     gt,
+                    metric=metrics_no_pen[conf],
                     class_metrics=True,
                     extended_summary=True,
                     penalize_for_extra_predicitions=False,
                     image=image,
                 )
-                metrics_pen = ObjectDetectionUtils.compute_metrics_for_single_img(
+                ObjectDetectionUtils.compute_metrics_for_single_img(
                     relevant_odrs,
                     gt,
+                    metric=metrics_with_pen[conf],
                     class_metrics=True,
                     extended_summary=True,
                     penalize_for_extra_predicitions=True,
                     image=image,
                 )
 
-                if key not in results:
-                    results[key] = {
-                        "metrics_no_pen": [],
-                        "metrics_pen": [],
-                    }
-                results[key]["metrics_no_pen"].append(metrics_no_pen)
-                results[key]["metrics_pen"].append(metrics_pen)
+                true_negs[conf] += tn_no_pen["TN"]
 
         del images
         del gt_list
         del odrs_list
         del item
-        gc.collect()
+        # gc.collect()
+
+    no_pen_scores = defaultdict(dict)
+    pen_scores = defaultdict(dict)
+    for conf in tqdm(confs, desc="Computing COCO metrics..."):
+        no_pen_scores[conf] = metrics_no_pen[conf].compute()
+        no_pen_scores[conf]["TN"] = true_negs[conf]
+        pen_scores[conf] = metrics_with_pen[conf].compute()
+        metrics_no_pen[conf].reset()
+        metrics_with_pen[conf].reset()
+        del metrics_no_pen[conf]
+        del metrics_with_pen[conf]
 
     print(f"[CPU Task] Finished processing")
-    results_queue.put(None)  # Signal completion
-    results_queue.put(results)
 
-
-def aggregate_results(results_queue, num_workers):
-    aggregator = defaultdict(lambda: {"metrics_no_pen": [], "metrics_pen": []})
-
-    finished_workers = 0
-    while finished_workers < num_workers:
-        print(
-            f"Wating for results: {finished_workers}/{num_workers}. Results queue remaining size: {results_queue.qsize()}"
-        )
-        result = results_queue.get()
-        if result is None:
-            finished_workers = finished_workers + 1
-            continue
-
-        for key, metrics in result.items():
-            aggregator[key]["metrics_no_pen"].extend(metrics["metrics_no_pen"])
-            aggregator[key]["metrics_pen"].extend(metrics["metrics_pen"])
-
-    return aggregator
-
-
-def finalize_aggregator(aggregator):
-    final_output = dict()
-    for (dataset, model, conf), metrics in tqdm(aggregator.items(), desc="Finalizing"):
-        print(f"Finalizing: {dataset}, {model}, {conf}")
-        pen_metrics = metrics["metrics_pen"]
-        no_pen_metrics = metrics["metrics_no_pen"]
-
-        TN_count_pen = sum([m["TN"] for m in pen_metrics])
-        TN_count = sum([m["TN"] for m in no_pen_metrics])
-
-        avg_map_pen = sum([m["map"] for m in pen_metrics]) / len(pen_metrics)
-        avg_map_50_pen = sum([m["map_50"] for m in pen_metrics]) / len(pen_metrics)
-        avg_map_75_pen = sum([m["map_75"] for m in pen_metrics]) / len(pen_metrics)
-
-        avg_map = sum([m["map"] for m in no_pen_metrics]) / len(no_pen_metrics)
-        avg_map_50 = sum([m["map_50"] for m in no_pen_metrics]) / len(no_pen_metrics)
-        avg_map_75 = sum([m["map_75"] for m in no_pen_metrics]) / len(no_pen_metrics)
-
-        key = f"{model}-{dataset}"
-        if key not in final_output:
-            final_output[key] = dict()
-
-        final_output[key][conf] = {
-            "TN_count_pen": TN_count_pen,
-            "avg_map_pen": avg_map_pen.item(),
-            "avg_map_50_pen": avg_map_50_pen.item(),
-            "avg_map_75_pen": avg_map_75_pen.item(),
-            "TN_count": TN_count,
-            "avg_map": avg_map.item(),
-            "avg_map_50": avg_map_50.item(),
-            "avg_map_75": avg_map_75.item(),
-            "total_samples": len(pen_metrics),
-        }
-
-    from pprint import pprint
-
-    print("Finalizing results: ", final_output)
-    pprint(f"Finalizing done: {final_output}")
-    return final_output
+    final_results = dict()
+    key = f"{assigned_model}-{assigned_dataset}"
+    final_results[key] = {
+        "metrics_no_pen": no_pen_scores,
+        "metrics_pen": pen_scores,
+    }
+    results_queue.put(final_results)
 
 
 def is_gpu_available(id: int = 0, p: float = 0.8) -> bool:
@@ -241,7 +238,22 @@ def is_gpu_available(id: int = 0, p: float = 0.8) -> bool:
         return False
 
 
-if __name__ == "__main__":
+def convert_for_json(obj):
+    if isinstance(obj, torch.Tensor):
+        return obj.cpu().numpy().tolist()
+    elif isinstance(obj, dict):
+        return {
+            (k if isinstance(k, str) else str(k)): convert_for_json(v)
+            for k, v in obj.items()
+        }
+    elif isinstance(obj, (list, tuple)):
+        return [convert_for_json(item) for item in obj]
+    elif hasattr(obj, "__dict__"):
+        return obj.__dict__
+    return obj
+
+
+def main():
     ray.init()
 
     parser = argparse.ArgumentParser()
@@ -262,10 +274,10 @@ if __name__ == "__main__":
     datasets = []
     # NuImages
     if dataset == "nuimages":
-        for split in ["mini", "train", "val"]:
+        for split in ["val"]:
             for size in ["all"]:
                 datasets.append(
-                    lambda split=split, size=size: NuImagesDataset(
+                    NuImagesDataset(
                         split=split,
                         size=size,
                         transform=lambda i, l: yolo_nuscene_transform(
@@ -275,18 +287,18 @@ if __name__ == "__main__":
                 )
     # Waymo
     elif dataset == "waymo":
-        for split in ["training", "validation"]:
+        for split in ["validation"]:
             datasets.append(
-                lambda split=split: WaymoDataset(
+                WaymoDataset(
                     split=split,
                     transform=lambda i, l: yolo_waymo_transform(i, l, (1280, 1920)),
                 )
             )
     # BDD100k
     elif dataset == "bdd100k":
-        for split in ["train", "val"]:
+        for split in ["val"]:
             datasets.append(
-                lambda split=split: Bdd100kDataset(
+                Bdd100kDataset(
                     split=split,
                     transform=lambda i, l: yolo_bdd_transform(
                         i, l, new_shape=(768, 1280)
@@ -296,59 +308,69 @@ if __name__ == "__main__":
                 )
             )
 
-    confs = [float(c) for c in np.arange(0.05, 0.90, 0.05)]
+    confs = [float(c) for c in np.arange(0.10, 0.95, 0.10)]
 
     # 2) Prepare models
     models = [
-        # (yolo_v10x, "yolo_v10x"),
-        # (yolo_11x, "yolo_11x"),
-        # (rtdetr, "rtdetr"),
-        # (retinanet_R_101_FPN_3x, "retinanet_R_101_FPN_3x"),
+        (yolo_v10x, "yolo_v10x"),
+        (yolo_11x, "yolo_11x"),
+        (rtdetr, "rtdetr"),
+        (retinanet_R_101_FPN_3x, "retinanet_R_101_FPN_3x"),
         (faster_rcnn_R_50_FPN_3x, "faster_rcnn_R_50_FPN_3x"),
     ]
 
-    for dfn in datasets:
+    work_queues = dict()
+    gpu_workers = []
+    results_queue = Queue()
+
+    for dataset in datasets:
         active_pairs = []
         for model, model_name in models:
-            work_queue = Queue(num_cpu_workers * 3)
-            results_queue = Queue()
+            current_work_queue = Queue(num_cpu_workers * 10)
+            work_queues[(model_name, str(dataset))] = current_work_queue
 
             cpu_workers = [
-                consumer.remote(work_queue, results_queue, confs)
+                consumer.remote(
+                    current_work_queue, results_queue, confs, str(dataset), model_name
+                )
                 for _ in range(num_cpu_workers)
             ]
-            gpu_workers = [
-                producer.remote(
-                    model,
-                    model_name,
-                    dfn,
-                    work_queue,
-                    BATCH_SIZE,
-                )
-            ]
 
-            label = f"{model_name}-{str(dfn())}"
+            label = f"{model_name}-{str(dataset)}"
             active_pairs.append(
                 {
                     "pair_label": label,
                     "cpu_workers": cpu_workers,
-                    "gpu_workers": gpu_workers,
-                    "work_queue": work_queue,
-                    "results_queue": results_queue,
+                    # "gpu_workers": gpu_workers,
+                    # "work_queue": work_queue,
+                    # "results_queue": results_queue,
                 }
             )
 
-        all_gpu_workers = [
-            gpu_worker for p in active_pairs for gpu_worker in p["gpu_workers"]
-        ]
-        ray.get(all_gpu_workers)
+            gpu_workers.append(
+                producer.remote(
+                    model,
+                    model_name,
+                    dataset,
+                    current_work_queue,
+                    BATCH_SIZE,
+                )
+            )
+
+        ray.get(gpu_workers)
+        gc.collect()
 
         all_cpu_workers = [
             cpu_worker for p in active_pairs for cpu_worker in p["cpu_workers"]
         ]
         ray.get(all_cpu_workers)
+        print("All CPU workers finished.")
+        gc.collect()
         for pair in active_pairs:
-            result = aggregate_results(pair["results_queue"], num_cpu_workers)
-            final_output = finalize_aggregator(result)
+            result = results_queue.get()
             with open(f"{pair['pair_label']}.json", "w") as f:
-                json.dump(final_output, f, indent=2)
+                json.dump(convert_for_json(result), f, indent=2)
+
+
+if __name__ == "__main__":
+    main()

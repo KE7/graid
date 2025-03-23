@@ -1627,5 +1627,5 @@ ALL_QUESTIONS = [
     Quadrants(3, 2),
     Quadrants(3, 3),
     LeftMostWidthVsHeight(),
-    RightMostWidthVsHeight()
+    RightMostWidthVsHeight(),
 ]
