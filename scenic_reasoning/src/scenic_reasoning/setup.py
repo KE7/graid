@@ -123,10 +123,6 @@ def clean_detectron2() -> None:
 
 
 def install_mmdetection() -> None:
-    subprocess.run(["pip", "install", "--upgrade", "openmim"])
-    subprocess.run(["mim", "install", "mmengine"])
-    subprocess.run(["mim", "install", "mmcv==2.1.0"])
-
     root_dir = PROJECT_DIR
 
     os.chdir(root_dir)
@@ -149,6 +145,11 @@ def install_mmdetection() -> None:
 
     # Change back to the original directory
     os.chdir("..")
+
+    subprocess.run(["pip", "install", "--upgrade", "openmim"])
+    subprocess.run(["mim", "install", "mmengine"])
+    subprocess.run(["mim", "install", "mmcv==2.1.0"])
+    subprocess.run(["mim", "install", "mmdet"])
 
 
 def clean_mmdetection() -> None:

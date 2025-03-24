@@ -1,13 +1,8 @@
 from pathlib import Path
 from typing import Iterator, List, Optional, Union
 
-import mmdet
 import numpy as np
 import torch
-from mmdet.apis import DetInferencer, inference_detector, init_detector
-from mmdet.registry import VISUALIZERS
-from mmengine.utils import get_git_hash
-from mmengine.utils.dl_utils import collect_env as collect_base_env
 from PIL import Image
 from scenic_reasoning.interfaces.InstanceSegmentationI import (
     InstanceSegmentationModelI,
@@ -23,6 +18,61 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
 from scenic_reasoning.utilities.coco import coco_label
 from scenic_reasoning.utilities.common import get_default_device
 
+#  hack_registry.py
+import logging
+
+from mmengine.registry import Registry
+from mmengine.logging import print_log
+from typing import Type, Optional, Union, List
+
+
+# https://github.com/open-mmlab/mmdetection/issues/12008
+def _register_module(self,
+                     module: Type,
+                     module_name: Optional[Union[str, List[str]]] = None,
+                     force: bool = False) -> None:
+    """Register a module.
+
+    Args:
+        module (type): Module to be registered. Typically a class or a
+            function, but generally all ``Callable`` are acceptable.
+        module_name (str or list of str, optional): The module name to be
+            registered. If not specified, the class name will be used.
+            Defaults to None.
+        force (bool): Whether to override an existing class with the same
+            name. Defaults to False.
+    """
+    if not callable(module):
+        raise TypeError(f'module must be Callable, but got {type(module)}')
+
+    if module_name is None:
+        module_name = module.__name__
+    if isinstance(module_name, str):
+        module_name = [module_name]
+    for name in module_name:
+        if not force and name in self._module_dict:
+            existed_module = self.module_dict[name]
+            # raise KeyError(f'{name} is already registered in {self.name} '
+            #                f'at {existed_module.__module__}')
+            print_log(
+                f'{name} is already registered in {self.name} '
+                f'at {existed_module.__module__}. Registration ignored.',
+                logger='current',
+                level=logging.INFO
+            )
+        self._module_dict[name] = module
+
+
+Registry._register_module = _register_module
+
+# fmt: off
+import mmdet
+from mmdet.apis import DetInferencer, inference_detector, init_detector
+from mmdet.registry import VISUALIZERS
+from mmengine.utils import get_git_hash
+from mmengine.utils.dl_utils import collect_env as collect_base_env
+# fmt: on
+
 
 class MMdetection_obj(ObjectDetectionModelI):
     def __init__(self, config_file: str, checkpoint_file, **kwargs) -> None:
@@ -34,8 +84,7 @@ class MMdetection_obj(ObjectDetectionModelI):
         self.model_name = config_file
 
         # set class_agnostic to True to avoid overlaps: https://github.com/open-mmlab/mmdetection/issues/6254
-        # if "co_dino" in config_file:
-        #     self._model.test_cfg.rcnn.nms.class_agnostic = True
+        # self._model.test_cfg.rcnn.nms.class_agnostic = True
 
     def collect_env(self):
         """Collect the information of the running environments."""
@@ -45,12 +94,10 @@ class MMdetection_obj(ObjectDetectionModelI):
 
     def identify_for_image(
         self,
-        image: Union[
-            str, Path, int, Image.Image, list, tuple, np.ndarray, torch.Tensor
-        ],
+        image: Union[np.ndarray, torch.Tensor],
         debug: bool = False,
         **kwargs,
-    ) -> List[List[Optional[ObjectDetectionResultI]]]:
+    ) -> List[List[ObjectDetectionResultI]]:
         """
         Run object detection on an image or a batch of images.
 
@@ -67,7 +114,7 @@ class MMdetection_obj(ObjectDetectionModelI):
 
         # image is batched input. MMdetection only supports Union[InputType, Sequence[InputType]], where InputType = Union[str, np.ndarray]
         image_list = [
-            image[i].permute(1, 2, 0).cpu().numpy() for i in range(len(image))
+            image[i].permute(1, 2, 0).cpu().numpy().astype(np.uint8) for i in range(len(image))
         ]
         image_hw = image_list[0].shape[:-1]
         predictions = inference_detector(self._model, image_list)
@@ -127,10 +174,11 @@ class MMdetection_obj(ObjectDetectionModelI):
             represents the batch of images, and the inner list represents the
             detections in a particular image.
         """
+        return self.identify_for_image(image, debug, **kwargs)
         if isinstance(image, torch.Tensor):
-            image = image.permute(0, 2, 3, 1).cpu().numpy()
+            image = image.permute(0, 2, 3, 1).cpu().numpy().astype(np.uint8)
         elif isinstance(image, np.ndarray):
-            image = image.transpose(0, 2, 3, 1)
+            image = image.transpose(0, 2, 3, 1).astype(np.uint8)
         else:
             raise ValueError("Image must be a numpy array or a torch tensor.")
 
