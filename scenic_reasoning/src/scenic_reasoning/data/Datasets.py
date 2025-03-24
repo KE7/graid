@@ -1,11 +1,9 @@
-import gc
 import json
 import os
 import queue
 import threading
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from pathlib import Path
 from typing import Optional
 
 import numpy as np
@@ -17,7 +15,7 @@ from scenic_reasoning.data.ImageLoader import (
     WaymoDataset,
 )
 from scenic_reasoning.interfaces.ObjectDetectionI import ObjectDetectionModelI
-from scenic_reasoning.questions.ObjectDetectionQ import ALL_QUESTIONS, Quadrants
+from scenic_reasoning.questions.ObjectDetectionQ import ALL_QUESTIONS
 from scenic_reasoning.utilities.common import project_root_dir
 from sqlitedict import SqliteDict
 from torch.utils.data import DataLoader, Dataset
@@ -27,7 +25,7 @@ lock = threading.Lock()
 
 
 class ObjDectDatasetBuilder(Dataset):
-    DEFAULT_DB_PATH = project_root_dir() / "data" / "database_new"
+    DEFAULT_DB_PATH = project_root_dir() / "data" / "databases3"
 
     def __init__(
         self,
@@ -190,6 +188,8 @@ class ObjDectDatasetBuilder(Dataset):
                 print("Writing items to the database...")
                 for question in self.questions:
                     table_name = str(question)
+                    if dataset[table_name] == items[table_name]:
+                        continue
                     self.dataset[table_name].update(items[table_name])
                     self.dataset[table_name].commit()
                 self.writer_queue.task_done()
@@ -268,7 +268,7 @@ class ObjDectDatasetBuilder(Dataset):
                 num_workers=8,
             )
 
-            max_workers = 10
+            max_workers = 20
             inflight_futures = []
 
             writer_thread = threading.Thread(target=writer, daemon=True)

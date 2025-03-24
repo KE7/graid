@@ -22,7 +22,6 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
 from scenic_reasoning.utilities.coco import inverse_coco_label
 from scenic_reasoning.utilities.common import (
     convert_to_xyxy,
-    persistent_cache,
     project_root_dir,
     read_image,
 )
@@ -393,7 +392,7 @@ class Bdd100kDataset(ImageDataset):
         # Save each element of the img_labels as its own pickle file
         save_dir = project_root_dir() / "data" / f"bdd_{self.split}"
         save_dir.mkdir(parents=True, exist_ok=True)
-        os.chmod(save_dir, 0o777)
+        # os.chmod(save_dir, 0o777)
 
         if rebuild:
             for idx, label in tqdm(

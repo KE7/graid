@@ -9,7 +9,7 @@ packages = [{include = "scenic_reasoning", from = "scenic_reasoning/src"}]
 
 [tool.poetry.dependencies]
 python = "^3.9"
-torch = "^2.5.0"
+torch = "2.5.0"
 transformers = "^4.45.2"
 ultralytics = "^8.3.21"
 opencv-python = "^4.10.0.84"
@@ -17,6 +17,7 @@ torchmetrics = "^1.6.0"
 sqlitedict = "^2.1.0"
 numpy = "1.26.4"
 ray = "^2.43.0"
+fairscale = "^0.4.13"
 
 
 [tool.poetry.scripts]
