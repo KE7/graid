@@ -196,7 +196,7 @@ def consumer(
                     gt,
                     metric=metrics_no_pen[conf],
                     class_metrics=True,
-                    extended_summary=True,
+                    extended_summary=False,
                     penalize_for_extra_predicitions=False,
                     image=image,
                 )
@@ -205,7 +205,7 @@ def consumer(
                     gt,
                     metric=metrics_with_pen[conf],
                     class_metrics=True,
-                    extended_summary=True,
+                    extended_summary=False,
                     penalize_for_extra_predicitions=True,
                     image=image,
                 )
@@ -242,7 +242,9 @@ def consumer(
     for conf in tqdm(confs, desc="Computing COCO metrics..."):
         no_pen_scores[conf] = metrics_no_pen[conf].compute()
         no_pen_scores[conf]["TN"] = true_negs[conf]
+
         pen_scores[conf] = metrics_with_pen[conf].compute()
+        
         metrics_no_pen[conf].reset()
         metrics_with_pen[conf].reset()
         del metrics_no_pen[conf]

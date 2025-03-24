@@ -21,8 +21,10 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
     ObjectDetectionUtils,
 )
 from scenic_reasoning.models.Detectron import Detectron_obj
+from scenic_reasoning.models.MMDetection import MMdetection_obj
 from scenic_reasoning.models.Ultralytics import RT_DETR, Yolo
 from scenic_reasoning.utilities.common import (
+    project_root_dir,
     yolo_bdd_transform,
     yolo_nuscene_transform,
     yolo_waymo_transform,
@@ -33,7 +35,7 @@ from tqdm import tqdm
 
 
 num_cpu_workers = 1  # must be one
-BATCH_SIZE = 16
+BATCH_SIZE = 32
 logger = logging.getLogger("ray")
 
 yolo_v10x = Yolo(model="yolov10x.pt")  # 61.4 Mb
@@ -53,6 +55,26 @@ faster_rcnn_R_50_FPN_3x = Detectron_obj(
     config_file=faster_rcnn_R_50_FPN_3x_config,
     weights_file=faster_rcnn_R_50_FPN_3x_weights,
 )
+
+MMDETECTION_PATH = project_root_dir() / "install" / "mmdetection"
+
+GDINO_config = str(
+    MMDETECTION_PATH
+    / "configs/mm_grounding_dino/grounding_dino_swin-l_pretrain_obj365_goldg.py"
+)
+GDINO_checkpoint = str(
+    "https://download.openmmlab.com/mmdetection/v3.0/mm_grounding_dino/grounding_dino_swin-l_pretrain_obj365_goldg/grounding_dino_swin-l_pretrain_obj365_goldg-34dcdc53.pth"
+)
+# GDINO = MMdetection_obj(GDINO_config, GDINO_checkpoint) # 1.41 GB
+
+Co_DETR_config = str(
+    MMDETECTION_PATH
+    / "projects/CO-DETR/configs/codino/co_dino_5scale_swin_l_lsj_16xb1_3x_coco.py"
+)
+Co_DETR_checkpoint = str(
+    "https://download.openmmlab.com/mmdetection/v3.0/codetr/co_dino_5scale_lsj_swin_large_1x_coco-3af73af2.pth"
+)
+# Co_DETR = MMdetection_obj(Co_DETR_config, Co_DETR_checkpoint) # 902 MB
 
 
 @ray.remote(num_gpus=1)
@@ -76,6 +98,16 @@ def producer(
         generator=gen,
         sampler=sampler,
     )
+
+    if model_name == "GDINO":
+        # MMDetection models are not serializable, so we can't pass them in Ray
+        model = MMdetection_obj(
+            GDINO_config, GDINO_checkpoint
+        )
+    elif model_name == "Co_DETR":
+        model = MMdetection_obj(
+            Co_DETR_config, Co_DETR_checkpoint
+        )
 
     print(f"[GPU Task] Starting inference: {dataset}")
     start_time = time.time()
@@ -107,6 +139,7 @@ def producer(
     logger.info(
         f"[GPU Task] Finished inference: {dataset}, {model_name} in {end_time - start_time:.2f} seconds"
     )
+    model.to("cpu")  # Move model back to CPU to free GPU memory
     work_queue.put(None)  # Signal completion
 
     torch.cuda.empty_cache()
@@ -180,7 +213,7 @@ def consumer(
                     gt,
                     metric=metrics_no_pen[conf],
                     class_metrics=True,
-                    extended_summary=True,
+                    extended_summary=False,
                     penalize_for_extra_predicitions=False,
                     image=image,
                 )
@@ -189,7 +222,7 @@ def consumer(
                     gt,
                     metric=metrics_with_pen[conf],
                     class_metrics=True,
-                    extended_summary=True,
+                    extended_summary=False,
                     penalize_for_extra_predicitions=True,
                     image=image,
                 )
@@ -312,11 +345,13 @@ def main():
 
     # 2) Prepare models
     models = [
-        (yolo_v10x, "yolo_v10x"),
-        (yolo_11x, "yolo_11x"),
-        (rtdetr, "rtdetr"),
-        (retinanet_R_101_FPN_3x, "retinanet_R_101_FPN_3x"),
-        (faster_rcnn_R_50_FPN_3x, "faster_rcnn_R_50_FPN_3x"),
+        # (None, "GDINO"),
+        (None, "Co_DETR"),
+        # (yolo_v10x, "yolo_v10x"),
+        # (yolo_11x, "yolo_11x"),
+        # (rtdetr, "rtdetr"),
+        # (retinanet_R_101_FPN_3x, "retinanet_R_101_FPN_3x"),
+        # (faster_rcnn_R_50_FPN_3x, "faster_rcnn_R_50_FPN_3x"),
     ]
 
     work_queues = dict()
@@ -365,7 +400,7 @@ def main():
         ]
         ray.get(all_cpu_workers)
         print("All CPU workers finished.")
-        gc.collect()
+
         for pair in active_pairs:
             result = results_queue.get()
             with open(f"{pair['pair_label']}.json", "w") as f:
