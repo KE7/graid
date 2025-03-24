@@ -1,13 +1,3 @@
-from scenic_reasoning.measurements.ObjectDetection import ObjectDetectionMeasurements
-from scenic_reasoning.models.MMDetection import MMdetection_obj
-from scenic_reasoning.utilities.common import (
-    get_default_device,
-    project_root_dir,
-    yolo_bdd_transform,
-    yolo_nuscene_transform,
-    yolo_waymo_transform,
-)
-
 import argparse
 import gc
 import json
@@ -30,40 +20,49 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
     ObjectDetectionModelI,
     ObjectDetectionUtils,
 )
+from scenic_reasoning.models.Detectron import Detectron_obj
+from scenic_reasoning.models.MMDetection import MMdetection_obj
+from scenic_reasoning.models.Ultralytics import RT_DETR, Yolo
+from scenic_reasoning.utilities.common import (
+    project_root_dir,
+    yolo_bdd_transform,
+    yolo_nuscene_transform,
+    yolo_waymo_transform,
+)
 from torch.utils.data import DataLoader
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
 from tqdm import tqdm
 
 
-
 num_cpu_workers = 1  # must be one
-BATCH_SIZE = 16
+BATCH_SIZE = 32
 logger = logging.getLogger("ray")
+
+
 
 MMDETECTION_PATH = project_root_dir() / "install" / "mmdetection"
 
-GDINO_config = str(
-    MMDETECTION_PATH
-    / "configs/mm_grounding_dino/grounding_dino_swin-l_pretrain_obj365_goldg.py"
-)
-GDINO_checkpoint = str(
-    MMDETECTION_PATH
-    / "checkpoints/grounding_dino_swin-l_pretrain_obj365_goldg-34dcdc53.pth"
-)
-GDINO = MMdetection_obj(GDINO_config, GDINO_checkpoint)
-# TODO: should we adjust the confidence level?
+# GDINO_config = str(
+#     MMDETECTION_PATH
+#     / "configs/mm_grounding_dino/grounding_dino_swin-l_pretrain_obj365_goldg.py"
+# )
+GDINO_config = str(MMDETECTION_PATH / "configs/dino/dino-5scale_swin-l_8xb2-12e_coco.py")
+
+# GDINO_checkpoint = str(
+#     "https://download.openmmlab.com/mmdetection/v3.0/mm_grounding_dino/grounding_dino_swin-l_pretrain_obj365_goldg/grounding_dino_swin-l_pretrain_obj365_goldg-34dcdc53.pth"
+# )
+
+GDINO_checkpoint = str("https://download.openmmlab.com/mmdetection/v3.0/dino/dino-5scale_swin-l_8xb2-12e_coco/dino-5scale_swin-l_8xb2-12e_coco_20230228_072924-a654145f.pth")
+# GDINO = MMdetection_obj(GDINO_config, GDINO_checkpoint) # 1.41 GB
 
 Co_DETR_config = str(
     MMDETECTION_PATH
     / "projects/CO-DETR/configs/codino/co_dino_5scale_swin_l_lsj_16xb1_3x_coco.py"
 )
 Co_DETR_checkpoint = str(
-    MMDETECTION_PATH / "checkpoints/co_dino_5scale_lsj_swin_large_1x_coco-3af73af2.pth"
+    "https://download.openmmlab.com/mmdetection/v3.0/codetr/co_dino_5scale_lsj_swin_large_1x_coco-3af73af2.pth"
 )
-Co_DETR = MMdetection_obj(Co_DETR_config, Co_DETR_checkpoint)
-# use the second score threshold
-
-exit()
+# Co_DETR = MMdetection_obj(Co_DETR_config, Co_DETR_checkpoint) # 902 MB
 
 
 @ray.remote(num_gpus=1)
@@ -87,6 +86,16 @@ def producer(
         generator=gen,
         sampler=sampler,
     )
+
+    if model_name == "GDINO":
+        # MMDetection models are not serializable, so we can't pass them in Ray
+        model = MMdetection_obj(
+            GDINO_config, GDINO_checkpoint
+        )
+    elif model_name == "Co_DETR":
+        model = MMdetection_obj(
+            Co_DETR_config, Co_DETR_checkpoint
+        )
 
     print(f"[GPU Task] Starting inference: {dataset}")
     start_time = time.time()
@@ -118,6 +127,7 @@ def producer(
     logger.info(
         f"[GPU Task] Finished inference: {dataset}, {model_name} in {end_time - start_time:.2f} seconds"
     )
+    model.to("cpu")  # Move model back to CPU to free GPU memory
     work_queue.put(None)  # Signal completion
 
     torch.cuda.empty_cache()
@@ -139,13 +149,13 @@ def consumer(
     for conf in confs:
         metrics_no_pen[conf] = MeanAveragePrecision(
             class_metrics=True,
-            extended_summary=False,
+            extended_summary=True,
             box_format="xyxy",
             iou_type="bbox",
         )
         metrics_with_pen[conf] = MeanAveragePrecision(
             class_metrics=True,
-            extended_summary=False,
+            extended_summary=True,
             box_format="xyxy",
             iou_type="bbox",
         )
@@ -323,8 +333,13 @@ def main():
 
     # 2) Prepare models
     models = [
-        # (GDINO, "GDINO"),
-        (Co_DETR, "Co_DETR")
+        (None, "GDINO"),
+        (None, "Co_DETR"),
+        # (yolo_v10x, "yolo_v10x"),
+        # (yolo_11x, "yolo_11x"),
+        # (rtdetr, "rtdetr"),
+        # (retinanet_R_101_FPN_3x, "retinanet_R_101_FPN_3x"),
+        # (faster_rcnn_R_50_FPN_3x, "faster_rcnn_R_50_FPN_3x"),
     ]
 
     work_queues = dict()
@@ -373,7 +388,7 @@ def main():
         ]
         ray.get(all_cpu_workers)
         print("All CPU workers finished.")
-        gc.collect()
+
         for pair in active_pairs:
             result = results_queue.get()
             with open(f"{pair['pair_label']}.json", "w") as f:

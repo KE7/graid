@@ -3,33 +3,61 @@ from scenic_reasoning.data.ImageLoader import Bdd100kDataset, NuImagesDataset, W
 from scenic_reasoning.models.MMDetection import MMdetection_obj
 from scenic_reasoning.measurements.ObjectDetection import ObjectDetectionMeasurements
 from scenic_reasoning.interfaces.ObjectDetectionI import ObjectDetectionUtils
-from scenic_reasoning.utilities.common import yolo_waymo_transform
+from scenic_reasoning.utilities.common import project_root_dir, yolo_bdd_transform
 from PIL import Image
 import numpy as np
 
 
 NUM_EXAMPLES_TO_SHOW = 3
-BATCH_SIZE = 1
+BATCH_SIZE = 4
 
 bdd = Bdd100kDataset(
-    split="val",
-    use_original_categories=False,
-    use_extended_annotations=False,
+                    split='val',
+                    transform=lambda i, l: yolo_bdd_transform(
+                        i, l, new_shape=(768, 1280)
+                    ),
+                    use_original_categories=False,
+                    use_extended_annotations=False,
+                )
+
+# niu = NuImagesDataset(split="test", size="full")
+
+# waymo = WaymoDataset(
+#     split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, (640, 1333))
+# )
+
+# config_file = "../install/mmdetection/configs/mask_rcnn/mask-rcnn_r50-caffe_fpn_ms-poly-3x_coco.py"
+# checkpoint_file = "../install/mmdetection/checkpoints/mask_rcnn_r50_caffe_fpn_mstrain-poly_3x_coco_bbox_mAP-0.408__segm_mAP-0.37_20200504_163245-42aa3d00.pth"
+
+# model = MMdetection_obj(config_file, checkpoint_file)
+
+
+MMDETECTION_PATH = project_root_dir() / "install" / "mmdetection"
+
+GDINO_config = str(
+    MMDETECTION_PATH
+    / "configs/mm_grounding_dino/grounding_dino_swin-l_pretrain_obj365_goldg.py"
 )
-
-niu = NuImagesDataset(split="test", size="full")
-
-waymo = WaymoDataset(
-    split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, (640, 1333))
+GDINO_checkpoint = str(
+    MMDETECTION_PATH
+    / "checkpoints/grounding_dino_swin-l_pretrain_obj365_goldg-34dcdc53.pth"
 )
+GDINO = MMdetection_obj(GDINO_config, GDINO_checkpoint)
+# TODO: should we adjust the confidence level?
 
-config_file = "../install/mmdetection/configs/mask_rcnn/mask-rcnn_r50-caffe_fpn_ms-poly-3x_coco.py"
-checkpoint_file = "../install/mmdetection/checkpoints/mask_rcnn_r50_caffe_fpn_mstrain-poly_3x_coco_bbox_mAP-0.408__segm_mAP-0.37_20200504_163245-42aa3d00.pth"
+Co_DETR_config = str(
+    MMDETECTION_PATH
+    / "projects/CO-DETR/configs/codino/co_dino_5scale_swin_l_lsj_16xb1_3x_coco.py"
+)
+Co_DETR_checkpoint = str(
+    MMDETECTION_PATH / "checkpoints/co_dino_5scale_lsj_swin_large_1x_coco-3af73af2.pth"
+)
+Co_DETR = MMdetection_obj(Co_DETR_config, Co_DETR_checkpoint)
 
-model = MMdetection_obj(config_file, checkpoint_file)
+model = Co_DETR
 
 
-for d in [bdd, niu, waymo]:
+for d in [bdd]:
 
     measurements = ObjectDetectionMeasurements(
         model, d, batch_size=BATCH_SIZE, collate_fn=lambda x: x
