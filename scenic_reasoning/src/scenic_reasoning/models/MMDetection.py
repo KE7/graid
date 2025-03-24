@@ -34,8 +34,8 @@ class MMdetection_obj(ObjectDetectionModelI):
         self.model_name = config_file
 
         # set class_agnostic to True to avoid overlaps: https://github.com/open-mmlab/mmdetection/issues/6254
-        if "grounding_dino" in config_file:
-            self._model.test_cfg.rcnn.nms.class_agnostic = True
+        # if "co_dino" in config_file:
+        #     self._model.test_cfg.rcnn.nms.class_agnostic = True
 
     def collect_env(self):
         """Collect the information of the running environments."""
