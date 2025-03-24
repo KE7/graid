@@ -145,7 +145,7 @@ def choose_best(camera_image_files, split):
 
 if __name__ == "__main__":
 
-    split = "validation"
+    split = "training"
     # root_dir = Path("/work/ke-public/graid_data/waymo")
     root_dir = project_root_dir() / "data" / "waymo"
     camera_img_dir = root_dir / f"{split}" / "camera_image"

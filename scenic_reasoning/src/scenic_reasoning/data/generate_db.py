@@ -105,9 +105,9 @@ if __name__ == "__main__":
     for d in datasets:
         for conf in confs:
             # task_val = generate_db(d, "val", conf, model=model)
-            task_train = generate_db(d, "train", conf, model=model)
-            # generate_db(d, "val", conf, model=model)
-            # generate_db(d, "train", conf, model=model)
+            # task_train = generate_db(d, "train", conf, model=model)
+            generate_db(d, "val", conf, model=model)
+            generate_db(d, "train", conf, model=model)
 
             # tasks.append(task_val)
             # tasks.append(task_train)

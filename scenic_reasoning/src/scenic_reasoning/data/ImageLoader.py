@@ -650,19 +650,21 @@ class NuImagesDataset(ImageDataset):
         self.category_labels = json.load(open(categories_file))
         self.obj_annotations = json.load(open(obj_annotations_file))
 
-        self.nuim = NuImages(
-            dataroot=img_dir,
-            version=subdir,
-            verbose=False,
-            lazy=True,  # verbose off to avoid excessive print statement
-        )
+        
 
         if rebuild:
+            self.nuim = NuImages(
+                dataroot=img_dir,
+                version=subdir,
+                verbose=False,
+                lazy=True,  # verbose off to avoid excessive print statement
+            )
             save_path_parent = project_root_dir() / "data" / f"nuimages_{self.split}"
             save_path_parent.mkdir(parents=True, exist_ok=True)
             os.chmod(save_path_parent, 0o777)
 
             empty_count = 0
+            idx = 0
             for i in tqdm(
                 range(len(self.nuim.sample)),
                 desc="Processing NuImage dataset...",  # len(self.nuim.sample)
@@ -697,8 +699,10 @@ class NuImagesDataset(ImageDataset):
                 img_filename = sample_data["filename"]
                 timestamp = sample_data["timestamp"]
 
-                save_path = save_path_parent / f"{i}.pkl"
-                print("creating idx... ", i)
+                save_path = save_path_parent / f"{idx}.pkl"
+                print("creating idx... ", idx)
+                # if save_path.exists():
+                #     continue
                 with open(save_path, "wb") as f:
                     pickle.dump(
                         {
@@ -709,6 +713,7 @@ class NuImagesDataset(ImageDataset):
                         f,
                     )
                 os.chmod(save_path, 0o777)
+                idx += 1
 
                 # TODO: add error catching logic in case of empty token or token mismatch.
 
