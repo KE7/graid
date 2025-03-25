@@ -35,7 +35,7 @@ from tqdm import tqdm
 
 
 num_cpu_workers = 1  # must be one
-BATCH_SIZE = 32
+BATCH_SIZE = 16
 logger = logging.getLogger("ray")
 
 yolo_v10x = Yolo(model="yolov10x.pt")  # 61.4 Mb
@@ -345,7 +345,7 @@ def main():
 
     # 2) Prepare models
     models = [
-        # (None, "GDINO"),
+        (None, "GDINO"),
         (None, "Co_DETR"),
         # (yolo_v10x, "yolo_v10x"),
         # (yolo_11x, "yolo_11x"),
