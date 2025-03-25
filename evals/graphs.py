@@ -9,7 +9,7 @@ def load_json(file_path):
         data = json.load(file)
     return data
 
-d = 'bdd'
+d = 'bdd_new'
 
 data_dir = project_root_dir() / 'data/eval_results' / d
 
@@ -27,14 +27,14 @@ for file_name in files:
     top_key = list(data.keys())[0]
     model_name = top_key.split('-')[0]  # Extract just the model name, like 'yolo_v10x'
 
-    section = data[top_key]['metrics_pen']
+    section = data[top_key]['metrics_no_pen']
 
     confidences = []
     map_values = []
 
     for conf_str, metrics in section.items():
         confidence = float(conf_str)
-        map_score = metrics['map']
+        map_score = metrics
         print("map score", map_score)
         confidences.append(confidence)
         map_values.append(map_score)

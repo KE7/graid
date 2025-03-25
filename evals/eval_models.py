@@ -21,7 +21,7 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
     ObjectDetectionUtils,
 )
 from scenic_reasoning.models.Detectron import Detectron_obj
-from scenic_reasoning.models.MMDetection import MMdetection_obj
+# from scenic_reasoning.models.MMDetection import MMdetection_obj
 from scenic_reasoning.models.Ultralytics import RT_DETR, Yolo
 from scenic_reasoning.utilities.common import (
     project_root_dir,
@@ -158,20 +158,25 @@ def consumer(
 ):
     metrics_with_pen = dict()
     metrics_no_pen = dict()
-    for conf in confs:
-        metrics_no_pen[conf] = MeanAveragePrecision(
-            class_metrics=True,
-            extended_summary=True,
-            box_format="xyxy",
-            iou_type="bbox",
-        )
-        metrics_with_pen[conf] = MeanAveragePrecision(
-            class_metrics=True,
-            extended_summary=True,
-            box_format="xyxy",
-            iou_type="bbox",
-        )
+    # for conf in confs:
+    #     metrics_no_pen[conf] = MeanAveragePrecision(
+    #         class_metrics=True,
+    #         extended_summary=True,
+    #         box_format="xyxy",
+    #         iou_type="bbox",
+    #     )
+    #     metrics_with_pen[conf] = MeanAveragePrecision(
+    #         class_metrics=True,
+    #         extended_summary=True,
+    #         box_format="xyxy",
+    #         iou_type="bbox",
+    #     )
     true_negs = defaultdict(int)
+
+    metrics_with_pen = defaultdict(list)
+    metrics_no_pen = defaultdict(list)
+
+
     while True:
         print(
             f"[CPU Task] Waiting for batch item. Work queue remaining size: {work_queue.qsize()}"
@@ -198,6 +203,7 @@ def consumer(
         odrs_list = item["odrs"]
         images = item["images"]
 
+
         for conf in confs:
             for image, odrs, gt in zip(images, odrs_list, gt_list):
                 # key = (dataset, model_name, conf)
@@ -208,26 +214,43 @@ def consumer(
                         break
                 relevant_odrs = odrs[:index]
 
-                tn_no_pen = ObjectDetectionUtils.compute_metrics_for_single_img(
+                # if gt == []:
+                #     print("???????????")
+                #     continue
+                score = ObjectDetectionUtils.compute_metrics_for_single_img(
                     relevant_odrs,
                     gt,
-                    metric=metrics_no_pen[conf],
+                    # metric=metrics_no_pen[conf],
                     class_metrics=True,
                     extended_summary=False,
                     penalize_for_extra_predicitions=False,
                     image=image,
                 )
-                ObjectDetectionUtils.compute_metrics_for_single_img(
+                
+
+                score_pen = ObjectDetectionUtils.compute_metrics_for_single_img(
                     relevant_odrs,
                     gt,
-                    metric=metrics_with_pen[conf],
+                    # metric=metrics_with_pen[conf],
                     class_metrics=True,
                     extended_summary=False,
                     penalize_for_extra_predicitions=True,
                     image=image,
                 )
 
-                true_negs[conf] += tn_no_pen["TN"]
+                if score == -1 or score_pen == -1:
+                    print("-1 detected. Skipping...")
+                    continue
+                
+                # if score == -1:
+                #     print("-1 detected. Skipping...")
+                #     continue
+
+
+                metrics_no_pen[conf].append(score)
+                metrics_with_pen[conf].append(score_pen)
+
+                # true_negs[conf] += tn_no_pen["TN"]
 
         del images
         del gt_list
@@ -238,13 +261,13 @@ def consumer(
     no_pen_scores = defaultdict(dict)
     pen_scores = defaultdict(dict)
     for conf in tqdm(confs, desc="Computing COCO metrics..."):
-        no_pen_scores[conf] = metrics_no_pen[conf].compute()
-        no_pen_scores[conf]["TN"] = true_negs[conf]
-        pen_scores[conf] = metrics_with_pen[conf].compute()
-        metrics_no_pen[conf].reset()
-        metrics_with_pen[conf].reset()
-        del metrics_no_pen[conf]
-        del metrics_with_pen[conf]
+        no_pen_scores[conf] = sum(metrics_no_pen[conf]) / len(metrics_no_pen[conf])
+        # no_pen_scores[conf]["TN"] = true_negs[conf]
+        pen_scores[conf] = sum(metrics_with_pen[conf]) / len(metrics_with_pen[conf])
+        # metrics_no_pen[conf].reset()
+        # metrics_with_pen[conf].reset()
+        # del metrics_no_pen[conf]
+        # del metrics_with_pen[conf]
 
     print(f"[CPU Task] Finished processing")
 
@@ -345,13 +368,13 @@ def main():
 
     # 2) Prepare models
     models = [
-        (None, "GDINO"),
-        (None, "Co_DETR"),
-        # (yolo_v10x, "yolo_v10x"),
-        # (yolo_11x, "yolo_11x"),
-        # (rtdetr, "rtdetr"),
-        # (retinanet_R_101_FPN_3x, "retinanet_R_101_FPN_3x"),
-        # (faster_rcnn_R_50_FPN_3x, "faster_rcnn_R_50_FPN_3x"),
+        # (None, "GDINO"),
+        # (None, "Co_DETR"),
+        (yolo_v10x, "yolo_v10x"),
+        (yolo_11x, "yolo_11x"),
+        (rtdetr, "rtdetr"),
+        (retinanet_R_101_FPN_3x, "retinanet_R_101_FPN_3x"),
+        (faster_rcnn_R_50_FPN_3x, "faster_rcnn_R_50_FPN_3x"),
     ]
 
     work_queues = dict()

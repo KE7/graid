@@ -409,26 +409,34 @@ class ObjectDetectionUtils:
         metric.update(target=targets, preds=preds)
 
         # once we are at the end is when we call compute
-        if need_to_delete_metric:
-            score = metric.compute()
-            score["TN"] = 0
-            for p, t in zip(preds, targets):
-                if p["boxes"].shape == torch.Size([0]) and t[
-                    "boxes"
-                ].shape == torch.Size([0]):
-                    score["TN"] += 1
-            metric.reset()
-            del metric
-            return score
+        # if need_to_delete_metric:
+        score = metric.compute()
+        score["TN"] = 0
+        for p, t in zip(preds, targets):
+            if p["boxes"].shape == torch.Size([0]) and t[
+                "boxes"
+            ].shape == torch.Size([0]):
+                score["TN"] += 1
+        
+        # ret = max(0, score['map'].item())
+        ret = score['map'].item()
+        print("!!!!!!!!!!!!!!!!!!", ret)
 
-        else:
-            tn = 0
-            for p, t in zip(preds, targets):
-                if p["boxes"].shape == torch.Size([0]) and t[
-                    "boxes"
-                ].shape == torch.Size([0]):
-                    tn += 1
-            return {"TN": tn}
+        metric.reset()
+        del metric
+        del score
+        
+        # print(score['map'], "!!!!!!!!!!!!!!!!")
+        return ret
+
+        # else:
+        #     tn = 0
+        #     for p, t in zip(preds, targets):
+        #         if p["boxes"].shape == torch.Size([0]) and t[
+        #             "boxes"
+        #         ].shape == torch.Size([0]):
+        #             tn += 1
+        #     return {"TN": tn}
 
     @staticmethod
     def show_image_with_detections(
