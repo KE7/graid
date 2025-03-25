@@ -58,14 +58,14 @@ faster_rcnn_R_50_FPN_3x = Detectron_obj(
 
 MMDETECTION_PATH = project_root_dir() / "install" / "mmdetection"
 
-GDINO_config = str(
+DINO_config = str(
     MMDETECTION_PATH
-    / "configs/mm_grounding_dino/grounding_dino_swin-l_pretrain_obj365_goldg.py"
+    / "configs/dino/dino-5scale_swin-l_8xb2-12e_coco.py"
 )
-GDINO_checkpoint = str(
-    "https://download.openmmlab.com/mmdetection/v3.0/mm_grounding_dino/grounding_dino_swin-l_pretrain_obj365_goldg/grounding_dino_swin-l_pretrain_obj365_goldg-34dcdc53.pth"
+DINO_checkpoint = str(
+    "https://download.openmmlab.com/mmdetection/v3.0/dino/dino-5scale_swin-l_8xb2-12e_coco/dino-5scale_swin-l_8xb2-12e_coco_20230228_072924-a654145f.pth"
 )
-# GDINO = MMdetection_obj(GDINO_config, GDINO_checkpoint) # 1.41 GB
+# DINO = MMdetection_obj(DINO_config, DINO_checkpoint) # 837 MB
 
 Co_DETR_config = str(
     MMDETECTION_PATH
@@ -99,10 +99,10 @@ def producer(
         sampler=sampler,
     )
 
-    if model_name == "GDINO":
+    if model_name == "DINO":
         # MMDetection models are not serializable, so we can't pass them in Ray
         model = MMdetection_obj(
-            GDINO_config, GDINO_checkpoint
+            DINO_config, DINO_checkpoint
         )
     elif model_name == "Co_DETR":
         model = MMdetection_obj(
@@ -258,12 +258,19 @@ def consumer(
         del item
         # gc.collect()
 
-    no_pen_scores = defaultdict(dict)
-    pen_scores = defaultdict(dict)
+    no_pen_scores = dict()
+    pen_scores = dict()
     for conf in tqdm(confs, desc="Computing COCO metrics..."):
         no_pen_scores[conf] = sum(metrics_no_pen[conf]) / len(metrics_no_pen[conf])
-        # no_pen_scores[conf]["TN"] = true_negs[conf]
         pen_scores[conf] = sum(metrics_with_pen[conf]) / len(metrics_with_pen[conf])
+        
+
+        #
+        # no_pen_scores[conf] = metrics_no_pen[conf].compute()
+        # no_pen_scores[conf]["TN"] = true_negs[conf]
+        # del no_pen_scores[conf]["ious"]
+        # pen_scores[conf] = metrics_with_pen[conf].compute()
+        # del pen_scores[conf]["ious"]
         # metrics_no_pen[conf].reset()
         # metrics_with_pen[conf].reset()
         # del metrics_no_pen[conf]
@@ -368,8 +375,8 @@ def main():
 
     # 2) Prepare models
     models = [
-        # (None, "GDINO"),
-        # (None, "Co_DETR"),
+        (None, "DINO"),
+        (None, "Co_DETR"),
         (yolo_v10x, "yolo_v10x"),
         (yolo_11x, "yolo_11x"),
         (rtdetr, "rtdetr"),

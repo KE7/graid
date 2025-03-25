@@ -297,7 +297,7 @@ class Bdd100kDataset(ImageDataset):
         return len(self.img_labels)
 
     def __repr__(self):
-        return f"BDD100K Dataset {self.split} split with {len(self.img_labels)} images."
+        return f"BDD100K Dataset {self.split} split with {len(self.img_labels)} images"
 
     def __init__(
         self,
@@ -586,7 +586,7 @@ class NuImagesDataset(ImageDataset):
 
     def __repr__(self):
         return (
-            f"NuImages Dataset {self.split} split with {len(self.img_labels)} images."
+            f"NuImages Dataset {self.split} split with {self.__len__()} images"
         )
 
     def _get_image_label(self, i: int):
@@ -1112,7 +1112,7 @@ class WaymoDataset(ImageDataset):
         return self._CATEGORIES_R[cls]
 
     def __repr__(self):
-        return f"Waymo Dataset {self.split} split with {len(self.img_labels)} images."
+        return f"Waymo Dataset {self.split} split with {self.__len__()} images"
 
     def __init__(
         self,
@@ -1227,7 +1227,7 @@ class WaymoDataset(ImageDataset):
                     if not save_path.exists():
                         print("creating idx... ", idx)
                         with open(save_path, "wb") as f:
-                            os.chmod(save_path, 0o777)
+                            # os.chmod(save_path, 0o777)
                             pickle.dump(
                                 {
                                     "name": group_name[0],
