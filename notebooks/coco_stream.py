@@ -23,6 +23,7 @@ from scenic_reasoning.utilities.common import (
 )
 from pycocotools.cocoeval import COCOeval
 from pycocotools.coco import COCO
+import uuid
 
 # Constants
 NUM_EXAMPLES_TO_SHOW = 20
@@ -41,7 +42,8 @@ args.add_argument("--device-id", "-d_id", type=int, default=0, help="Device ID f
 
 args = args.parse_args()
 
-device = "cuda:" + str(args.device_id) if torch.cuda.is_available() else "cpu"
+device = torch.device(f"cuda:{args.device_id}" if torch.cuda.is_available() else "cpu")
+torch.cuda.set_device(args.device_id)
 
 dataset = args.dataset
 if dataset == "bdd":
@@ -133,6 +135,8 @@ elif model == "faster_rcnn_R_50_FPN_3x":
 elif model == "rtdetr":
     model = RT_DETR("rtdetr-x.pt")
 
+model.to(device)
+
 # Define COCO category information
 categories = [
     {"id": 0, "name": "person"},
@@ -151,10 +155,11 @@ ann_id_counter = 1
 image_id_counter = 1
 
 proj_root = project_root_dir()
-gt_images_temp_path = proj_root / "notebooks/gt_images.tmp"
-gt_annotations_temp_path = proj_root / "notebooks/gt_annotations.tmp"
-coco_gt_path = proj_root / "notebooks/coco_gt.json"
-coco_dt_path = proj_root / "notebooks/coco_dt.json"
+temp_id = uuid.uuid4().hex
+gt_images_temp_path = proj_root / f"notebooks/{temp_id}_gt_images.tmp"
+gt_annotations_temp_path = proj_root / f"notebooks/{temp_id}_gt_annotations.tmp"
+coco_gt_path = proj_root / f"notebooks/{temp_id}_coco_gt.json"
+coco_dt_path = proj_root / f"notebooks/{temp_id}_coco_dt.json"
 
 # Open temporary files and write opening brackets so that each is a valid JSON array.
 images_file = open(gt_images_temp_path, "w")
@@ -171,7 +176,7 @@ first_pred = True
 for batch in tqdm(data_loader):
     x = torch.stack([sample["image"] for sample in batch])
     y = [sample["labels"] for sample in batch]
-    x = x.to(device=get_default_device())
+    x = x.to(device=device)
     sizes = [sample["image"].shape[-2:] for sample in batch]
     file_names = [sample["path"] for sample in batch]
 
