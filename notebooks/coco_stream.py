@@ -1,3 +1,4 @@
+import argparse
 import ijson
 import json
 from pathlib import Path
@@ -10,7 +11,9 @@ from scenic_reasoning.data.ImageLoader import (
     NuImagesDataset,
     WaymoDataset,
 )
-from scenic_reasoning.models.Ultralytics import Yolo
+from scenic_reasoning.models.Detectron import Detectron_obj
+from scenic_reasoning.models.MMDetection import MMdetection_obj
+from scenic_reasoning.models.Ultralytics import RT_DETR, Yolo
 from scenic_reasoning.utilities.common import (
     get_default_device,
     yolo_bdd_transform,
@@ -25,24 +28,110 @@ from pycocotools.coco import COCO
 NUM_EXAMPLES_TO_SHOW = 20
 BATCH_SIZE = 1
 
+args = argparse.ArgumentParser()
+args.add_argument("--dataset", "-d", type=str, choices=["bdd", "nuimage", "waymo"], default="bdd", help="Dataset to use: bdd, nuimage, or waymo")
+args.add_argument("--model", "-m", type=str, default="yolo_11x",
+                  choices=["DINO", "Co_DETR", "yolo_v10x", "yolo_11x", "rtdetr",
+                           "retinanet_R_101_FPN_3x", "faster_rcnn_R_50_FPN_3x"],
+                  help="Model to use")
+args.add_argument("--conf", "-c", type=float, default=0.5,
+                  help="Confidence threshold for predictions",
+                  choices=[x/10 for x in range(0, 11)])
+args.add_argument("--device-id", "-d_id", type=int, default=0, help="Device ID for GPU (default: 0)", choices=[0, 1, 2, 3, 4, 5, 6, 7])
+
+args = args.parse_args()
+
+device = "cuda:" + str(args.device_id) if torch.cuda.is_available() else "cpu"
+
+dataset = args.dataset
+if dataset == "bdd":
 # Setup dataset with appropriate transform
-bdd = Bdd100kDataset(
-    split="val",
-    transform=lambda i, l: yolo_bdd_transform(i, l, new_shape=(768, 1280)),
-    use_original_categories=False,
-    use_extended_annotations=False,
-)
+    dataset = Bdd100kDataset(
+        split="val",
+        transform=lambda i, l: yolo_bdd_transform(i, l, new_shape=(768, 1280)),
+        use_original_categories=False,
+        use_extended_annotations=False,
+    )
+elif dataset == "nuimage":
+    dataset = NuImagesDataset(
+        split="validation",
+        size="all",
+        transform=lambda i, l: yolo_nuscene_transform(
+            i, l, new_shape=(896, 1600)
+        ),
+    )
+else:
+    WaymoDataset(
+        split="validation",
+        transform=lambda i, l: yolo_waymo_transform(i, l, (1280, 1920)),
+    )
 
-# Initialize the model
-model = Yolo(model="yolo11n.pt")
-
-# Create a DataLoader
 data_loader = DataLoader(
-    bdd,
-    batch_size=1,
+    dataset,
+    batch_size=BATCH_SIZE,
     shuffle=False,
+    num_workers=2,
     collate_fn=lambda x: x,
 )
+
+
+# Initialize the model
+"""
+Yolo(model="yolo11n.pt")"
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.094
+ Average Precision  (AP) @[ IoU=0.50      | area=   all | maxDets=100 ] = 0.161
+ Average Precision  (AP) @[ IoU=0.75      | area=   all | maxDets=100 ] = 0.093
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = 0.143
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = -1.000
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = -1.000
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=  1 ] = 0.090
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets= 10 ] = 0.142
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.144
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = 0.144
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = -1.000
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = -1.000"
+"""
+model = args.model
+if model == "yolo_v10x":
+    model = Yolo(model="yolo10x.pt")
+elif model == "yolo_11x":
+    model = Yolo(model="yolo11n.pt")
+elif model == "DINO":
+    MMDETECTION_PATH = project_root_dir() / "install" / "mmdetection"
+    DINO_config = str(
+    MMDETECTION_PATH
+        / "configs/dino/dino-5scale_swin-l_8xb2-12e_coco.py"
+    )
+    DINO_checkpoint = str(
+        "https://download.openmmlab.com/mmdetection/v3.0/dino/dino-5scale_swin-l_8xb2-12e_coco/dino-5scale_swin-l_8xb2-12e_coco_20230228_072924-a654145f.pth"
+    )
+    model = MMdetection_obj(DINO_config, DINO_checkpoint)
+elif model == "Co_DETR":
+    MMDETECTION_PATH = project_root_dir() / "install" / "mmdetection"
+    Co_DETR_config = str(
+    MMDETECTION_PATH
+        / "projects/CO-DETR/configs/codino/co_dino_5scale_swin_l_lsj_16xb1_3x_coco.py"
+    )
+    Co_DETR_checkpoint = str(
+        "https://download.openmmlab.com/mmdetection/v3.0/codetr/co_dino_5scale_lsj_swin_large_1x_coco-3af73af2.pth"
+    )
+    model = MMdetection_obj(Co_DETR_config, Co_DETR_checkpoint)
+elif model == "retinanet_R_101_FPN_3x":
+    retinanet_R_101_FPN_3x_config = "COCO-Detection/retinanet_R_101_FPN_3x.yaml"  # 228MB
+    retinanet_R_101_FPN_3x_weights = "COCO-Detection/retinanet_R_101_FPN_3x.yaml"
+    retinanet_R_101_FPN_3x = Detectron_obj(
+        config_file=retinanet_R_101_FPN_3x_config,
+        weights_file=retinanet_R_101_FPN_3x_weights,
+    )
+elif model == "faster_rcnn_R_50_FPN_3x":
+    faster_rcnn_R_50_FPN_3x_config = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"  # 167MB
+    faster_rcnn_R_50_FPN_3x_weights = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
+    faster_rcnn_R_50_FPN_3x = Detectron_obj(
+        config_file=faster_rcnn_R_50_FPN_3x_config,
+        weights_file=faster_rcnn_R_50_FPN_3x_weights,
+    )
+elif model == "rtdetr":
+    model = RT_DETR("rtdetr-x.pt")
 
 # Define COCO category information
 categories = [
@@ -79,7 +168,7 @@ first_image = True
 first_annotation = True
 first_pred = True
 
-for i, batch in tqdm(enumerate(data_loader)):
+for batch in tqdm(data_loader):
     x = torch.stack([sample["image"] for sample in batch])
     y = [sample["labels"] for sample in batch]
     x = x.to(device=get_default_device())
@@ -128,6 +217,9 @@ for i, batch in tqdm(enumerate(data_loader)):
 
         # Write predictions.
         for pred in odrs:
+            if pred.score < args.conf:
+                continue
+            
             prediction_record = {
                 "image_id": image_id,
                 "category_id": int(pred.cls),
