@@ -1,6 +1,7 @@
 import json
 import matplotlib.pyplot as plt
 from scenic_reasoning.utilities.common import project_root_dir
+from scenic_reasoning.utilities.coco import coco_label
 import os
 
 
@@ -11,9 +12,10 @@ def load_json(file_path):
 
 d = 'bdd_new'
 
-data_dir = project_root_dir() / 'data/eval_results' / d
+data_dir = project_root_dir() / 'evals'
 
 files = [f for f in os.listdir(data_dir) if os.path.isfile(os.path.join(data_dir, f))]
+files = [filename for filename in files if filename.endswith('.json')]
 
 # Initialize the plot
 plt.figure(figsize=(10, 6))
@@ -32,12 +34,16 @@ for file_name in files:
     confidences = []
     map_values = []
 
+    best_metrics = dict()
+
     for conf_str, metrics in section.items():
         confidence = float(conf_str)
-        map_score = metrics
-        print("map score", map_score)
+        map_score = metrics['map']
+        print(f"map score for {model_name} at confidence {confidence:.1f}: {map_score}")
         confidences.append(confidence)
         map_values.append(map_score)
+        if map_score > best_metrics.get('map', 0):
+            best_metrics = metrics
 
     sorted_pairs = sorted(zip(confidences, map_values))
     sorted_confidences, sorted_map_values = zip(*sorted_pairs)
@@ -45,6 +51,40 @@ for file_name in files:
     # Plot one line per model
     plt.plot(sorted_confidences, sorted_map_values, marker='o', label=model_name)
     print(f"Plotted {model_name}")
+
+    # If detailed per-class metrics exist, print the top 5 classes by mAP
+    if 'map_per_class' in best_metrics and 'mar_100_per_class' in best_metrics:
+        map_per_class = best_metrics['map_per_class']
+        mar_100_per_class = best_metrics['mar_100_per_class']
+        
+        # Sort class indices by mAP in descending order and select the top 5
+        top_classes = sorted(range(len(map_per_class)), key=lambda i: map_per_class[i], reverse=True)[:5]
+        print("  Top 5 classes:")
+        for idx in top_classes:
+            label = coco_label.get(idx, f'class_{idx}')
+            print(f"    {label}: mAP = {map_per_class[idx]}")
+        
+        # Create a single horizontal bar chart for the top 5 classes
+        fig, ax = plt.subplots(figsize=(10, 4))
+        class_names = [coco_label.get(idx, f'class_{idx}') for idx in top_classes]
+        y_pos = range(len(class_names))
+        
+        map_values = [map_per_class[idx] for idx in top_classes]
+        mar_values = [mar_100_per_class[idx] for idx in top_classes]
+        
+        ax.barh(y_pos, map_values, height=0.4, color='blue', alpha=0.7, label='mAP')
+        ax.barh([y + 0.4 for y in y_pos], mar_values, height=0.4, color='red', alpha=0.7, label='mAR')
+        
+        ax.set_yticks([y + 0.2 for y in y_pos])
+        ax.set_yticklabels(class_names)
+        ax.set_xlabel('Score')
+        ax.set_title(f'Top 5 Classes for {model_name}')
+        ax.legend()
+        ax.grid(axis='x', linestyle='--', alpha=0.7)
+        
+        fig.tight_layout()
+        fig.savefig(f'top_classes_{model_name}_{d}.png', dpi=300)
+        plt.close(fig)
 
 # Final plot settings
 plt.xlabel('Confidence Threshold')

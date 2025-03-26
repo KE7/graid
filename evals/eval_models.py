@@ -75,6 +75,7 @@ Co_DETR_checkpoint = str(
     "https://download.openmmlab.com/mmdetection/v3.0/codetr/co_dino_5scale_lsj_swin_large_1x_coco-3af73af2.pth"
 )
 # Co_DETR = MMdetection_obj(Co_DETR_config, Co_DETR_checkpoint) # 902 MB
+# /mask2former_swin-b-p4-w12-384_8xb2-lsj-50e_coco-panoptic.py)         | [model](https://download.openmmlab.com/mmdetection/v3.0/mask2former/mask2former_swin-b-p4-w12-384_8xb2-lsj-50e_coco-panoptic/mask2former_swin-b-p4-w12-384_8xb2-lsj-50e_coco-panoptic_20220331_002244-8a651d82.pth
 
 
 @ray.remote(num_gpus=1)
@@ -115,6 +116,8 @@ def producer(
 
     for i, batch in enumerate(tqdm(dataloader, desc="Processing " + str(dataset))):
         print(f"[GPU Task] Processing batch {i}")
+        if i >= 100:  # Limit to 100 batches for testing
+            break
         images = [sample["image"] for sample in batch]
         x = torch.stack(images)
         y = [sample["labels"] for sample in batch]
@@ -172,11 +175,8 @@ def consumer(
     #         iou_type="bbox",
     #     )
     true_negs = defaultdict(int)
-
-    metrics_with_pen = defaultdict(list)
-    metrics_no_pen = defaultdict(list)
-
-
+    false_negs = defaultdict(int)
+    false_pos = defaultdict(int)
     while True:
         print(
             f"[CPU Task] Waiting for batch item. Work queue remaining size: {work_queue.qsize()}"
@@ -251,6 +251,39 @@ def consumer(
                 metrics_with_pen[conf].append(score_pen)
 
                 # true_negs[conf] += tn_no_pen["TN"]
+                # n_odrs = len(relevant_odrs)
+                # n_gt = len(gt)
+                # if n_odrs == 0 and n_gt == 0:
+                #     # No predictions and no ground truth = true negatives
+                #     true_negs[conf] += 1
+                #     continue
+                # elif n_odrs == 0:
+                #     # No predictions but ground truth exists = false negatives
+                #     false_negs[conf] += 1
+                #     continue
+                # elif n_gt == 0:
+                #     # Predictions exist but no ground truth = false positives
+                #     false_pos[conf] += 1
+                #     continue
+                # else:
+                #     ObjectDetectionUtils.compute_metrics_for_single_img(
+                #         relevant_odrs,
+                #         gt,
+                #         metric=metrics_no_pen[conf],
+                #         class_metrics=True,
+                #         extended_summary=False,
+                #         penalize_for_extra_predicitions=False,
+                #         image=image,
+                #     )
+                #     ObjectDetectionUtils.compute_metrics_for_single_img(
+                #         relevant_odrs,
+                #         gt,
+                #         metric=metrics_with_pen[conf],
+                #         class_metrics=True,
+                #         extended_summary=False,
+                #         penalize_for_extra_predicitions=True,
+                #         image=image,
+                #     )
 
         del images
         del gt_list
