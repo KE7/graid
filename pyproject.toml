@@ -18,6 +18,7 @@ sqlitedict = "^2.1.0"
 numpy = "1.26.4"
 ray = "^2.43.0"
 fairscale = "^0.4.13"
+ijson = "^3.3.0"
 
 
 [tool.poetry.scripts]
