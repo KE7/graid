@@ -311,7 +311,7 @@ class Bdd100kDataset(ImageDataset):
 
         root_dir = project_root_dir() / "data" / "bdd100k"
         img_dir = root_dir / "images" / "100k" / split
-        annotations_file = root_dir / "labels" / "det_20" / f"det_{split}.json"
+        annotations_file = root_dir / "labels" / "det_20" / f"det_{split}_filtered.json"
 
         def merge_transform(
             image: Tensor,
@@ -390,7 +390,7 @@ class Bdd100kDataset(ImageDataset):
         ]
 
         # Save each element of the img_labels as its own pickle file
-        save_dir = project_root_dir() / "data" / f"bdd_{self.split}"
+        save_dir = project_root_dir() / "data" / f"bdd_{self.split}_filtered"
         save_dir.mkdir(parents=True, exist_ok=True)
         # os.chmod(save_dir, 0o777)
 
@@ -414,11 +414,11 @@ class Bdd100kDataset(ImageDataset):
                     os.chmod(save_path, 0o777)
 
     def __len__(self) -> int:
-        save_path = project_root_dir() / "data" / f"bdd_{self.split}"
+        save_path = project_root_dir() / "data" / f"bdd_{self.split}_filtered"
         return len(os.listdir(save_path))
 
     def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
-        save_path = project_root_dir() / "data" / f"bdd_{self.split}" / f"{idx}.pkl"
+        save_path = project_root_dir() / "data" / f"bdd_{self.split}_filtered" / f"{idx}.pkl"
 
         if not save_path.exists():
             raise FileNotFoundError(f"File not found: {save_path}")

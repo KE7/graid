@@ -95,7 +95,7 @@ Yolo(model="yolo11n.pt")"
 """
 model = args.model
 if model == "yolo_v10x":
-    model = Yolo(model="yolo10x.pt")
+    model = Yolo(model="yolov10x.pt")
 elif model == "yolo_11x":
     model = Yolo(model="yolo11n.pt")
 elif model == "DINO":
@@ -125,6 +125,7 @@ elif model == "retinanet_R_101_FPN_3x":
         config_file=retinanet_R_101_FPN_3x_config,
         weights_file=retinanet_R_101_FPN_3x_weights,
     )
+    model = retinanet_R_101_FPN_3x
 elif model == "faster_rcnn_R_50_FPN_3x":
     faster_rcnn_R_50_FPN_3x_config = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"  # 167MB
     faster_rcnn_R_50_FPN_3x_weights = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
@@ -132,6 +133,7 @@ elif model == "faster_rcnn_R_50_FPN_3x":
         config_file=faster_rcnn_R_50_FPN_3x_config,
         weights_file=faster_rcnn_R_50_FPN_3x_weights,
     )
+    model = faster_rcnn_R_50_FPN_3x
 elif model == "rtdetr":
     model = RT_DETR("rtdetr-x.pt")
 

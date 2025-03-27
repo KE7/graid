@@ -26,12 +26,14 @@ BATCH_SIZE = 1
 #     transform=lambda i, l: yolo_bdd_transform(i, l, new_shape=(768, 1280)),
 #     use_original_categories=False,
 #     use_extended_annotations=False,
+#     rebuild=True
 # )
 
 nu = NuImagesDataset(
     split="val",
     size="all",
     transform=lambda i, l: yolo_nuscene_transform(i, l, new_shape=(896, 1600)),
+    rebuild=True
 )
 
 # waymo = WaymoDataset(split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, (1280, 1920)))
