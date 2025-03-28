@@ -22,7 +22,7 @@ rtdetr = RT_DETR("rtdetr-l.pt")
 BATCH_SIZE = 64
 
 
-@ray.remote(num_gpus=1)
+# @ray.remote(num_gpus=1)
 def generate_db(dataset_name, split, conf, model=None):
 
     if model:
@@ -51,7 +51,7 @@ def generate_db(dataset_name, split, conf, model=None):
 
 if __name__ == "__main__":
 
-    ray.init()
+    # ray.init()
 
     parser = argparse.ArgumentParser(
         description="Distributed dataset generator with Ray."
@@ -93,7 +93,7 @@ if __name__ == "__main__":
 
     for d in datasets:
         for conf in confs:
-            task_val = generate_db.remote(d, split, conf, model=model)
+            task_val = generate_db(d, split, conf, model=model)
             # task_train = generate_db(d, "train", conf, model=model)
             # generate_db(d, "val", conf, model=model)
             # generate_db(d, "train", conf, model=model)
@@ -101,4 +101,4 @@ if __name__ == "__main__":
             tasks.append(task_val)
             # tasks.append(task_train)
 
-    ray.get(tasks)
+    # ray.get(tasks)

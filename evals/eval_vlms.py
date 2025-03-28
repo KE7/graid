@@ -1,20 +1,24 @@
 import argparse
 import json
 import sqlite3
-
+import os
 import pandas as pd
 from metrics import ConstraintDecoding, LLMJudge
 from prompts import SetOfMarkPrompt, ZeroShotPrompt
 from scenic_reasoning.utilities.common import project_root_dir
 from sqlitedict import SqliteDict
 from tqdm import tqdm
-from vlms import GPT, Llama, Qwen
+from vlms import GPT, Llama
+from pathlib import Path
 
-DB_PATH = project_root_dir() / "scenic_reasoning/src/scenic_reasoning/data/databases"
+DB_PATH = project_root_dir() / "data/databases_final"
 
 
 def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt):
     conn = sqlite3.connect(db_path)
+    db_name = Path(db_path).stem
+    output_dir = Path(f"{db_name}_{my_vlm}_{my_metric}_{my_prompt}")
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     # Get a list of all table names
     tables_query = "SELECT name FROM sqlite_master WHERE type='table';"
@@ -28,14 +32,17 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt):
     conn.close()
 
     correctness = []
-    q_count = 0
+    idx = 0
     for table in dataframes:
         for index, row in tqdm(
             dataframes[table].iterrows(), total=len(dataframes[table])
         ):
-            if q_count >= 1000:
-                return sum(correctness) / len(correctness), q_count
-                
+            idx += 1
+            output_path = output_dir / f"{idx}.txt"
+            if os.path.exists(output_path):
+                print(f"Skipping {output_path}")
+                continue
+
             d = row.to_dict()
             image_path, v = d["key"], json.loads(d["value"])
             qa_list = v["qa_list"]
@@ -43,23 +50,30 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt):
                 continue
 
             questions = [p[0] for p in qa_list]
-            q_count += len(questions)
             questions = ", ".join([item for i, item in enumerate(questions)])
             answers = [p[1] for p in qa_list]
             answers = ", ".join([item for i, item in enumerate(answers)])
+
             try:
                 preds = my_vlm.generate_answer(image_path, questions, my_prompt)
-                if preds is None:
-                    # Token has expired
-                    return sum(correctness) / len(correctness)
-                else:
-                    correct = my_metric.evaluate(preds, answers)
-                    correctness += correct
-                print(q_count)
-            except:
-                return sum(correctness) / len(correctness), q_count
-
+            except Exception as e:
+                print(e)
+                continue
+            
+            correct = my_metric.evaluate(preds, answers)
+            correctness.append(correct)
+            
+            with open(output_path, "w") as log_file:
+                log_file.write(f"Image Path: \n{image_path}\n")
+                log_file.write(f"Questions: \n{questions}\n")
+                log_file.write(f"Answers: \n{answers}\n")
+                log_file.write(f"Preds: \n{preds}\n")
+                log_file.write(f"Correctness: \n{correct}\n")
+                log_file.write("\n")
+            
+        
     return sum(correctness) / len(correctness), q_count
+            
 
 
 if __name__ == "__main__":
@@ -99,9 +113,7 @@ if __name__ == "__main__":
     db_path = str(DB_PATH / args.db_name)
     if args.vlm == "GPT":
         my_vlm = GPT()
-    elif args.vlm == "Qwen":
-        my_vlm = Qwen()
-    else:
+    elif args.vlm == "Llama":
         my_vlm = Llama()
 
     my_metric = LLMJudge() if args.metric == "LLMJudge" else ConstraintDecoding()

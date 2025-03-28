@@ -22,6 +22,9 @@ import cv2
 from torch.utils.data import DataLoader
 from torchvision import datasets
 from tqdm import tqdm
+import re
+from datetime import datetime
+from datetime import time
 
 
 
@@ -65,7 +68,7 @@ from tqdm import tqdm
 
 # Nuimage
 
-# import re
+
 
 # BATCH_SIZE = 1
 
@@ -84,8 +87,7 @@ from tqdm import tqdm
 #     collate_fn=lambda x: x,
 # )
 
-# # from datetime import datetime
-# from datetime import time
+
 
 # def is_time_in_working_hours(filename: str) -> bool:
 #     match = re.search(r"\d{4}-\d{2}-\d{2}-(\d{2})-(\d{2})-", filename)
@@ -124,16 +126,36 @@ from tqdm import tqdm
 
 
 
-waymo = WaymoDataset(split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, (1280, 1920)), rebuild=True)
+waymo = WaymoDataset(split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, (1280, 1920)))
 
 data_loader = DataLoader(
-    nu,
+    waymo,
     batch_size=1,
     shuffle=False,
     num_workers=2,
     collate_fn=lambda x: x,
 )
 
+
+def is_within_working_hours(timestamp_micro: str) -> bool:
+    # Convert string to int and microseconds to seconds
+    timestamp_sec = int(timestamp_micro) / 1e6
+    dt = datetime.utcfromtimestamp(timestamp_sec)  # Assuming UTC
+
+    # Check if time is within 08:00 to 18:00
+    return time(8, 0) <= dt.time() < time(18, 0)
+
+
+total_count = count = 0
+
 for idx, batch in enumerate(tqdm(data_loader, desc="Loading Batches")):
-    
+    for b in batch:
+        total_count += 1    
+        t = b['timestamp']
+        if not is_within_working_hours(t):
+            count += 1
+
+print(count, total_count)
+
+
 

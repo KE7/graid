@@ -76,6 +76,9 @@ class LLMJudge(EvaluationMetric):
         correctness = [int(num) for num in numbers]
 
         return correctness
+    
+    def __str__(self):
+        return "LLMJudge"
 
 
 class ConstraintDecoding(EvaluationMetric):
@@ -107,3 +110,6 @@ class ConstraintDecoding(EvaluationMetric):
         correctness = generator(prompt)
 
         return correctness == "1"
+
+    def __str__(self):
+        return "ConstraintDecoding"

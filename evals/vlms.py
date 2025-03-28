@@ -2,28 +2,14 @@ import base64
 import json
 import os
 import re
-
+from google import genai
+from google.genai import types
 import requests
 import torch
 from dotenv import load_dotenv
 from openai import OpenAI
 from PIL import Image
 from torchvision import transforms
-
-
-class VLM:
-    def __init__(self):
-        pass
-
-    def encode_image(self, image):
-        pass
-
-    def generate_answer(self, image, question: str) -> str:
-        pass
-
-    def parse_answer(self, answer):
-
-        pass
 
 
 class GPT:
@@ -77,9 +63,8 @@ class GPT:
 
         return [re.sub(r"[^a-zA-Z]", "", response).strip() for response in responses]
 
-    def parse_answer(self, answer):
-
-        pass
+    def __str__(self):
+        return "GPT"
 
 
 class Gemini:
@@ -111,16 +96,37 @@ class Gemini:
         return response
 
 
-class Qwen(GPT):
-    def __init__(self, model_name="unsloth/Qwen2.5-VL-3B-Instruct-bnb-4bit", port=7000):
-        load_dotenv()
-        openai_api_key = os.getenv("OPENAI_API_KEY")
-        openai_api_base = f"http://localhost:{port}/v1"
-        self.client = OpenAI(
-            api_key=openai_api_key,
-            base_url=openai_api_base,
+class Gemini:
+    def __init__(self):
+        self.client = genai.Client(
+        vertexai=True, project="graid-451620", location="us-central1",
         )
-        self.model_name = model_name
+        self.model = "gemini-2.0-pro-exp-02-05"
+    # If your image is stored in Google Cloud Storage, you can use the from_uri class method to create a Part object.
+
+    def encode_image(self, image):
+        with open(image, "rb") as image_file:
+            return base64.b64encode(image_file.read()).decode("utf-8")
+
+    def generate_answer(self, image, questions: str, prompting_style):
+        base64_image = self.encode_image(image)
+        image_gcs_url = f"data:image/jpeg;base64,{base64_image}"
+        image, prompt = prompting_style.generate_prompt(image, questions)
+
+        response = self.client.models.generate_content(
+        model=self.model,
+        contents=[
+            prompt,
+            types.Part.from_uri(
+            file_uri=image_gcs_url,
+            mime_type="image/png",
+            ),
+        ],
+        )
+        print(response.text, end="")
+    
+    def __str__(self):
+        return "Gemini"
 
 
 class Llama:
@@ -173,3 +179,13 @@ class Llama:
         else:
             print(f"Error {response.status_code}: {response.text}")
             return None
+    
+    def __str__(self):
+        return "Llama"
+
+
+
+
+
+# from prompts import ZeroShotPrompt
+# print(Gemini().generate_answer("../demo/demo.jpg", "Tell me about this image", prompting_style=ZeroShotPrompt()))

@@ -1163,7 +1163,7 @@ class WaymoDataset(ImageDataset):
         idx = 0
 
         if rebuild:
-            save_path_parent = project_root_dir() / "data" / f"waymo_{self.split}"
+            save_path_parent = project_root_dir() / "data" / f"waymo_{self.split}_interesting"
             save_path_parent.mkdir(parents=True, exist_ok=True)
             os.chmod(save_path_parent, 0o777)
 

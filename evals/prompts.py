@@ -24,6 +24,9 @@ class ZeroShotPrompt(PromptingStrategy):
         {questions}
         """
         return image, prompt
+    
+    def __str__(self):
+        return "ZeroShotPrompt"
 
 
 class CoT(PromptingStrategy):
@@ -57,6 +60,9 @@ class FewShotPrompt(PromptingStrategy):
 
         prompt += f"Now, answer the following question:\n{question}"
         return prompt
+    
+    def __str__(self):
+        return "FewShotPrompt"
 
 
 class SetOfMarkPrompt(PromptingStrategy):
