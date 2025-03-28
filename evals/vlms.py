@@ -61,7 +61,7 @@ class GPT:
 
         responses = completion.choices[0].message.content.split(",")
 
-        return [re.sub(r"[^a-zA-Z]", "", response).strip() for response in responses]
+        return [re.sub(r"[^a-zA-Z]", "", response).strip() for response in responses], prompt
 
     def __str__(self):
         return "GPT"

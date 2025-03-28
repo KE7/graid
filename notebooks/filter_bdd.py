@@ -126,7 +126,7 @@ from datetime import time
 
 
 
-waymo = WaymoDataset(split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, (1280, 1920)))
+waymo = WaymoDataset(split="training", transform=lambda i, l: yolo_waymo_transform(i, l, (1280, 1920)))
 
 data_loader = DataLoader(
     waymo,
