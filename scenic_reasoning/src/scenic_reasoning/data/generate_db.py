@@ -17,9 +17,9 @@ nuimage_transform = lambda i, l: yolo_nuscene_transform(i, l, new_shape=(896, 16
 waymo_transform = lambda i, l: yolo_waymo_transform(i, l, (1280, 1920))
 
 
-rtdetr = RT_DETR("rtdetr-l.pt")
+rtdetr = RT_DETR("rtdetr-x.pt")
 
-BATCH_SIZE = 64
+BATCH_SIZE = 32
 
 
 # @ray.remote(num_gpus=1)
@@ -28,6 +28,7 @@ def generate_db(dataset_name, split, conf, model=None):
     if model:
         model.set_threshold(conf)
         db_name = f"{dataset_name}_{split}_{str(model)}"
+        model.to("cuda:7")
     else:
         db_name = f"{dataset_name}_{split}_gt"
 
@@ -61,7 +62,7 @@ if __name__ == "__main__":
         "--dataset",
         type=str,
         choices=["bdd", "nuimage", "waymo"],
-        default="bdd",
+        default="nuimage",
         help="Select which dataset to use: 'bdd', 'nuimage', or 'waymo'.",
     )
 
@@ -69,7 +70,7 @@ if __name__ == "__main__":
         "--split",
         type=str,
         choices=["train", "val"],
-        default="val",
+        default="train",
         help="Select which split to use: 'train' or 'val'.",
     )
 

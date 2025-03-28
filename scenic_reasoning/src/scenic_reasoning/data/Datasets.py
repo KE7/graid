@@ -25,7 +25,7 @@ lock = threading.Lock()
 
 
 class ObjDectDatasetBuilder(Dataset):
-    DEFAULT_DB_PATH = project_root_dir() / "data" / "databases3"
+    DEFAULT_DB_PATH = project_root_dir() / "data" / "databases_final"
 
     def __init__(
         self,
@@ -188,8 +188,8 @@ class ObjDectDatasetBuilder(Dataset):
                 print("Writing items to the database...")
                 for question in self.questions:
                     table_name = str(question)
-                    if dataset[table_name] == items[table_name]:
-                        continue
+                    # if self.dataset[table_name] == items[table_name]:
+                    #     continue
                     self.dataset[table_name].update(items[table_name])
                     self.dataset[table_name].commit()
                 self.writer_queue.task_done()
@@ -265,10 +265,10 @@ class ObjDectDatasetBuilder(Dataset):
                 batch_size=batch_size,
                 shuffle=False,
                 collate_fn=lambda x: x,
-                num_workers=8,
+                num_workers=7,
             )
 
-            max_workers = 20
+            max_workers = 14
             inflight_futures = []
 
             writer_thread = threading.Thread(target=writer, daemon=True)
