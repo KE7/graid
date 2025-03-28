@@ -3,10 +3,12 @@
 # It assigns each job to a GPU in parallel (one per GPU) and saves the output
 # to a file named by the combination of parameters.
 
-datasets=("bdd" "nuimage" "waymo")
-models=("DINO" "Co_DETR" "yolo_v10x" "yolo_11x" "rtdetr" "retinanet_R_101_FPN_3x" "faster_rcnn_R_50_FPN_3x")
-confs=(0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9)
-gpus=(0 1 2 3 4 5 6 7)
+datasets=("bdd") # "nuimage" "waymo"
+# "DINO" "Co_DETR" "rtdetr"
+# models=("yolo_v10x" "yolo_11x" "retinanet_R_101_FPN_3x" "faster_rcnn_R_50_FPN_3x")
+models=("yolov6x" "yolov6l")
+confs=(0.0 ) # 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9
+gpus=(6 7)
 
 max_jobs=8
 job_count=0
