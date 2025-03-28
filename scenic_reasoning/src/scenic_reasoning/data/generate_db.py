@@ -17,17 +17,18 @@ nuimage_transform = lambda i, l: yolo_nuscene_transform(i, l, new_shape=(896, 16
 waymo_transform = lambda i, l: yolo_waymo_transform(i, l, (1280, 1920))
 
 
-rtdetr = RT_DETR("rtdetr-l.pt")
+rtdetr = RT_DETR("rtdetr-x.pt")
 
-BATCH_SIZE = 64
+BATCH_SIZE = 32
 
 
-@ray.remote(num_gpus=1)
+# @ray.remote(num_gpus=1)
 def generate_db(dataset_name, split, conf, model=None):
 
     if model:
         model.set_threshold(conf)
         db_name = f"{dataset_name}_{split}_{str(model)}"
+        model.to("cuda:7")
     else:
         db_name = f"{dataset_name}_{split}_gt"
 
@@ -51,7 +52,7 @@ def generate_db(dataset_name, split, conf, model=None):
 
 if __name__ == "__main__":
 
-    ray.init()
+    # ray.init()
 
     parser = argparse.ArgumentParser(
         description="Distributed dataset generator with Ray."
@@ -61,7 +62,7 @@ if __name__ == "__main__":
         "--dataset",
         type=str,
         choices=["bdd", "nuimage", "waymo"],
-        default="bdd",
+        default="nuimage",
         help="Select which dataset to use: 'bdd', 'nuimage', or 'waymo'.",
     )
 
@@ -69,7 +70,7 @@ if __name__ == "__main__":
         "--split",
         type=str,
         choices=["train", "val"],
-        default="val",
+        default="train",
         help="Select which split to use: 'train' or 'val'.",
     )
 
@@ -93,7 +94,7 @@ if __name__ == "__main__":
 
     for d in datasets:
         for conf in confs:
-            task_val = generate_db.remote(d, split, conf, model=model)
+            task_val = generate_db(d, split, conf, model=model)
             # task_train = generate_db(d, "train", conf, model=model)
             # generate_db(d, "val", conf, model=model)
             # generate_db(d, "train", conf, model=model)
@@ -101,4 +102,4 @@ if __name__ == "__main__":
             tasks.append(task_val)
             # tasks.append(task_train)
 
-    ray.get(tasks)
+    # ray.get(tasks)
