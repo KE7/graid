@@ -61,59 +61,79 @@ from tqdm import tqdm
 
 # print(f'Filtered data saved to {output_file_path}')
 
-import re
 
-BATCH_SIZE = 1
 
-nu = NuImagesDataset(
-    split="val",
-    size="all",
-    transform=lambda i, l: yolo_nuscene_transform(i, l, new_shape=(896, 1600)),
-    rebuild=False
-)
+# Nuimage
+
+# import re
+
+# BATCH_SIZE = 1
+
+# nu = NuImagesDataset(
+#     split="val",
+#     size="all",
+#     transform=lambda i, l: yolo_nuscene_transform(i, l, new_shape=(896, 1600)),
+#     rebuild=False
+# )
+
+# data_loader = DataLoader(
+#     nu,
+#     batch_size=BATCH_SIZE,
+#     shuffle=False,
+#     num_workers=2,
+#     collate_fn=lambda x: x,
+# )
+
+# # from datetime import datetime
+# from datetime import time
+
+# def is_time_in_working_hours(filename: str) -> bool:
+#     match = re.search(r"\d{4}-\d{2}-\d{2}-(\d{2})-(\d{2})-", filename)
+#     if not match:
+#         raise ValueError("Time not found in filename.")
+    
+#     hour = int(match.group(1))
+#     minute = int(match.group(2))
+#     t = time(hour, minute)
+
+#     return time(8, 0) <= t < time(18, 0)
+
+# print(is_time_in_working_hours("n013-2018-09-13-12-17-19+0800__CAM_FRONT_LEFT__1536812298604825.jpg"))
+
+# # exit()
+
+
+# name_set = set()
+# desc_set = set()
+# count = total_count = 0
+
+# for idx, batch in enumerate(tqdm(data_loader, desc="Loading Batches")):
+#     if total_count == 100: 
+#         break
+#     for b in batch:
+#         total_count += 1    
+#         if not is_time_in_working_hours(b['name']):
+#             count += 1
+#         # for att in b['attributes']:
+#         #     if not att:
+#         #         continue
+#         #     name_set.add(att[0]['name'])
+#         #     desc_set.add(att[0]['description'])
+
+# print(count, total_count)
+
+
+
+waymo = WaymoDataset(split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, (1280, 1920)), rebuild=True)
 
 data_loader = DataLoader(
     nu,
-    batch_size=BATCH_SIZE,
+    batch_size=1,
     shuffle=False,
     num_workers=2,
     collate_fn=lambda x: x,
 )
 
-# from datetime import datetime
-from datetime import time
-
-def is_time_in_working_hours(filename: str) -> bool:
-    match = re.search(r"\d{4}-\d{2}-\d{2}-(\d{2})-(\d{2})-", filename)
-    if not match:
-        raise ValueError("Time not found in filename.")
-    
-    hour = int(match.group(1))
-    minute = int(match.group(2))
-    t = time(hour, minute)
-
-    return time(8, 0) <= t < time(18, 0)
-
-print(is_time_in_working_hours("n013-2018-09-13-12-17-19+0800__CAM_FRONT_LEFT__1536812298604825.jpg"))
-
-# exit()
-
-
-name_set = set()
-desc_set = set()
-count = total_count = 0
-
 for idx, batch in enumerate(tqdm(data_loader, desc="Loading Batches")):
-    if total_count == 100: 
-        break
-    for b in batch:
-        total_count += 1    
-        if not is_time_in_working_hours(b['name']):
-            count += 1
-        # for att in b['attributes']:
-        #     if not att:
-        #         continue
-        #     name_set.add(att[0]['name'])
-        #     desc_set.add(att[0]['description'])
+    
 
-print(count, total_count)
