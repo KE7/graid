@@ -5,7 +5,7 @@ import logging
 import os
 import pickle
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
-
+import re
 import numpy as np
 import pandas as pd
 import torch
@@ -29,6 +29,7 @@ from torch import Tensor
 from torch.utils.data import Dataset
 from torchvision import transforms
 from tqdm import tqdm
+from datetime import time
 
 logger = logging.getLogger(__name__)
 
@@ -623,6 +624,17 @@ class NuImagesDataset(ImageDataset):
             "img_filename": img_filename,
             "timestamp": timestamp,
         }
+    
+    def is_time_in_working_hours(self, filename: str) -> bool:
+        match = re.search(r"\d{4}-\d{2}-\d{2}-(\d{2})-(\d{2})-", filename)
+        if not match:
+            raise ValueError("Time not found in filename.")
+        
+        hour = int(match.group(1))
+        minute = int(match.group(2))
+        t = time(hour, minute)
+
+        return time(8, 0) <= t < time(18, 0)
 
     def __init__(
         self,
@@ -659,7 +671,7 @@ class NuImagesDataset(ImageDataset):
                 verbose=False,
                 lazy=True,  # verbose off to avoid excessive print statement
             )
-            save_path_parent = project_root_dir() / "data" / f"nuimages_{self.split}"
+            save_path_parent = project_root_dir() / "data" / f"nuimages_{self.split}_filtered"
             save_path_parent.mkdir(parents=True, exist_ok=True)
             os.chmod(save_path_parent, 0o777)
 
@@ -703,6 +715,9 @@ class NuImagesDataset(ImageDataset):
                 print("creating idx... ", idx)
                 # if save_path.exists():
                 #     continue
+                if not self.is_time_in_working_hours(img_filename):
+                    continue
+
                 with open(save_path, "wb") as f:
                     pickle.dump(
                         {
@@ -761,7 +776,7 @@ class NuImagesDataset(ImageDataset):
         )
 
     def __len__(self) -> int:
-        save_path = project_root_dir() / "data" / f"nuimages_{self.split}"
+        save_path = project_root_dir() / "data" / f"nuimages_{self.split}_filtered"
         return len(os.listdir(save_path))
 
     def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
@@ -771,7 +786,7 @@ class NuImagesDataset(ImageDataset):
         #     timestamp = self.img_labels[idx][0]["timestamp"]
         # else:
         save_path = (
-            project_root_dir() / "data" / f"nuimages_{self.split}" / f"{idx}.pkl"
+            project_root_dir() / "data" / f"nuimages_{self.split}_filtered" / f"{idx}.pkl"
         )
         if not save_path.exists():
             raise FileNotFoundError(f"File not found: {save_path}")

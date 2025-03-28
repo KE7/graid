@@ -10,42 +10,19 @@ from scenic_reasoning.utilities.common import (
     yolo_nuscene_transform,
     yolo_waymo_transform,
 )
+import ray
 
 bdd_transform = lambda i, l: yolo_bdd_transform(i, l, new_shape=(768, 1280))
 nuimage_transform = lambda i, l: yolo_nuscene_transform(i, l, new_shape=(896, 1600))
 waymo_transform = lambda i, l: yolo_waymo_transform(i, l, (1280, 1920))
 
 
-yolo_v8n = Yolo(model="yolov8n.pt")
-yolo_11n = Yolo(model="yolo11n.pt")
 rtdetr = RT_DETR("rtdetr-l.pt")
-
-# retinanet_R_101_FPN_3x_config = "COCO-Detection/retinanet_R_101_FPN_3x.yaml"
-# retinanet_R_101_FPN_3x_weights = "COCO-Detection/retinanet_R_101_FPN_3x.yaml"
-# retinanet_R_101_FPN_3x = Detectron_obj(
-#     config_file=retinanet_R_101_FPN_3x_config,
-#     weights_file=retinanet_R_101_FPN_3x_weights,
-# )
-
-# faster_rcnn_R_50_FPN_3x_config = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
-# faster_rcnn_R_50_FPN_3x_weights = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
-# faster_rcnn_R_50_FPN_3x = Detectron_obj(
-#     config_file=faster_rcnn_R_50_FPN_3x_config,
-#     weights_file=faster_rcnn_R_50_FPN_3x_weights,
-# )
-
-
-# MMDETECTION_PATH = project_root_dir() / "install" / "mmdetection"
-
-# Co_DETR_config = str(MMDETECTION_PATH / "projects/CO-DETR/configs/codino/co_dino_5scale_swin_l_lsj_16xb1_3x_coco.py")
-# Co_DETR_checkpoint = str(MMDETECTION_PATH / "checkpoints/co_dino_5scale_lsj_swin_large_1x_coco-3af73af2.pth")
-# Co_DETR = MMdetection_obj(Co_DETR_config, Co_DETR_checkpoint)
-
 
 BATCH_SIZE = 64
 
 
-# @ray.remote(num_gpus=1)
+@ray.remote(num_gpus=1)
 def generate_db(dataset_name, split, conf, model=None):
 
     if model:
@@ -71,17 +48,29 @@ def generate_db(dataset_name, split, conf, model=None):
         db_builder.build(model=model, batch_size=BATCH_SIZE)
 
 
+
 if __name__ == "__main__":
+
+    ray.init()
 
     parser = argparse.ArgumentParser(
         description="Distributed dataset generator with Ray."
     )
+
     parser.add_argument(
-        "--model",
+        "--dataset",
         type=str,
-        choices=["rtdetr", "none"],
-        default="none",
-        help="Select which model to use: 'rtdetr' or 'none'.",
+        choices=["bdd", "nuimage", "waymo"],
+        default="bdd",
+        help="Select which dataset to use: 'bdd', 'nuimage', or 'waymo'.",
+    )
+
+    parser.add_argument(
+        "--split",
+        type=str,
+        choices=["train", "val"],
+        default="val",
+        help="Select which split to use: 'train' or 'val'.",
     )
 
     args = parser.parse_args()
@@ -89,25 +78,27 @@ if __name__ == "__main__":
     # https://github.com/ray-project/ray/issues/3899
     # ray.init(_temp_dir='/tmp/ray/graid')
 
-    if args.model == "rtdetr":
-        model = rtdetr
-    elif args.model == "none":
-        model = None
+    model = rtdetr
 
     # models = [rtdetr]
     # models = [None]
     # confs = [c for c in np.arange(0.05, 0.90, 0.05)]
-    confs = [0.8]
-    datasets = ["waymo"]
+    confs = [0.2]
+
+    datasets = [args.dataset]
+    split = args.split
+
 
     tasks = []
 
     for d in datasets:
         for conf in confs:
-            # task_val = generate_db(d, "val", conf, model=model)
+            task_val = generate_db.remote(d, split, conf, model=model)
             # task_train = generate_db(d, "train", conf, model=model)
-            generate_db(d, "val", conf, model=model)
-            generate_db(d, "train", conf, model=model)
+            # generate_db(d, "val", conf, model=model)
+            # generate_db(d, "train", conf, model=model)
 
-            # tasks.append(task_val)
+            tasks.append(task_val)
             # tasks.append(task_train)
+
+    ray.get(tasks)

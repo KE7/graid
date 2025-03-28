@@ -27,13 +27,13 @@ import uuid
 
 # Constants
 NUM_EXAMPLES_TO_SHOW = 20
-BATCH_SIZE = 1
+BATCH_SIZE = 16
 
 args = argparse.ArgumentParser()
 args.add_argument("--dataset", "-d", type=str, choices=["bdd", "nuimage", "waymo"], default="bdd", help="Dataset to use: bdd, nuimage, or waymo")
 args.add_argument("--model", "-m", type=str, default="yolo_11x",
                   choices=["DINO", "Co_DETR", "yolo_v10x", "yolo_11x", "rtdetr",
-                           "retinanet_R_101_FPN_3x", "faster_rcnn_R_50_FPN_3x"],
+                           "retinanet_R_101_FPN_3x", "faster_rcnn_R_50_FPN_3x", "X101_FPN", "faster_rcnn_R_101_FPN_3x"],
                   help="Model to use")
 args.add_argument("--conf", "-c", type=float, default=0.5,
                   help="Confidence threshold for predictions",
@@ -56,7 +56,7 @@ if dataset == "bdd":
     )
 elif dataset == "nuimage":
     dataset = NuImagesDataset(
-        split="validation",
+        split="val",
         size="all",
         transform=lambda i, l: yolo_nuscene_transform(
             i, l, new_shape=(896, 1600)
@@ -136,6 +136,21 @@ elif model == "faster_rcnn_R_50_FPN_3x":
     model = faster_rcnn_R_50_FPN_3x
 elif model == "rtdetr":
     model = RT_DETR("rtdetr-x.pt")
+
+elif model == "X101_FPN":
+    X101_FPN_config = "COCO-Detection/faster_rcnn_X_101_32x8d_FPN_3x.yaml"  # 167MB
+    X101_FPN_weights = "COCO-Detection/faster_rcnn_X_101_32x8d_FPN_3x.yaml"
+    model = Detectron_obj(
+        config_file=X101_FPN_config,
+        weights_file=X101_FPN_weights,
+    )
+elif model == "faster_rcnn_R_101_FPN_3x":
+    faster_rcnn_R_101_FPN_3x_config = "COCO-Detection/faster_rcnn_R_101_FPN_3x.yaml"
+    faster_rcnn_R_101_FPN_3x_weights = "COCO-Detection/faster_rcnn_R_101_FPN_3x.yaml"
+    model = Detectron_obj(
+        config_file=faster_rcnn_R_101_FPN_3x_config,
+        weights_file=faster_rcnn_R_101_FPN_3x_weights,
+    )
 
 model.to(device)
 

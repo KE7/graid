@@ -61,6 +61,7 @@ from tqdm import tqdm
 
 # print(f'Filtered data saved to {output_file_path}')
 
+import re
 
 BATCH_SIZE = 1
 
@@ -79,14 +80,23 @@ data_loader = DataLoader(
     collate_fn=lambda x: x,
 )
 
-from datetime import datetime
+# from datetime import datetime
+from datetime import time
 
-def is_within_working_hours(timestamp_micro: int) -> bool:
-    timestamp_sec = timestamp_micro / 1e6
-    dt = datetime.utcfromtimestamp(timestamp_sec)
+def is_time_in_working_hours(filename: str) -> bool:
+    match = re.search(r"\d{4}-\d{2}-\d{2}-(\d{2})-(\d{2})-", filename)
+    if not match:
+        raise ValueError("Time not found in filename.")
+    
+    hour = int(match.group(1))
+    minute = int(match.group(2))
+    t = time(hour, minute)
 
-    return 8 <= dt.hour < 18
+    return time(8, 0) <= t < time(18, 0)
 
+print(is_time_in_working_hours("n013-2018-09-13-12-17-19+0800__CAM_FRONT_LEFT__1536812298604825.jpg"))
+
+# exit()
 
 
 name_set = set()
@@ -94,11 +104,12 @@ desc_set = set()
 count = total_count = 0
 
 for idx, batch in enumerate(tqdm(data_loader, desc="Loading Batches")):
+    if total_count == 100: 
+        break
     for b in batch:
-        total_count += 1
-        if not is_within_working_hours(b['timestamp']):
+        total_count += 1    
+        if not is_time_in_working_hours(b['name']):
             count += 1
-            continue
         # for att in b['attributes']:
         #     if not att:
         #         continue
