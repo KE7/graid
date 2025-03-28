@@ -94,10 +94,10 @@ Yolo(model="yolo11n.pt")"
  Average Recall     (AR) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = -1.000"
 """
 model = args.model
-if model == "yolo_v10x":
-    model = Yolo(model="yolov10x.pt")
-elif model == "yolo_11x":
-    model = Yolo(model="yolo11n.pt")
+if "yolov6" in model:
+    model = Yolo(model=f"{model}.yaml")
+elif "yolo" in model:
+    model = Yolo(model=f"{model}.pt")
 elif model == "DINO":
     MMDETECTION_PATH = project_root_dir() / "install" / "mmdetection"
     DINO_config = str(
@@ -121,7 +121,7 @@ elif model == "Co_DETR":
 elif model == "retinanet_R_101_FPN_3x":
     retinanet_R_101_FPN_3x_config = "COCO-Detection/retinanet_R_101_FPN_3x.yaml"  # 228MB
     retinanet_R_101_FPN_3x_weights = "COCO-Detection/retinanet_R_101_FPN_3x.yaml"
-    retinanet_R_101_FPN_3x = Detectron_obj(
+    model = Detectron_obj(
         config_file=retinanet_R_101_FPN_3x_config,
         weights_file=retinanet_R_101_FPN_3x_weights,
     )
@@ -129,7 +129,7 @@ elif model == "retinanet_R_101_FPN_3x":
 elif model == "faster_rcnn_R_50_FPN_3x":
     faster_rcnn_R_50_FPN_3x_config = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"  # 167MB
     faster_rcnn_R_50_FPN_3x_weights = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
-    faster_rcnn_R_50_FPN_3x = Detectron_obj(
+    model = Detectron_obj(
         config_file=faster_rcnn_R_50_FPN_3x_config,
         weights_file=faster_rcnn_R_50_FPN_3x_weights,
     )
