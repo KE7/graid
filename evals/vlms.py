@@ -25,8 +25,8 @@ class GPT:
             transform = transforms.ToPILImage()
             pil_image = transform(tensor)
             image_bytes = pil_image.tobytes()
-            base64_string = base64.b64encode(image_bytes).decode()
-            return
+            base64_string = base64.b64encode(image_bytes).decode("utf-8")
+            return base64_string
         elif isinstance(image, str):
             with open(image, "rb") as image_file:
                 return base64.b64encode(image_file.read()).decode("utf-8")

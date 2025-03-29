@@ -1,12 +1,15 @@
 import argparse
+import io
 import json
 import sqlite3
 import os
 import pandas as pd
 from metrics import ConstraintDecoding, LLMJudge
+from PIL import Image
 from prompts import SetOfMarkPrompt, ZeroShotPrompt, CoT
 from scenic_reasoning.utilities.common import project_root_dir
 from sqlitedict import SqliteDict
+from torchvision import transforms
 from tqdm import tqdm
 from vlms import GPT, Llama, Gemini
 from pathlib import Path
@@ -18,7 +21,7 @@ DB_PATH = project_root_dir() / "data/databases_final"
 
 bdd_path = project_root_dir() / "data/bdd_val_filtered"
 nu_path = project_root_dir() / "data/nuimages_val_filtered"
-waymo_path = project_root_dir() / "data/waymo_val_filtered"
+waymo_path = project_root_dir() / "data/waymo_validation_interesting"
 
 
 
@@ -87,12 +90,16 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt):
                 image_path = image_data["filename"]
                 image_path = str(project_root_dir() / f"/home/eecs/liheng/scenic-reasoning/data/nuimages/all/{image_path}")
             else:
-                image_path = image_data["image"]
+                image_path = transforms.ToTensor()(Image.open(io.BytesIO(image_data["image"])))
             
 
             questions += [p[0] for p in qa_list]
             answers += [p[1] for p in qa_list]
         
+        if not questions:
+            print(f"No questions found for image index {img_idx}, skipping...")
+            continue
+
         questions = ", ".join([item for i, item in enumerate(questions)])
         answers = ", ".join([item for i, item in enumerate(answers)])
 
@@ -121,7 +128,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--db_name",
         type=str,
-        default="bdd_val_rtdetr-x.sqlite",
+        default="waymo_val_rtdetr-x.sqlite",
         help="Path to the SQLite database.",
     )
     parser.add_argument(
