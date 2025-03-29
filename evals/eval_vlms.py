@@ -18,7 +18,7 @@ DB_PATH = project_root_dir() / "data/databases_final"
 
 bdd_path = project_root_dir() / "data/bdd_val_filtered"
 nu_path = project_root_dir() / "data/nuimages_val_filtered"
-waymo_path = project_root_dir() / "data/waymo_val_filtered"
+waymo_path = project_root_dir() / "data/waymo_validation_interesting"
 
 
 
@@ -93,6 +93,9 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt):
             questions += [p[0] for p in qa_list]
             answers += [p[1] for p in qa_list]
         
+        if not questions:
+            continue
+
         questions = ", ".join([item for i, item in enumerate(questions)])
         answers = ", ".join([item for i, item in enumerate(answers)])
 
@@ -146,22 +149,28 @@ if __name__ == "__main__":
         help="Prompt to use for generating questions.",
     )
 
+    parser.add_argument(
+        "--region",
+        type=str,
+        default="us-central1",
+    )
+
     args = parser.parse_args()
 
     db_path = str(DB_PATH / args.db_name)
     if args.vlm == "GPT":
         my_vlm = GPT()
     elif args.vlm == "Llama":
-        my_vlm = Llama()
+        my_vlm = Llama(region=args.region)
     elif args.vlm == "Gemini":
-        my_vlm = Gemini()
+        my_vlm = Gemini(location=args.region)
 
     if args.metric == "LLMJudge":
         my_metric = LLMJudge()
     else:
         my_metric = ConstraintDecoding()
         
-        
+
     if args.prompt == "SetOfMarkPrompt":
         my_prompt = SetOfMarkPrompt()
     elif args.prompt == "CoT":

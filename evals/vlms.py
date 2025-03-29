@@ -11,6 +11,8 @@ from openai import OpenAI
 from PIL import Image
 from torchvision import transforms
 import time
+import cv2
+import numpy as np
 
 
 class GPT:
@@ -23,13 +25,16 @@ class GPT:
     def encode_image(self, image):
         if isinstance(image, torch.Tensor):
             transform = transforms.ToPILImage()
-            pil_image = transform(tensor)
+            pil_image = transform(image)
             image_bytes = pil_image.tobytes()
-            base64_string = base64.b64encode(image_bytes).decode()
-            return
+            base64_string = base64.b64encode(image_bytes).decode("utf-8")
+            return base64_string
         elif isinstance(image, str):
             with open(image, "rb") as image_file:
                 return base64.b64encode(image_file.read()).decode("utf-8")
+        elif isinstance(image, np.ndarray):
+            success, buffer = cv2.imencode('.jpg', image)
+            return base64.b64encode(buffer).decode('utf-8')
 
     def generate_answer(self, image, questions: str, prompting_style):
         # reference: https://platform.openai.com/docs/guides/vision
@@ -69,16 +74,18 @@ class GPT:
 
 
 class Gemini:
-    def __init__(self):
+    def __init__(self, location="us-central1"):
         self.client = genai.Client(
-        vertexai=True, project="graid-451620", location="us-central1",
-        )
+            vertexai=True, project="graid-451620", location="us-central1",
+            )
         self.model = "gemini-1.5-pro"
     
     def encode_image(self, image):
         if isinstance(image, str):
             image = Image.open(image)
             return image
+        elif isinstance(img_np, np.ndarray):
+            return Image.fromarray(img_np)
         else:
             transform = transforms.ToPILImage()
             pil_image = transform(image)
@@ -108,9 +115,9 @@ class Gemini:
 
 
 class Llama:
-    def __init__(self, model_name="meta/llama-3.2-90b-vision-instruct-maas"):
+    def __init__(self, model_name="meta/llama-3.2-90b-vision-instruct-maas", region="us-central1"):
         PROJECT_ID = "graid-451620"
-        REGION = "us-central1"
+        REGION = region
         ENDPOINT = f"{REGION}-aiplatform.googleapis.com"
         self.model = model_name
 
@@ -123,6 +130,9 @@ class Llama:
             image_bytes = pil_image.tobytes()
             base64_string = base64.b64encode(image_bytes).decode()
             return base64_string
+        elif isinstance(image, np.ndarray):
+            success, buffer = cv2.imencode('.jpg', image)
+            return base64.b64encode(buffer).decode('utf-8')
         else:
             with open(image, "rb") as image_file:
                 return base64.b64encode(image_file.read()).decode("utf-8")
@@ -151,7 +161,7 @@ class Llama:
             "n": 1,
         }
 
-        token = "ya29.a0AeXRPp4Ekg733uffDsp_mvjeTlALJLd4U5Aa7IDrUkwtoNiAVWAkHbVKLgBhO4LjBhRuMHtTD3Weql9dFpQ8Sv2k73r4y0kQZ-d9KUcOTUdOf6lwKhpeq8dHCeiZY-tjvB-9o6d8VSgLzd9DSZy8X14dOK-vl2V_KIXoO46zXHQIbQ6WaCgYKAUYSARMSFQHGX2Mi9tRvACZpoahnH_Hs3AfWFg0183"
+        token = "ya29.a0AeXRPp6ikg2fDVbZbDnXJgpo3JQBtOW_GDEGqrVLzYRt1YMYOPm97jiA-_wNWZ53UkD17ejwXsLbnbbmgUjyPnk_nk77IoF1UlJjxZwJ1p22TitIp92rHPutJXx0ByX1uy8kTdJJYSRIE_naSx2LXvfmZ6tRv1YgxrSYLmgk_NXwZ230aCgYKAX4SARMSFQHGX2MiWyhWnflfKV_SL98_ju4-6Q0183"
 
         headers = {
             "Authorization": f"Bearer {token}",

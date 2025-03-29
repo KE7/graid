@@ -6,6 +6,7 @@ import cv2
 import openai
 import supervision as sv
 from scenic_reasoning.utilities.common import get_default_device
+import torch
 
 
 class PromptingStrategy:
