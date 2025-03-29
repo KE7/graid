@@ -8,17 +8,28 @@ from prompts import SetOfMarkPrompt, ZeroShotPrompt
 from scenic_reasoning.utilities.common import project_root_dir
 from sqlitedict import SqliteDict
 from tqdm import tqdm
-from vlms import GPT, Llama
+from vlms import GPT, Llama, Gemini
 from pathlib import Path
 import pickle
+import ast
+import re
 
 DB_PATH = project_root_dir() / "data/databases_final"
 
 bdd_path = project_root_dir() / "data/bdd_val_filtered"
+nu_path = project_root_dir() / "data/nuimages_val_filtered"
+waymo_path = project_root_dir() / "data/waymo_val_filtered"
 
 
 
 def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt):
+    if 'bdd' in db_path:
+        db_base_path = bdd_path
+    elif 'nuimage' in db_path:
+        db_base_path = nu_path
+    else:
+        db_base_path = waymo_path
+
     conn = sqlite3.connect(db_path)
     db_name = Path(db_path).stem
     output_dir = DB_PATH / f"{db_name}_{my_vlm}_{my_metric}_{my_prompt}"
@@ -36,61 +47,70 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt):
 
     conn.close()
 
+    num_images = dataframes['Question: Is the width of the {object_1} appear to be larger than the height? (threshold: 0.3)'].shape[0]
+
     correctness = []
     idx = 0
-    for table in dataframes:
-        for index, row in tqdm(
-            dataframes[table].iterrows(), total=len(dataframes[table])
-        ):
-            output_path = output_dir / f"{idx}.txt"
-            if os.path.exists(output_path):
-                print(f"Skipping {output_path}")
-                continue
+    for img_idx in tqdm(range(num_images)):
+        output_path = output_dir / f"{img_idx}.txt"
+        if os.path.exists(output_path):
+            with open(output_path, "r") as f:
+                text = f.read()
+                match = re.search(r"Correctness:\s*\n(.*?)\n", text)
+                score = match.group(1)
+                score = ast.literal_eval(score)
+                correctness.extend(score)
+            print(f"Skipping {output_path}")
+            continue
+        
+        questions = []
+        answers = []
+        for table in dataframes:
+            row = dataframes[table].iloc[img_idx]
 
             d = row.to_dict()
             pkl_path, v = d["key"], json.loads(d["value"])
-            pkl_path = str(bdd_path / pkl_path)
+            pkl_path = str(db_base_path / pkl_path)
 
-            with open(pkl_path, "rb") as f:
-                image_data = pickle.load(f)
-
-            image_path = image_data["name"]
-            image_path = str(project_root_dir() / f"data/bdd100k/images/100k/val/{image_path}")
             qa_list = v["qa_list"]
             if not qa_list or qa_list == "Question not applicable":
                 print("Empty question, skipping...")
                 continue
 
-            questions = [p[0] for p in qa_list]
-            questions = ", ".join([item for i, item in enumerate(questions)])
-            answers = [p[1] for p in qa_list]
-            answers = ", ".join([item for i, item in enumerate(answers)])
+            with open(pkl_path, "rb") as f:
+                image_data = pickle.load(f)
 
-            try:
-                preds, prompt = my_vlm.generate_answer(image_path, questions, my_prompt)
-            except Exception as e:
-                print(e)
-                continue
+            if 'bdd' in db_path:
+                image_path = image_data["name"]
+                image_path = str(project_root_dir() / f"data/bdd100k/images/100k/val/{image_path}")
+            elif 'nuimage' in db_path:
+                image_path = image_data["filename"]
+                image_path = str(project_root_dir() / f"/home/eecs/liheng/scenic-reasoning/data/nuimages/all/{image_path}")
+            else:
+                image_path = image_data["image"]
             
-            correct = my_metric.evaluate(preds, answers)
-            correctness.append(correct)
 
-            import pdb
-            pdb.set_trace()
-            
-            with open(str(output_path), "w") as log_file:
-                log_file.write(f"Image Path: \n{image_path}\n")
-                log_file.write(f"Questions: \n{questions}\n")
-                log_file.write(f"Answers: \n{answers}\n")
-                log_file.write(f"Prompt: \n{prompt}\n")
-                log_file.write(f"Preds: \n{preds}\n")
-                log_file.write(f"Correctness: \n{correct}\n")
-                log_file.write("\n")
-            
-            idx += 1
-            
+            questions += [p[0] for p in qa_list]
+            answers += [p[1] for p in qa_list]
         
-    return sum(correctness) / len(correctness), q_count
+        questions = ", ".join([item for i, item in enumerate(questions)])
+        answers = ", ".join([item for i, item in enumerate(answers)])
+
+        preds, prompt = my_vlm.generate_answer(image_path, questions, my_prompt)
+
+        correct = my_metric.evaluate(preds, answers)
+        correctness.extend(correct)
+
+        with open(str(output_path), "w") as log_file:
+            log_file.write(f"Image Path: \n{image_path}\n")
+            log_file.write(f"Questions: \n{questions}\n")
+            log_file.write(f"Answers: \n{answers}\n")
+            log_file.write(f"Prompt: \n{prompt}\n")
+            log_file.write(f"Preds: \n{preds}\n")
+            log_file.write(f"Correctness: \n{correct}\n")
+            log_file.write("\n")
+            
+    return sum(correctness) / len(correctness)
             
 
 
@@ -108,7 +128,7 @@ if __name__ == "__main__":
         "--vlm",
         type=str,
         default="Llama",
-        choices=["GPT", "Qwen", "Llama"],
+        choices=["GPT", "Gemini", "Llama"],
         help="VLM to use for generating answers.",
     )
     parser.add_argument(
@@ -133,13 +153,14 @@ if __name__ == "__main__":
         my_vlm = GPT()
     elif args.vlm == "Llama":
         my_vlm = Llama()
+    elif args.vlm == "Gemini":
+        my_vlm = Gemini()
 
     my_metric = LLMJudge() if args.metric == "LLMJudge" else ConstraintDecoding()
     my_prompt = (
         SetOfMarkPrompt() if args.prompt == "SetOfMarkPrompt" else ZeroShotPrompt()
     )
 
-    acc, q_count = iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt)
+    acc = iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt)
     print(f"Accuracy: {acc}")
-    print(f"Total questions: {q_count}")
 

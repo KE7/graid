@@ -199,7 +199,10 @@ class ObjDectDatasetBuilder(Dataset):
             batch_images = torch.stack([sample["image"] for sample in batch])
 
             if model is not None:
-                labels = model.identify_for_image(batch_images)
+                with lock:
+                    labels = model.identify_for_image_batch(batch_images)
+                    print("!!!!!!!!!!", labels)
+                # labels = model.identify_for_image(batch_images)
                 if labels == [None]:
                     return
             else:
@@ -268,7 +271,7 @@ class ObjDectDatasetBuilder(Dataset):
                 num_workers=7,
             )
 
-            max_workers = 14
+            max_workers = 10
             inflight_futures = []
 
             writer_thread = threading.Thread(target=writer, daemon=True)

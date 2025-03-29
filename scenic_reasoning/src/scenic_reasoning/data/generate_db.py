@@ -28,7 +28,7 @@ def generate_db(dataset_name, split, conf, model=None):
     if model:
         model.set_threshold(conf)
         db_name = f"{dataset_name}_{split}_{str(model)}"
-        model.to("cuda:7")
+        model.to("cuda:6")
     else:
         db_name = f"{dataset_name}_{split}_gt"
 

@@ -4,7 +4,8 @@ import matplotlib.pyplot as plt
 from scenic_reasoning.utilities.common import project_root_dir
 
 # Define the data directory where the files are stored.
-data_dir = project_root_dir() /  "data" / "coco_outputs_bdd_nonfiltered" 
+# data_dir = project_root_dir() /  "data" / "coco_outputs_bdd_nonfiltered" 
+data_dir = project_root_dir() /  "notebooks/old_outputs" 
 data_dir = str(data_dir)
 
 # Dictionary to hold model data in the form: { model_name: [(conf, map), ...] }

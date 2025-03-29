@@ -1,7 +1,7 @@
 import difflib
 import os
 import re
-
+import numpy as np
 import cv2
 import openai
 import supervision as sv
@@ -20,7 +20,7 @@ class ZeroShotPrompt(PromptingStrategy):
     """Zero-shot prompting method."""
 
     def generate_prompt(self, image, questions):
-        prompt = f"""Answer the following questions related to the image. Give your answer to each question separated by commas. If you're unable to answer a question, put "Empty" as your answer to this question:
+        prompt = f"""Answer the following questions related to the image. Provide your answers to each question, separated by commas. Here are the questions:
         {questions}
         """
         return image, prompt
@@ -33,7 +33,7 @@ class CoT(PromptingStrategy):
     """Zero-shot prompting method."""
 
     def generate_prompt(self, image, questions):
-        prompt = f"""Look at the image carefully and think through each question step by step. For each question, explain your reasoning briefly, and then provide your final answer. Separate your final answers for each question with commas. If you cannot answer a question based on the image, write "Empty" for that answer.
+        prompt = f"""Look at the image carefully and think through each question step by step. For each question, explain your reasoning briefly, and then provide your final answer. Separate your final answers for each question with commas.
         Here're the questions:
         {questions}
         """

@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from PIL import Image
 from torchvision import transforms
+import time
 
 
 class GPT:
@@ -59,41 +60,12 @@ class GPT:
             ],
         )
 
-        responses = completion.choices[0].message.content.split(",")
+        responses = completion.choices[0].message.content
 
-        return [re.sub(r"[^a-zA-Z]", "", response).strip() for response in responses], prompt
+        return responses, prompt
 
     def __str__(self):
         return "GPT"
-
-
-class Gemini:
-    def __init__():
-        import PIL.Image
-        from google import genai
-        from google.genai import types
-
-        self.client = genai.Client(api_key="GEMINI_API_KEY")
-
-    def encode_image(self, image):
-        if isinstance(image, str):
-            return PIL.Image.open(image)
-        elif isinstance(image, torch.Tensor):
-            transform = transforms.ToPILImage()
-            pil_image = transform(tensor)
-            image_bytes = pil_image.tobytes()
-            base64_string = base64.b64encode(image_bytes).decode()
-            return types.Part.from_bytes(data=base64_string, mime_type="image/jpeg")
-
-    def generate_answer(self, image, question: str, prompting_style):
-
-        image = self.encode_image(image)
-
-        response = client.models.generate_content(
-            model="gemini-2.0-flash-exp", contents=[question, image]
-        )
-
-        return response
 
 
 class Gemini:
@@ -101,29 +73,26 @@ class Gemini:
         self.client = genai.Client(
         vertexai=True, project="graid-451620", location="us-central1",
         )
-        self.model = "gemini-2.0-pro-exp-02-05"
-    # If your image is stored in Google Cloud Storage, you can use the from_uri class method to create a Part object.
-
-    def encode_image(self, image):
-        with open(image, "rb") as image_file:
-            return base64.b64encode(image_file.read()).decode("utf-8")
+        self.model = "gemini-1.5-pro"
 
     def generate_answer(self, image, questions: str, prompting_style):
-        base64_image = self.encode_image(image)
-        image_gcs_url = f"data:image/jpeg;base64,{base64_image}"
         image, prompt = prompting_style.generate_prompt(image, questions)
+        image = Image.open(image)
 
-        response = self.client.models.generate_content(
-        model=self.model,
-        contents=[
-            prompt,
-            types.Part.from_uri(
-            file_uri=image_gcs_url,
-            mime_type="image/png",
-            ),
-        ],
-        )
-        print(response.text, end="")
+        for attempt in range(3):
+            try:
+                response = self.client.models.generate_content(
+                    model=self.model,
+                    contents=[
+                        prompt, image
+                    ],
+                )
+                break
+            except Exception as e:
+                print(e)
+                time.sleep(5)
+
+        return response.text, prompt
     
     def __str__(self):
         return "Gemini"
@@ -133,12 +102,13 @@ class Llama:
     def __init__(self, model_name="meta/llama-3.2-90b-vision-instruct-maas"):
         PROJECT_ID = "graid-451620"
         REGION = "us-central1"
-        ENDPOINT = "us-central1-aiplatform.googleapis.com"
+        ENDPOINT = f"{REGION}-aiplatform.googleapis.com"
         self.model = model_name
 
         self.url = f"https://{ENDPOINT}/v1beta1/projects/{PROJECT_ID}/locations/{REGION}/endpoints/openapi/chat/completions"
 
     def encode_image(self, image):
+        print(type(image))
         with open(image, "rb") as image_file:
             return base64.b64encode(image_file.read()).decode("utf-8")
 
@@ -166,7 +136,7 @@ class Llama:
             "n": 1,
         }
 
-        token = "ya29.a0AeXRPp6Ikm25eRVKvhol8-l1SYDMi098LbNqqE47wTphzqfx9QO4ScKNsaOQhxv67Flcpva4a1endwwREH3HfXben6rbP6NVwLqN9Odwbe504uvFfjEcqVN0oGbJz5Ex-v51U0j6XnpliG1eJg7lBd8LCx25oDADrKvQAQYviSrBOJG7aCgYKAfQSARMSFQHGX2Mi4SdPTfGkdztdeycn8rGi1w0183"
+        token = "ya29.a0AeXRPp4Ekg733uffDsp_mvjeTlALJLd4U5Aa7IDrUkwtoNiAVWAkHbVKLgBhO4LjBhRuMHtTD3Weql9dFpQ8Sv2k73r4y0kQZ-d9KUcOTUdOf6lwKhpeq8dHCeiZY-tjvB-9o6d8VSgLzd9DSZy8X14dOK-vl2V_KIXoO46zXHQIbQ6WaCgYKAUYSARMSFQHGX2Mi9tRvACZpoahnH_Hs3AfWFg0183"
 
         headers = {
             "Authorization": f"Bearer {token}",
@@ -175,10 +145,10 @@ class Llama:
 
         response = requests.post(self.url, headers=headers, json=payload)
         if response.status_code == 200:
-            return response.json()["choices"][0]["message"]["content"]
+            return response.json()["choices"][0]["message"]["content"], prompt
         else:
             print(f"Error {response.status_code}: {response.text}")
-            return None
+            return None, prompt
     
     def __str__(self):
         return "Llama"
@@ -188,4 +158,6 @@ class Llama:
 
 
 # from prompts import ZeroShotPrompt
-# print(Gemini().generate_answer("../demo/demo.jpg", "Tell me about this image", prompting_style=ZeroShotPrompt()))
+# model = Gemini()
+# model.generate_answer("../demo/demo.jpg", "Tell me about this image", prompting_style=ZeroShotPrompt())
+# print()
