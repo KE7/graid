@@ -38,6 +38,9 @@ class CoT(PromptingStrategy):
         {questions}
         """
         return image, prompt
+    
+    def __str__(self):
+        return "CoT"
 
 
 class FewShotPrompt(PromptingStrategy):

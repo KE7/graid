@@ -4,7 +4,7 @@ import sqlite3
 import os
 import pandas as pd
 from metrics import ConstraintDecoding, LLMJudge
-from prompts import SetOfMarkPrompt, ZeroShotPrompt
+from prompts import SetOfMarkPrompt, ZeroShotPrompt, CoT
 from scenic_reasoning.utilities.common import project_root_dir
 from sqlitedict import SqliteDict
 from tqdm import tqdm
@@ -142,7 +142,7 @@ if __name__ == "__main__":
         "--prompt",
         type=str,
         default="ZeroShotPrompt",
-        choices=["SetOfMarkPrompt", "ZeroShotPrompt"],
+        choices=["SetOfMarkPrompt", "ZeroShotPrompt", "CoT"],
         help="Prompt to use for generating questions.",
     )
 
@@ -156,10 +156,18 @@ if __name__ == "__main__":
     elif args.vlm == "Gemini":
         my_vlm = Gemini()
 
-    my_metric = LLMJudge() if args.metric == "LLMJudge" else ConstraintDecoding()
-    my_prompt = (
-        SetOfMarkPrompt() if args.prompt == "SetOfMarkPrompt" else ZeroShotPrompt()
-    )
+    if args.metric == "LLMJudge":
+        my_metric = LLMJudge()
+    else:
+        my_metric = ConstraintDecoding()
+        
+        
+    if args.prompt == "SetOfMarkPrompt":
+        my_prompt = SetOfMarkPrompt()
+    elif args.prompt == "CoT":
+        my_prompt = CoT()
+    else:
+        my_prompt = ZeroShotPrompt()
 
     acc = iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt)
     print(f"Accuracy: {acc}")

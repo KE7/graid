@@ -74,10 +74,19 @@ class Gemini:
         vertexai=True, project="graid-451620", location="us-central1",
         )
         self.model = "gemini-1.5-pro"
+    
+    def encode_image(self, image):
+        if isinstance(image, str):
+            image = Image.open(image)
+            return image
+        else:
+            transform = transforms.ToPILImage()
+            pil_image = transform(image)
+            return pil_image
 
     def generate_answer(self, image, questions: str, prompting_style):
         image, prompt = prompting_style.generate_prompt(image, questions)
-        image = Image.open(image)
+        image = self.encode_image(image)
 
         for attempt in range(3):
             try:
@@ -108,9 +117,15 @@ class Llama:
         self.url = f"https://{ENDPOINT}/v1beta1/projects/{PROJECT_ID}/locations/{REGION}/endpoints/openapi/chat/completions"
 
     def encode_image(self, image):
-        print(type(image))
-        with open(image, "rb") as image_file:
-            return base64.b64encode(image_file.read()).decode("utf-8")
+        if isinstance(image, torch.Tensor):
+            transform = transforms.ToPILImage()
+            pil_image = transform(tensor)
+            image_bytes = pil_image.tobytes()
+            base64_string = base64.b64encode(image_bytes).decode()
+            return base64_string
+        else:
+            with open(image, "rb") as image_file:
+                return base64.b64encode(image_file.read()).decode("utf-8")
 
     def generate_answer(self, image, questions: str, prompting_style):
         base64_image = self.encode_image(image)
