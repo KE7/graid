@@ -57,9 +57,7 @@ def main():
     args = parser.parse_args()
 
     db_name = args.db_name
-    DB_PATH = (
-        project_root_dir() / "data/databases3"
-    )
+    DB_PATH = project_root_dir() / "data/databases3"
     db_path = DB_PATH / db_name
 
     if not db_path.exists():

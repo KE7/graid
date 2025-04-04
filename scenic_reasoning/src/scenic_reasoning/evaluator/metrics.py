@@ -1,6 +1,7 @@
+import json
 import os
 import re
-import json
+
 import outlines
 from dotenv import load_dotenv
 from guidance import gen, image, models
@@ -92,30 +93,31 @@ class LLMJudge(EvaluationMetric):
         }}```
         """
 
-
         for attempt in range(3):
             try:
                 completion = self.client.chat.completions.create(
                     model="gpt-4o",
                     messages=[
-                        {"role": "developer", "content": "You are a helpful assistant."},
+                        {
+                            "role": "developer",
+                            "content": "You are a helpful assistant.",
+                        },
                         {"role": "user", "content": prompt},
                     ],
                 )
 
                 response = completion.choices[0].message.content
 
-                response_clean = response.strip('```').strip('json\n')
+                response_clean = response.strip("```").strip("json\n")
 
-            
                 parsed_json = json.loads(response_clean)
-                scores = parsed_json['score']
-                break 
+                scores = parsed_json["score"]
+                break
             except Exception as e:
                 print(f"Attempt {attempt+1}: JSON parsing failed - {e}")
 
         return scores
-    
+
     def __str__(self):
         return "LLMJudge"
 

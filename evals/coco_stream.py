@@ -1,11 +1,11 @@
 import argparse
-import ijson
 import json
-from pathlib import Path
-from tqdm import tqdm
-import torch
-from torch.utils.data import DataLoader
+import uuid
 
+import ijson
+import torch
+from pycocotools.coco import COCO
+from pycocotools.cocoeval import COCOeval
 from scenic_reasoning.data.ImageLoader import (
     Bdd100kDataset,
     NuImagesDataset,
@@ -15,30 +15,61 @@ from scenic_reasoning.models.Detectron import Detectron_obj
 from scenic_reasoning.models.MMDetection import MMdetection_obj
 from scenic_reasoning.models.Ultralytics import RT_DETR, Yolo
 from scenic_reasoning.utilities.common import (
-    get_default_device,
+    project_root_dir,
     yolo_bdd_transform,
     yolo_nuscene_transform,
     yolo_waymo_transform,
-    project_root_dir
 )
-from pycocotools.cocoeval import COCOeval
-from pycocotools.coco import COCO
-import uuid
+from torch.utils.data import DataLoader
+from tqdm import tqdm
 
-# Constants
+
 NUM_EXAMPLES_TO_SHOW = 20
 BATCH_SIZE = 16
 
 args = argparse.ArgumentParser()
-args.add_argument("--dataset", "-d", type=str, choices=["bdd", "nuimage", "waymo"], default="bdd", help="Dataset to use: bdd, nuimage, or waymo")
-args.add_argument("--model", "-m", type=str, default="yolo_11x",
-                  choices=["DINO", "Co_DETR", "yolo_v10x", "yolo_11x", "rtdetr",
-                           "retinanet_R_101_FPN_3x", "faster_rcnn_R_50_FPN_3x", "X101_FPN", "faster_rcnn_R_101_FPN_3x"],
-                  help="Model to use")
-args.add_argument("--conf", "-c", type=float, default=0.5,
-                  help="Confidence threshold for predictions",
-                  choices=[x/10 for x in range(0, 11)])
-args.add_argument("--device-id", "-d_id", type=int, default=0, help="Device ID for GPU (default: 0)", choices=[0, 1, 2, 3, 4, 5, 6, 7])
+args.add_argument(
+    "--dataset",
+    "-d",
+    type=str,
+    choices=["bdd", "nuimage", "waymo"],
+    default="bdd",
+    help="Dataset to use: bdd, nuimage, or waymo",
+)
+args.add_argument(
+    "--model",
+    "-m",
+    type=str,
+    default="yolo_11x",
+    choices=[
+        "DINO",
+        "Co_DETR",
+        "yolo_v10x",
+        "yolo_11x",
+        "rtdetr",
+        "retinanet_R_101_FPN_3x",
+        "faster_rcnn_R_50_FPN_3x",
+        "X101_FPN",
+        "faster_rcnn_R_101_FPN_3x",
+    ],
+    help="Model to use",
+)
+args.add_argument(
+    "--conf",
+    "-c",
+    type=float,
+    default=0.5,
+    help="Confidence threshold for predictions",
+    choices=[x / 10 for x in range(0, 11)],
+)
+args.add_argument(
+    "--device-id",
+    "-d_id",
+    type=int,
+    default=0,
+    help="Device ID for GPU (default: 0)",
+    choices=[0, 1, 2, 3, 4, 5, 6, 7],
+)
 
 args = args.parse_args()
 
@@ -47,7 +78,7 @@ torch.cuda.set_device(args.device_id)
 
 dataset = args.dataset
 if dataset == "bdd":
-# Setup dataset with appropriate transform
+    # Setup dataset with appropriate transform
     dataset = Bdd100kDataset(
         split="val",
         transform=lambda i, l: yolo_bdd_transform(i, l, new_shape=(768, 1280)),
@@ -58,9 +89,7 @@ elif dataset == "nuimage":
     dataset = NuImagesDataset(
         split="val",
         size="all",
-        transform=lambda i, l: yolo_nuscene_transform(
-            i, l, new_shape=(896, 1600)
-        ),
+        transform=lambda i, l: yolo_nuscene_transform(i, l, new_shape=(896, 1600)),
     )
 else:
     WaymoDataset(
@@ -101,8 +130,7 @@ elif "yolo" in model:
 elif model == "DINO":
     MMDETECTION_PATH = project_root_dir() / "install" / "mmdetection"
     DINO_config = str(
-    MMDETECTION_PATH
-        / "configs/dino/dino-5scale_swin-l_8xb2-12e_coco.py"
+        MMDETECTION_PATH / "configs/dino/dino-5scale_swin-l_8xb2-12e_coco.py"
     )
     DINO_checkpoint = str(
         "https://download.openmmlab.com/mmdetection/v3.0/dino/dino-5scale_swin-l_8xb2-12e_coco/dino-5scale_swin-l_8xb2-12e_coco_20230228_072924-a654145f.pth"
@@ -111,7 +139,7 @@ elif model == "DINO":
 elif model == "Co_DETR":
     MMDETECTION_PATH = project_root_dir() / "install" / "mmdetection"
     Co_DETR_config = str(
-    MMDETECTION_PATH
+        MMDETECTION_PATH
         / "projects/CO-DETR/configs/codino/co_dino_5scale_swin_l_lsj_16xb1_3x_coco.py"
     )
     Co_DETR_checkpoint = str(
@@ -119,7 +147,9 @@ elif model == "Co_DETR":
     )
     model = MMdetection_obj(Co_DETR_config, Co_DETR_checkpoint)
 elif model == "retinanet_R_101_FPN_3x":
-    retinanet_R_101_FPN_3x_config = "COCO-Detection/retinanet_R_101_FPN_3x.yaml"  # 228MB
+    retinanet_R_101_FPN_3x_config = (
+        "COCO-Detection/retinanet_R_101_FPN_3x.yaml"  # 228MB
+    )
     retinanet_R_101_FPN_3x_weights = "COCO-Detection/retinanet_R_101_FPN_3x.yaml"
     model = Detectron_obj(
         config_file=retinanet_R_101_FPN_3x_config,
@@ -127,7 +157,9 @@ elif model == "retinanet_R_101_FPN_3x":
     )
     model = retinanet_R_101_FPN_3x
 elif model == "faster_rcnn_R_50_FPN_3x":
-    faster_rcnn_R_50_FPN_3x_config = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"  # 167MB
+    faster_rcnn_R_50_FPN_3x_config = (
+        "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"  # 167MB
+    )
     faster_rcnn_R_50_FPN_3x_weights = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
     model = Detectron_obj(
         config_file=faster_rcnn_R_50_FPN_3x_config,
@@ -164,7 +196,7 @@ categories = [
     {"id": 6, "name": "train"},
     {"id": 7, "name": "truck"},
     {"id": 9, "name": "traffic light"},
-    {"id": 11, "name": "stop sign"}
+    {"id": 11, "name": "stop sign"},
 ]
 
 # Initialize counters for unique IDs
@@ -212,7 +244,7 @@ for batch in tqdm(data_loader):
             "width": float(width),
             "height": float(height),
             "file_name": file_name,
-            "zip_file": ""
+            "zip_file": "",
         }
         if not first_image:
             images_file.write(",")
@@ -228,7 +260,7 @@ for batch in tqdm(data_loader):
                 "category_id": int(obj.cls),
                 "bbox": obj.as_xywh().tolist()[0],
                 "iscrowd": 0,
-                "area": 0.0
+                "area": 0.0,
             }
             if not first_annotation:
                 annotations_file.write(",")
@@ -241,12 +273,12 @@ for batch in tqdm(data_loader):
         for pred in odrs:
             if pred.score < args.conf:
                 continue
-            
+
             prediction_record = {
                 "image_id": image_id,
                 "category_id": int(pred.cls),
                 "bbox": pred.as_xywh().tolist()[0],
-                "score": float(pred.score)
+                "score": float(pred.score),
             }
             if not first_pred:
                 pred_file.write(",")
@@ -264,7 +296,7 @@ pred_file.close()
 
 # Now, we build the final COCO ground-truth file by streaming through the temporary files with ijson.
 with open(coco_gt_path, "w") as f_out:
-    f_out.write("{\"images\": ")
+    f_out.write('{"images": ')
     # Stream images from the temporary images file.
     with open(gt_images_temp_path, "r") as f_images:
         f_out.write("[")
@@ -276,8 +308,8 @@ with open(coco_gt_path, "w") as f_out:
                 first = False
             f_out.write(json.dumps(item))
         f_out.write("]")
-    
-    f_out.write(", \"annotations\": ")
+
+    f_out.write(', "annotations": ')
     # Stream annotations from the temporary annotations file.
     with open(gt_annotations_temp_path, "r") as f_annotations:
         f_out.write("[")
@@ -289,8 +321,8 @@ with open(coco_gt_path, "w") as f_out:
                 first = False
             f_out.write(json.dumps(item))
         f_out.write("]")
-    
-    f_out.write(", \"categories\": ")
+
+    f_out.write(', "categories": ')
     f_out.write(json.dumps(categories))
     f_out.write("}")
 

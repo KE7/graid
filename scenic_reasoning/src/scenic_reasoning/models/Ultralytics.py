@@ -16,7 +16,6 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
     ObjectDetectionResultI,
     ObjectDetectionUtils,
 )
-from scenic_reasoning.utilities.common import get_default_device
 from ultralytics import RTDETR, YOLO
 
 # TODO: Need class for InstanceSegmentation here

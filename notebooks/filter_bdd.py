@@ -1,7 +1,10 @@
 import json
-from scenic_reasoning.utilities.common import project_root_dir
+import re
+from datetime import datetime, time
 from itertools import islice
 from pathlib import Path
+
+import cv2
 import numpy as np
 from PIL import Image
 from scenic_reasoning.data.ImageLoader import (
@@ -14,19 +17,14 @@ from scenic_reasoning.measurements.ObjectDetection import ObjectDetectionMeasure
 from scenic_reasoning.models.Ultralytics import Yolo
 from scenic_reasoning.utilities.common import (
     get_default_device,
+    project_root_dir,
     yolo_bdd_transform,
     yolo_nuscene_transform,
     yolo_waymo_transform,
 )
-import cv2
 from torch.utils.data import DataLoader
 from torchvision import datasets
 from tqdm import tqdm
-import re
-from datetime import datetime
-from datetime import time
-
-
 
 # BDD
 # # Path to the JSON file
@@ -65,9 +63,7 @@ from datetime import time
 # print(f'Filtered data saved to {output_file_path}')
 
 
-
 # Nuimage
-
 
 
 # BATCH_SIZE = 1
@@ -88,12 +84,11 @@ from datetime import time
 # )
 
 
-
 # def is_time_in_working_hours(filename: str) -> bool:
 #     match = re.search(r"\d{4}-\d{2}-\d{2}-(\d{2})-(\d{2})-", filename)
 #     if not match:
 #         raise ValueError("Time not found in filename.")
-    
+
 #     hour = int(match.group(1))
 #     minute = int(match.group(2))
 #     t = time(hour, minute)
@@ -110,10 +105,10 @@ from datetime import time
 # count = total_count = 0
 
 # for idx, batch in enumerate(tqdm(data_loader, desc="Loading Batches")):
-#     if total_count == 100: 
+#     if total_count == 100:
 #         break
 #     for b in batch:
-#         total_count += 1    
+#         total_count += 1
 #         if not is_time_in_working_hours(b['name']):
 #             count += 1
 #         # for att in b['attributes']:
@@ -125,8 +120,9 @@ from datetime import time
 # print(count, total_count)
 
 
-
-waymo = WaymoDataset(split="training", transform=lambda i, l: yolo_waymo_transform(i, l, (1280, 1920)))
+waymo = WaymoDataset(
+    split="training", transform=lambda i, l: yolo_waymo_transform(i, l, (1280, 1920))
+)
 
 data_loader = DataLoader(
     waymo,
@@ -150,12 +146,9 @@ total_count = count = 0
 
 for idx, batch in enumerate(tqdm(data_loader, desc="Loading Batches")):
     for b in batch:
-        total_count += 1    
-        t = b['timestamp']
+        total_count += 1
+        t = b["timestamp"]
         if not is_within_working_hours(t):
             count += 1
 
 print(count, total_count)
-
-
-

@@ -1,11 +1,10 @@
 import os
+
 import cv2
-import torch
 import numpy as np
 import supervision as sv
-from supervision import Detections
-from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
 from scenic_reasoning.utilities.common import get_default_device
+from segment_anything import SamAutomaticMaskGenerator, sam_model_registry
 
 CHECKPOINT_PATH = "../evals/sam_vit_h_4b8939.pth"
 print(CHECKPOINT_PATH, "; exist:", os.path.isfile(CHECKPOINT_PATH))
@@ -59,7 +58,7 @@ def Find_Center(mask: np.ndarray) -> tuple[int, int]:
     return max_loc
 
 
-def Mark_Allocation(masks: list[np.ndarray]) -> list[tuple[int,int]]:
+def Mark_Allocation(masks: list[np.ndarray]) -> list[tuple[int, int]]:
     """
     Sorts all region masks by ascending area, then for each mask:
       - Excludes overlap with previously processed masks
@@ -109,26 +108,29 @@ sorted_detections = detections[sorted_idx]
 
 
 # Create annotators
-mask_annotator = sv.MaskAnnotator(
-    color_lookup=sv.ColorLookup.INDEX,
-    opacity=0.3
-)
+mask_annotator = sv.MaskAnnotator(color_lookup=sv.ColorLookup.INDEX, opacity=0.3)
 # Annotate on a copy of the original image
 annotated_image = image_bgr.copy()
 
 # 8a) Draw the sorted masks
-annotated_image = mask_annotator.annotate(
-    scene=annotated_image,
-    detections=detections
-)
+annotated_image = mask_annotator.annotate(scene=annotated_image, detections=detections)
 
 print(centers, len(centers))
 for idx, (x, y) in enumerate(centers, start=1):
     # Draw black circular padding
     cv2.circle(annotated_image, (x, y), 11, (0, 0, 0), -1)  # Black circle
-    
+
     # Put white number text on top
-    cv2.putText(annotated_image, str(idx), (x-6, y+6), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
+    cv2.putText(
+        annotated_image,
+        str(idx),
+        (x - 6, y + 6),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.4,
+        (255, 255, 255),
+        1,
+        cv2.LINE_AA,
+    )
 
 # Finally, save the results
 cv2.imwrite("annotated_image.jpg", annotated_image)

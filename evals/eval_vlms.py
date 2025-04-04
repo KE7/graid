@@ -1,21 +1,21 @@
 import argparse
+import ast
 import io
 import json
-import sqlite3
 import os
+import pickle
+import re
+import sqlite3
+from pathlib import Path
+
 import pandas as pd
-from metrics import ConstraintDecoding, LLMJudge
+from scenic_reasoning.evaluator.metrics import ConstraintDecoding, LLMJudge
 from PIL import Image
-from prompts import SetOfMarkPrompt, ZeroShotPrompt, CoT
+from scenic_reasoning.evaluator.prompts import CoT, SetOfMarkPrompt, ZeroShotPrompt
 from scenic_reasoning.utilities.common import project_root_dir
-from sqlitedict import SqliteDict
 from torchvision import transforms
 from tqdm import tqdm
-from vlms import GPT, Llama, Gemini
-from pathlib import Path
-import pickle
-import ast
-import re
+from scenic_reasoning.evaluator.vlms import GPT, Gemini, Llama
 
 DB_PATH = project_root_dir() / "data/databases_final"
 
@@ -24,11 +24,10 @@ nu_path = project_root_dir() / "data/nuimages_val_filtered"
 waymo_path = project_root_dir() / "data/waymo_validation_interesting"
 
 
-
 def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt):
-    if 'bdd' in db_path:
+    if "bdd" in db_path:
         db_base_path = bdd_path
-    elif 'nuimage' in db_path:
+    elif "nuimage" in db_path:
         db_base_path = nu_path
     else:
         db_base_path = waymo_path
@@ -38,7 +37,6 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt):
     output_dir = DB_PATH / f"{db_name}_{my_vlm}_{my_metric}_{my_prompt}"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    
     # Get a list of all table names
     tables_query = "SELECT name FROM sqlite_master WHERE type='table';"
     tables = pd.read_sql(tables_query, conn)["name"].tolist()
@@ -50,7 +48,9 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt):
 
     conn.close()
 
-    num_images = dataframes['Question: Is the width of the {object_1} appear to be larger than the height? (threshold: 0.3)'].shape[0]
+    num_images = dataframes[
+        "Question: Is the width of the {object_1} appear to be larger than the height? (threshold: 0.3)"
+    ].shape[0]
 
     correctness = []
     idx = 0
@@ -65,7 +65,7 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt):
                 correctness.extend(score)
             print(f"Skipping {output_path}")
             continue
-        
+
         questions = []
         answers = []
         for table in dataframes:
@@ -83,19 +83,25 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt):
             with open(pkl_path, "rb") as f:
                 image_data = pickle.load(f)
 
-            if 'bdd' in db_path:
+            if "bdd" in db_path:
                 image_path = image_data["name"]
-                image_path = str(project_root_dir() / f"data/bdd100k/images/100k/val/{image_path}")
-            elif 'nuimage' in db_path:
+                image_path = str(
+                    project_root_dir() / f"data/bdd100k/images/100k/val/{image_path}"
+                )
+            elif "nuimage" in db_path:
                 image_path = image_data["filename"]
-                image_path = str(project_root_dir() / f"/home/eecs/liheng/scenic-reasoning/data/nuimages/all/{image_path}")
+                image_path = str(
+                    project_root_dir()
+                    / f"/home/eecs/liheng/scenic-reasoning/data/nuimages/all/{image_path}"
+                )
             else:
-                image_path = transforms.ToTensor()(Image.open(io.BytesIO(image_data["image"])))
-            
+                image_path = transforms.ToTensor()(
+                    Image.open(io.BytesIO(image_data["image"]))
+                )
 
             questions += [p[0] for p in qa_list]
             answers += [p[1] for p in qa_list]
-        
+
         if not questions:
             print(f"No questions found for image index {img_idx}, skipping...")
             continue
@@ -116,9 +122,8 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt):
             log_file.write(f"Preds: \n{preds}\n")
             log_file.write(f"Correctness: \n{correct}\n")
             log_file.write("\n")
-            
+
     return sum(correctness) / len(correctness)
-            
 
 
 if __name__ == "__main__":
@@ -167,8 +172,7 @@ if __name__ == "__main__":
         my_metric = LLMJudge()
     else:
         my_metric = ConstraintDecoding()
-        
-        
+
     if args.prompt == "SetOfMarkPrompt":
         my_prompt = SetOfMarkPrompt()
     elif args.prompt == "CoT":
@@ -178,4 +182,3 @@ if __name__ == "__main__":
 
     acc = iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt)
     print(f"Accuracy: {acc}")
-

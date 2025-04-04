@@ -2,13 +2,14 @@
 name = "scenic-reasoning"
 version = "0.1.0"
 description = "Can VLMs reason about the physical relationships of everyday scenes? We find out in the realm of robotics and autonomous driving"
-authors = ["Karim Elmaaroufi <elmaaroufi@berkeley.edu>"]
+authors = ["Karim Elmaaroufi <elmaaroufi@berkeley.edu>", "Liheng Lai <liheng@berkeley.edu>"]
+keywords = ["vision-language-models", "VLM", "robotics", "autonomous-driving", "scene-understanding", "depth-estimation", "object-detection"]
 license = "Apache 2.0"
 readme = "README.md"
 packages = [{include = "scenic_reasoning", from = "scenic_reasoning/src"}]
 
 [tool.poetry.dependencies]
-python = "^3.9"
+python = ">=3.9"
 torch = "2.5.0"
 transformers = "^4.45.2"
 ultralytics = "^8.3.21"
@@ -19,6 +20,10 @@ numpy = "1.26.4"
 ray = "^2.43.0"
 fairscale = "^0.4.13"
 ijson = "^3.3.0"
+openai = "^1.69.0"
+dotenv = "^0.9.9"
+google-genai = "^1.8.0"
+segment-anything = {git = "https://github.com/facebookresearch/segment-anything.git"}
 
 
 [tool.poetry.scripts]

@@ -1,11 +1,9 @@
 import os
-import cv2
-import torch
 
+import cv2
 import supervision as sv
-from supervision import Detections
-from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
 from scenic_reasoning.utilities.common import get_default_device
+from segment_anything import SamAutomaticMaskGenerator, sam_model_registry
 
 CHECKPOINT_PATH = "../evals/sam_vit_h_4b8939.pth"
 print(CHECKPOINT_PATH, "; exist:", os.path.isfile(CHECKPOINT_PATH))
@@ -39,10 +37,7 @@ detections = detections[min_area_mask & max_area_mask]
 
 
 # setup annotators
-mask_annotator = sv.MaskAnnotator(
-    color_lookup=sv.ColorLookup.INDEX,
-    opacity=0.3
-)
+mask_annotator = sv.MaskAnnotator(color_lookup=sv.ColorLookup.INDEX, opacity=0.3)
 label_annotator = sv.LabelAnnotator(
     color_lookup=sv.ColorLookup.INDEX,
     text_position=sv.Position.CENTER,
@@ -50,18 +45,17 @@ label_annotator = sv.LabelAnnotator(
     text_color=sv.Color.WHITE,
     color=sv.Color.BLACK,
     text_thickness=1,
-    text_padding=5
+    text_padding=5,
 )
 
 # annotate
 labels = [str(i) for i in range(len(detections))]
 print(len(labels))
 
-annotated_image = mask_annotator.annotate(
-    scene=image_bgr.copy(), detections=detections)
+annotated_image = mask_annotator.annotate(scene=image_bgr.copy(), detections=detections)
 annotated_image = label_annotator.annotate(
-    scene=annotated_image, detections=detections, labels=labels)
+    scene=annotated_image, detections=detections, labels=labels
+)
 
 cv2.imwrite("annotated_image_unsort.jpg", annotated_image)
 print("done!")
-

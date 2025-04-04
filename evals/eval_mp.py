@@ -244,7 +244,7 @@ def consumer(
         no_pen_scores[conf]["TN"] = true_negs[conf]
 
         pen_scores[conf] = metrics_with_pen[conf].compute()
-        
+
         metrics_no_pen[conf].reset()
         metrics_with_pen[conf].reset()
         del metrics_no_pen[conf]

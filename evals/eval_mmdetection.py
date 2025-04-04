@@ -33,11 +33,9 @@ from torch.utils.data import DataLoader
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
 from tqdm import tqdm
 
-
 num_cpu_workers = 1  # must be one
 BATCH_SIZE = 32
 logger = logging.getLogger("ray")
-
 
 
 MMDETECTION_PATH = project_root_dir() / "install" / "mmdetection"
@@ -46,13 +44,17 @@ MMDETECTION_PATH = project_root_dir() / "install" / "mmdetection"
 #     MMDETECTION_PATH
 #     / "configs/mm_grounding_dino/grounding_dino_swin-l_pretrain_obj365_goldg.py"
 # )
-GDINO_config = str(MMDETECTION_PATH / "configs/dino/dino-5scale_swin-l_8xb2-12e_coco.py")
+GDINO_config = str(
+    MMDETECTION_PATH / "configs/dino/dino-5scale_swin-l_8xb2-12e_coco.py"
+)
 
 # GDINO_checkpoint = str(
 #     "https://download.openmmlab.com/mmdetection/v3.0/mm_grounding_dino/grounding_dino_swin-l_pretrain_obj365_goldg/grounding_dino_swin-l_pretrain_obj365_goldg-34dcdc53.pth"
 # )
 
-GDINO_checkpoint = str("https://download.openmmlab.com/mmdetection/v3.0/dino/dino-5scale_swin-l_8xb2-12e_coco/dino-5scale_swin-l_8xb2-12e_coco_20230228_072924-a654145f.pth")
+GDINO_checkpoint = str(
+    "https://download.openmmlab.com/mmdetection/v3.0/dino/dino-5scale_swin-l_8xb2-12e_coco/dino-5scale_swin-l_8xb2-12e_coco_20230228_072924-a654145f.pth"
+)
 # GDINO = MMdetection_obj(GDINO_config, GDINO_checkpoint) # 1.41 GB
 
 Co_DETR_config = str(
@@ -89,13 +91,9 @@ def producer(
 
     if model_name == "GDINO":
         # MMDetection models are not serializable, so we can't pass them in Ray
-        model = MMdetection_obj(
-            GDINO_config, GDINO_checkpoint
-        )
+        model = MMdetection_obj(GDINO_config, GDINO_checkpoint)
     elif model_name == "Co_DETR":
-        model = MMdetection_obj(
-            Co_DETR_config, Co_DETR_checkpoint
-        )
+        model = MMdetection_obj(Co_DETR_config, Co_DETR_checkpoint)
 
     print(f"[GPU Task] Starting inference: {dataset}")
     start_time = time.time()

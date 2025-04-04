@@ -10,7 +10,6 @@ from scenic_reasoning.utilities.common import (
     yolo_nuscene_transform,
     yolo_waymo_transform,
 )
-import ray
 
 bdd_transform = lambda i, l: yolo_bdd_transform(i, l, new_shape=(768, 1280))
 nuimage_transform = lambda i, l: yolo_nuscene_transform(i, l, new_shape=(896, 1600))
@@ -22,7 +21,6 @@ rtdetr = RT_DETR("rtdetr-x.pt")
 BATCH_SIZE = 32
 
 
-# @ray.remote(num_gpus=1)
 def generate_db(dataset_name, split, conf, model=None):
 
     if model:
@@ -49,10 +47,7 @@ def generate_db(dataset_name, split, conf, model=None):
         db_builder.build(model=model, batch_size=BATCH_SIZE)
 
 
-
 if __name__ == "__main__":
-
-    # ray.init()
 
     parser = argparse.ArgumentParser(
         description="Distributed dataset generator with Ray."
@@ -89,7 +84,6 @@ if __name__ == "__main__":
     datasets = [args.dataset]
     split = args.split
 
-
     tasks = []
 
     for d in datasets:
@@ -98,8 +92,3 @@ if __name__ == "__main__":
             # task_train = generate_db(d, "train", conf, model=model)
             # generate_db(d, "val", conf, model=model)
             # generate_db(d, "train", conf, model=model)
-
-            tasks.append(task_val)
-            # tasks.append(task_train)
-
-    # ray.get(tasks)

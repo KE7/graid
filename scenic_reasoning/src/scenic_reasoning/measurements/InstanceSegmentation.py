@@ -78,7 +78,10 @@ class InstanceSegmentationMeasurements:
                 # Convert RGB to BGR because Ultralytics YOLO expects BGR
                 # https://github.com/ultralytics/ultralytics/issues/9912
                 x = x[:, [2, 1, 0], ...]
+                x = x / 255.0
                 prediction = self.model.identify_for_image(x, debug=debug, **kwargs)
+                x = x[:, [2, 1, 0], ...]
+                x = x * 255.0
             else:
                 self.model.to(device=get_default_device())
                 prediction = self.model.identify_for_image(x, debug=debug)

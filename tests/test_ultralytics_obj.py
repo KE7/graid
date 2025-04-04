@@ -36,7 +36,9 @@ BATCH_SIZE = 1
 #     rebuild=True
 # )
 
-waymo = WaymoDataset(split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, (1280, 1920)))
+waymo = WaymoDataset(
+    split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, (1280, 1920))
+)
 
 # https://docs.ultralytics.com/models/yolov5/#performance-metrics
 model = Yolo(model="yolo11n.pt")
@@ -85,5 +87,5 @@ for d in [waymo]:  # , nu, waymo]:
                 detections=results[i]["predictions"],
                 ground_truth=results[i]["labels"],
             )
-            
+
             # cv2.imwrite("temp.jpg", img_to_show)
