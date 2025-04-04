@@ -87,7 +87,7 @@ for i in range(100):
     image = data["image"]
     image = transforms.ToPILImage()(image)
     labels = data["labels"]
-    path = data["path"]
+    path = data['path']
     print(path)
     # let's filter out labels that are really small.
     # say anything with area less than 1000 pixels
@@ -98,7 +98,6 @@ for i in range(100):
     at_least_one_was_applicable = False
 
     for q in q_list:
-
         if q.is_applicable(image, labels):
             qa_list = q.apply(image, labels)
             if len(qa_list) == 0:
