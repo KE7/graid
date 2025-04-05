@@ -3,12 +3,12 @@
 # It assigns each job to a GPU in parallel (one per GPU) and saves the output
 # to a file named by the combination of parameters.
 
-datasets=("bdd") # "nuimage" "waymo"
-models=("DINO" "Co_DETR" "yolo_v10x" "yolo_11x" "rtdetr" "retinanet_R_101_FPN_3x" "faster_rcnn_R_50_FPN_3x")
+datasets=("bdd" "nuimage" "waymo")
+models=("rtdetr" "yolov10x" "yolo11x" "retinanet_R_101_FPN_3x" "faster_rcnn_R_50_FPN_3x" "DINO" "Co_DETR")
 confs=(0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9)
-gpus=(0 1 2 3 4 5 6 7)
+gpus=(2 3 4 5 6 7)
 
-max_jobs=8
+max_jobs=6
 job_count=0
 
 # Iterate over all parameter combinations
@@ -16,7 +16,7 @@ for dataset in "${datasets[@]}"; do
     for model in "${models[@]}"; do
         for conf in "${confs[@]}"; do
             gpu=${gpus[$(( job_count % max_jobs ))]}
-            output_file="outputs/output_${dataset}_${model}_${conf}_gpu${gpu}.txt"
+            output_file="outputs/output_${dataset}_train_${model}_${conf}.txt"
             echo "Launching job: dataset=${dataset}, model=${model}, conf=${conf}, gpu=${gpu}"
             mkdir -p outputs
             python coco_stream.py --dataset "$dataset" --model "$model" --conf "$conf" --device-id "$gpu" > "$output_file" 2>&1 &

@@ -4,8 +4,8 @@ import re
 import matplotlib.pyplot as plt
 from scenic_reasoning.utilities.common import project_root_dir
 
-# data_dir = project_root_dir() /  "data" / "coco_outputs_bdd_nonfiltered"
-data_dir = project_root_dir() / "notebooks" / "old_outputs"
+# Define the data directory where the files are stored.
+data_dir = project_root_dir() /  "data" / "fixed_ablations" 
 data_dir = str(data_dir)
 
 # Holds model data in the form: { model_name: [(conf, map), ...] }
@@ -90,5 +90,24 @@ plt.legend(title="Model", loc="best")
 plt.tight_layout()
 
 # Save the figure in high resolution and display it.
+plt.savefig("model_performance_chart_with_recall.png", dpi=300)
+plt.show()
+
+# Create second chart showing only mAP (Average Precision)
+plt.figure(figsize=(10, 6))
+color_iter = iter(plt.rcParams['axes.prop_cycle'].by_key()['color'])
+for model, data_points in model_data.items():
+    data_points.sort(key=lambda x: x[0])
+    confs = [point[0] for point in data_points]
+    maps = [point[1] for point in data_points]
+    color = next(color_iter)
+    plt.plot(confs, maps, marker='o', color=color, label=f"{model} mAP")
+
+plt.xlabel("Confidence Threshold")
+plt.ylabel("mAP (Average Precision)")
+plt.title("Model Performance Across Confidence Thresholds: mAP Only")
+plt.legend(title="Model", loc='best')
+plt.tight_layout()
+
 plt.savefig("model_performance_chart.png", dpi=300)
 plt.show()

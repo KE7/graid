@@ -25,7 +25,7 @@ lock = threading.Lock()
 
 
 class ObjDectDatasetBuilder(Dataset):
-    DEFAULT_DB_PATH = project_root_dir() / "data" / "databases_final"
+    DEFAULT_DB_PATH = project_root_dir() / "data" / "databases_ablations"
 
     def __init__(
         self,
@@ -44,6 +44,7 @@ class ObjDectDatasetBuilder(Dataset):
         print("DB path: ", db_path)
         if not os.path.exists(db_path):
             os.makedirs(os.path.dirname(db_path), exist_ok=True)
+            os.chmod(os.path.dirname(db_path), 0o777)
         for question in self.questions:
             table_name = str(question)
             self.dataset[table_name] = SqliteDict(
@@ -195,7 +196,7 @@ class ObjDectDatasetBuilder(Dataset):
                 batch_size=batch_size,
                 shuffle=False,
                 collate_fn=lambda x: x,
-                num_workers=7,
+                num_workers=5,
             )
 
             max_workers = 10

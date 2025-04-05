@@ -24,6 +24,9 @@ openai = "^1.69.0"
 dotenv = "^0.9.9"
 google-genai = "^1.8.0"
 segment-anything = {git = "https://github.com/facebookresearch/segment-anything.git"}
+outlines = "0.1.11"
+dotenv = "^0.9.9"
+guidance = "0.2.0"
 
 
 [tool.poetry.scripts]

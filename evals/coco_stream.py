@@ -23,7 +23,6 @@ from scenic_reasoning.utilities.common import (
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-
 NUM_EXAMPLES_TO_SHOW = 20
 BATCH_SIZE = 16
 
@@ -40,12 +39,12 @@ args.add_argument(
     "--model",
     "-m",
     type=str,
-    default="yolo_11x",
+    default="yolo11x",
     choices=[
         "DINO",
         "Co_DETR",
-        "yolo_v10x",
-        "yolo_11x",
+        "yolov10x",
+        "yolo11x",
         "rtdetr",
         "retinanet_R_101_FPN_3x",
         "faster_rcnn_R_50_FPN_3x",
@@ -66,8 +65,8 @@ args.add_argument(
     "--device-id",
     "-d_id",
     type=int,
-    default=0,
-    help="Device ID for GPU (default: 0)",
+    default=7,
+    help="Device ID for GPU (default: 7)",
     choices=[0, 1, 2, 3, 4, 5, 6, 7],
 )
 
@@ -78,22 +77,22 @@ torch.cuda.set_device(args.device_id)
 
 dataset = args.dataset
 if dataset == "bdd":
-    # Setup dataset with appropriate transform
     dataset = Bdd100kDataset(
-        split="val",
+        split="train",
         transform=lambda i, l: yolo_bdd_transform(i, l, new_shape=(768, 1280)),
         use_original_categories=False,
         use_extended_annotations=False,
     )
 elif dataset == "nuimage":
     dataset = NuImagesDataset(
-        split="val",
+        split="train",
         size="all",
         transform=lambda i, l: yolo_nuscene_transform(i, l, new_shape=(896, 1600)),
+        use_time_filtered=False,
     )
 else:
-    WaymoDataset(
-        split="validation",
+    dataset = WaymoDataset(
+        split="training",
         transform=lambda i, l: yolo_waymo_transform(i, l, (1280, 1920)),
     )
 
@@ -136,6 +135,7 @@ elif model == "DINO":
         "https://download.openmmlab.com/mmdetection/v3.0/dino/dino-5scale_swin-l_8xb2-12e_coco/dino-5scale_swin-l_8xb2-12e_coco_20230228_072924-a654145f.pth"
     )
     model = MMdetection_obj(DINO_config, DINO_checkpoint)
+    BATCH_SIZE = 1  # MMDetection does not support batch size > 1
 elif model == "Co_DETR":
     MMDETECTION_PATH = project_root_dir() / "install" / "mmdetection"
     Co_DETR_config = str(
@@ -146,6 +146,7 @@ elif model == "Co_DETR":
         "https://download.openmmlab.com/mmdetection/v3.0/codetr/co_dino_5scale_lsj_swin_large_1x_coco-3af73af2.pth"
     )
     model = MMdetection_obj(Co_DETR_config, Co_DETR_checkpoint)
+    BATCH_SIZE = 1  # MMDetection does not support batch size > 1
 elif model == "retinanet_R_101_FPN_3x":
     retinanet_R_101_FPN_3x_config = (
         "COCO-Detection/retinanet_R_101_FPN_3x.yaml"  # 228MB
@@ -155,7 +156,6 @@ elif model == "retinanet_R_101_FPN_3x":
         config_file=retinanet_R_101_FPN_3x_config,
         weights_file=retinanet_R_101_FPN_3x_weights,
     )
-    model = retinanet_R_101_FPN_3x
 elif model == "faster_rcnn_R_50_FPN_3x":
     faster_rcnn_R_50_FPN_3x_config = (
         "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"  # 167MB
@@ -165,7 +165,6 @@ elif model == "faster_rcnn_R_50_FPN_3x":
         config_file=faster_rcnn_R_50_FPN_3x_config,
         weights_file=faster_rcnn_R_50_FPN_3x_weights,
     )
-    model = faster_rcnn_R_50_FPN_3x
 elif model == "rtdetr":
     model = RT_DETR("rtdetr-x.pt")
 
@@ -222,7 +221,12 @@ first_image = True
 first_annotation = True
 first_pred = True
 
-for batch in tqdm(data_loader):
+total = min(1000, len(data_loader))  # Limit to 1000 batches for performance reasons
+
+for i, batch in tqdm(enumerate(data_loader), total=total, desc="Processing batches"):
+    if i >= total:
+        break
+
     x = torch.stack([sample["image"] for sample in batch])
     y = [sample["labels"] for sample in batch]
     x = x.to(device=device)
