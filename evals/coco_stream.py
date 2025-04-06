@@ -1,83 +1,104 @@
 import argparse
-import ijson
 import json
-from pathlib import Path
-from tqdm import tqdm
-import torch
-from torch.utils.data import DataLoader
+import uuid
 
+import ijson
+import torch
+from pycocotools.coco import COCO
+from pycocotools.cocoeval import COCOeval
 from scenic_reasoning.data.ImageLoader import (
     Bdd100kDataset,
     NuImagesDataset,
     WaymoDataset,
 )
 from scenic_reasoning.models.Detectron import Detectron_obj
+from scenic_reasoning.models.DINO_idea import DINO_IDEA
 from scenic_reasoning.models.MMDetection import MMdetection_obj
 from scenic_reasoning.models.Ultralytics import RT_DETR, Yolo
 from scenic_reasoning.utilities.common import (
-    get_default_device,
+    project_root_dir,
     yolo_bdd_transform,
     yolo_nuscene_transform,
     yolo_waymo_transform,
-    project_root_dir
 )
-from pycocotools.cocoeval import COCOeval
-from pycocotools.coco import COCO
-import uuid
+from torch.utils.data import DataLoader
+from tqdm import tqdm
 
-# Constants
 NUM_EXAMPLES_TO_SHOW = 20
-BATCH_SIZE = 16
+BATCH_SIZE = 1
+SEED = 7
+torch.manual_seed(SEED)
 
 args = argparse.ArgumentParser()
-args.add_argument("--dataset", "-d", type=str, choices=["bdd", "nuimage", "waymo"], default="bdd", help="Dataset to use: bdd, nuimage, or waymo")
-args.add_argument("--model", "-m", type=str, default="yolo_11x",
-                  choices=["DINO", "Co_DETR", "yolo_v10x", "yolo_11x", "rtdetr",
-                           "retinanet_R_101_FPN_3x", "faster_rcnn_R_50_FPN_3x", "X101_FPN", "faster_rcnn_R_101_FPN_3x"],
-                  help="Model to use")
-args.add_argument("--conf", "-c", type=float, default=0.5,
-                  help="Confidence threshold for predictions",
-                  choices=[x/10 for x in range(0, 11)])
-args.add_argument("--device-id", "-d_id", type=int, default=0, help="Device ID for GPU (default: 0)", choices=[0, 1, 2, 3, 4, 5, 6, 7])
+args.add_argument(
+    "--dataset",
+    "-d",
+    type=str,
+    choices=["bdd", "nuimage", "waymo"],
+    default="bdd",
+    help="Dataset to use: bdd, nuimage, or waymo",
+)
+args.add_argument(
+    "--model",
+    "-m",
+    type=str,
+    default="yolo11x",
+    choices=[
+        "DINO",
+        "Co_DETR",
+        "yolov10x",
+        "yolo11x",
+        "rtdetr",
+        "retinanet_R_101_FPN_3x",
+        "faster_rcnn_R_50_FPN_3x",
+        "X101_FPN",
+        "faster_rcnn_R_101_FPN_3x",
+    ],
+    help="Model to use",
+)
+args.add_argument(
+    "--conf",
+    "-c",
+    type=float,
+    default=0.5,
+    help="Confidence threshold for predictions",
+    choices=[x / 10 for x in range(0, 11)],
+)
+args.add_argument(
+    "--device-id",
+    "-d_id",
+    type=int,
+    default=7,
+    help="Device ID for GPU (default: 7)",
+    choices=[0, 1, 2, 3, 4, 5, 6, 7],
+)
 
-args = args.parse_args()
+# args = args.parse_args()
 
 device = torch.device(f"cuda:{args.device_id}" if torch.cuda.is_available() else "cpu")
-torch.cuda.set_device(args.device_id)
+torch.cuda.set_device(device)
 
 dataset = args.dataset
 if dataset == "bdd":
-# Setup dataset with appropriate transform
     dataset = Bdd100kDataset(
-        split="val",
+        split="train",
         transform=lambda i, l: yolo_bdd_transform(i, l, new_shape=(768, 1280)),
         use_original_categories=False,
         use_extended_annotations=False,
     )
 elif dataset == "nuimage":
     dataset = NuImagesDataset(
-        split="val",
+        split="train",
         size="all",
-        transform=lambda i, l: yolo_nuscene_transform(
-            i, l, new_shape=(896, 1600)
-        ),
+        transform=lambda i, l: yolo_nuscene_transform(i, l, new_shape=(896, 1600)),
+        use_time_filtered=False,
     )
 else:
-    WaymoDataset(
-        split="validation",
+    dataset = WaymoDataset(
+        split="training",
         transform=lambda i, l: yolo_waymo_transform(i, l, (1280, 1920)),
     )
 
-data_loader = DataLoader(
-    dataset,
-    batch_size=BATCH_SIZE,
-    shuffle=False,
-    num_workers=2,
-    collate_fn=lambda x: x,
-)
-
-
-# Initialize the model
 """
 Yolo(model="yolo11n.pt")"
  Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.094
@@ -99,41 +120,47 @@ if "yolov6" in model:
 elif "yolo" in model:
     model = Yolo(model=f"{model}.pt")
 elif model == "DINO":
-    MMDETECTION_PATH = project_root_dir() / "install" / "mmdetection"
-    DINO_config = str(
-    MMDETECTION_PATH
-        / "configs/dino/dino-5scale_swin-l_8xb2-12e_coco.py"
-    )
-    DINO_checkpoint = str(
-        "https://download.openmmlab.com/mmdetection/v3.0/dino/dino-5scale_swin-l_8xb2-12e_coco/dino-5scale_swin-l_8xb2-12e_coco_20230228_072924-a654145f.pth"
-    )
-    model = MMdetection_obj(DINO_config, DINO_checkpoint)
+    # MMDETECTION_PATH = project_root_dir() / "install" / "mmdetection"
+    # DINO_config = str(
+    #     MMDETECTION_PATH / "configs/dino/dino-5scale_swin-l_8xb2-12e_coco.py"
+    # )
+    # DINO_checkpoint = str(
+    #     "https://download.openmmlab.com/mmdetection/v3.0/dino/dino-5scale_swin-l_8xb2-12e_coco/dino-5scale_swin-l_8xb2-12e_coco_20230228_072924-a654145f.pth"
+    # )
+    # model = MMdetection_obj(DINO_config, DINO_checkpoint)
+    # BATCH_SIZE = 1  # MMDetection does not support batch size > 1
+    model_config_path = project_root_dir + "/install/DINO/config/DINO/DINO_4scale_swin.py" 
+    model_checkpoint_path = project_root_dir + "/checkpoints/checkpoint0011_4scale_swin.pth"
+    model = DINO_IDEA(config_file=model_config_path, checkpoint_file=model_checkpoint_path)
 elif model == "Co_DETR":
     MMDETECTION_PATH = project_root_dir() / "install" / "mmdetection"
     Co_DETR_config = str(
-    MMDETECTION_PATH
+        MMDETECTION_PATH
         / "projects/CO-DETR/configs/codino/co_dino_5scale_swin_l_lsj_16xb1_3x_coco.py"
     )
     Co_DETR_checkpoint = str(
         "https://download.openmmlab.com/mmdetection/v3.0/codetr/co_dino_5scale_lsj_swin_large_1x_coco-3af73af2.pth"
     )
     model = MMdetection_obj(Co_DETR_config, Co_DETR_checkpoint)
+    BATCH_SIZE = 1  # MMDetection does not support batch size > 1
 elif model == "retinanet_R_101_FPN_3x":
-    retinanet_R_101_FPN_3x_config = "COCO-Detection/retinanet_R_101_FPN_3x.yaml"  # 228MB
+    retinanet_R_101_FPN_3x_config = (
+        "COCO-Detection/retinanet_R_101_FPN_3x.yaml"  # 228MB
+    )
     retinanet_R_101_FPN_3x_weights = "COCO-Detection/retinanet_R_101_FPN_3x.yaml"
     model = Detectron_obj(
         config_file=retinanet_R_101_FPN_3x_config,
         weights_file=retinanet_R_101_FPN_3x_weights,
     )
-    model = retinanet_R_101_FPN_3x
 elif model == "faster_rcnn_R_50_FPN_3x":
-    faster_rcnn_R_50_FPN_3x_config = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"  # 167MB
+    faster_rcnn_R_50_FPN_3x_config = (
+        "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"  # 167MB
+    )
     faster_rcnn_R_50_FPN_3x_weights = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
     model = Detectron_obj(
         config_file=faster_rcnn_R_50_FPN_3x_config,
         weights_file=faster_rcnn_R_50_FPN_3x_weights,
     )
-    model = faster_rcnn_R_50_FPN_3x
 elif model == "rtdetr":
     model = RT_DETR("rtdetr-x.pt")
 
@@ -153,6 +180,16 @@ elif model == "faster_rcnn_R_101_FPN_3x":
     )
 
 model.to(device)
+print("Using device:", device)
+
+data_loader = DataLoader(
+    dataset,
+    batch_size=BATCH_SIZE,
+    shuffle=True,
+    pin_memory=True,
+    num_workers=4,
+    collate_fn=lambda x: x,
+)
 
 # Define COCO category information
 categories = [
@@ -164,7 +201,7 @@ categories = [
     {"id": 6, "name": "train"},
     {"id": 7, "name": "truck"},
     {"id": 9, "name": "traffic light"},
-    {"id": 11, "name": "stop sign"}
+    {"id": 11, "name": "stop sign"},
 ]
 
 # Initialize counters for unique IDs
@@ -190,7 +227,12 @@ first_image = True
 first_annotation = True
 first_pred = True
 
-for batch in tqdm(data_loader):
+total = min(1000, len(data_loader))  # Limit to 1000 batches for performance reasons
+
+for i, batch in tqdm(enumerate(data_loader), total=total, desc="Processing batches"):
+    if i >= total:
+        break
+
     x = torch.stack([sample["image"] for sample in batch])
     y = [sample["labels"] for sample in batch]
     x = x.to(device=device)
@@ -212,7 +254,7 @@ for batch in tqdm(data_loader):
             "width": float(width),
             "height": float(height),
             "file_name": file_name,
-            "zip_file": ""
+            "zip_file": "",
         }
         if not first_image:
             images_file.write(",")
@@ -228,7 +270,7 @@ for batch in tqdm(data_loader):
                 "category_id": int(obj.cls),
                 "bbox": obj.as_xywh().tolist()[0],
                 "iscrowd": 0,
-                "area": 0.0
+                "area": 0.0,
             }
             if not first_annotation:
                 annotations_file.write(",")
@@ -241,12 +283,12 @@ for batch in tqdm(data_loader):
         for pred in odrs:
             if pred.score < args.conf:
                 continue
-            
+
             prediction_record = {
                 "image_id": image_id,
                 "category_id": int(pred.cls),
                 "bbox": pred.as_xywh().tolist()[0],
-                "score": float(pred.score)
+                "score": float(pred.score),
             }
             if not first_pred:
                 pred_file.write(",")
@@ -264,7 +306,7 @@ pred_file.close()
 
 # Now, we build the final COCO ground-truth file by streaming through the temporary files with ijson.
 with open(coco_gt_path, "w") as f_out:
-    f_out.write("{\"images\": ")
+    f_out.write('{"images": ')
     # Stream images from the temporary images file.
     with open(gt_images_temp_path, "r") as f_images:
         f_out.write("[")
@@ -276,8 +318,8 @@ with open(coco_gt_path, "w") as f_out:
                 first = False
             f_out.write(json.dumps(item))
         f_out.write("]")
-    
-    f_out.write(", \"annotations\": ")
+
+    f_out.write(', "annotations": ')
     # Stream annotations from the temporary annotations file.
     with open(gt_annotations_temp_path, "r") as f_annotations:
         f_out.write("[")
@@ -289,8 +331,8 @@ with open(coco_gt_path, "w") as f_out:
                 first = False
             f_out.write(json.dumps(item))
         f_out.write("]")
-    
-    f_out.write(", \"categories\": ")
+
+    f_out.write(', "categories": ')
     f_out.write(json.dumps(categories))
     f_out.write("}")
 
@@ -304,3 +346,6 @@ leval = COCOeval(cocoGt, cocoDt, iouType="bbox")
 leval.evaluate()
 leval.accumulate()
 leval.summarize()
+
+coco_dt_path.unlink()
+coco_gt_path.unlink()

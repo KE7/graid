@@ -25,7 +25,7 @@ lock = threading.Lock()
 
 
 class ObjDectDatasetBuilder(Dataset):
-    DEFAULT_DB_PATH = project_root_dir() / "data" / "databases_final"
+    DEFAULT_DB_PATH = project_root_dir() / "data" / "databases_ablations"
 
     def __init__(
         self,
@@ -44,6 +44,7 @@ class ObjDectDatasetBuilder(Dataset):
         print("DB path: ", db_path)
         if not os.path.exists(db_path):
             os.makedirs(os.path.dirname(db_path), exist_ok=True)
+            os.chmod(os.path.dirname(db_path), 0o777)
         for question in self.questions:
             table_name = str(question)
             self.dataset[table_name] = SqliteDict(
@@ -105,50 +106,6 @@ class ObjDectDatasetBuilder(Dataset):
 
     def build(self, model: Optional[ObjectDetectionModelI] = None, batch_size: int = 1):
 
-        # def build_for_question(question, data_iter):
-        #     table_name = str(question)
-        #     data_iter = enumerate(data_iter)
-        #     while True:
-        #         try:
-        #             i, sample_batch = next(data_iter)
-        #             print(f"Current index: {i} inside {table_name}")
-        #         except StopIteration:
-        #             break
-
-        #         items = dict()
-        #         for sample in sample_batch:
-        #             if model is not None:
-        #                 labels = model.identify_for_image(sample["image"])
-        #                 if labels == [None]:
-        #                     continue
-        #             else:
-        #                 labels = sample["labels"]
-
-        #             image = sample["image"].permute(1, 2, 0).cpu().numpy()
-        #             image = Image.fromarray(image.astype(np.uint8))
-        #             name = sample["path"]
-        #             lbl = sample["labels"]
-
-        #             if question.is_applicable(image, lbl):
-        #                 qa_list = question.apply(image, lbl)
-        #             else:
-        #                 qa_list = []
-
-        #             entry = {
-        #                 "qa_list": qa_list,
-        #                 "split": self.split,
-        #                 "num of labels": len(lbl),
-        #             }
-
-        #             items[name] = entry
-
-        #         self.dataset[table_name].update(items)  # update the table with the new entries
-        #         print(f"Processed {len(items)} items for question: {question}")
-        #         self.dataset[table_name].commit()
-        #         del sample_batch
-        #         del items
-        #         gc.collect()  # free up memory
-
         def buffered_writer():
             buffer = defaultdict(dict)
             count = 0
@@ -188,8 +145,6 @@ class ObjDectDatasetBuilder(Dataset):
                 print("Writing items to the database...")
                 for question in self.questions:
                     table_name = str(question)
-                    # if self.dataset[table_name] == items[table_name]:
-                    #     continue
                     self.dataset[table_name].update(items[table_name])
                     self.dataset[table_name].commit()
                 self.writer_queue.task_done()
@@ -201,8 +156,6 @@ class ObjDectDatasetBuilder(Dataset):
             if model is not None:
                 with lock:
                     labels = model.identify_for_image_batch(batch_images)
-                    print("!!!!!!!!!!", labels)
-                # labels = model.identify_for_image(batch_images)
                 if labels == [None]:
                     return
             else:
@@ -231,36 +184,11 @@ class ObjDectDatasetBuilder(Dataset):
                     items[table_name][name] = entry
 
             self.writer_queue.put(items)
-            # for question in self.questions:
-            #     table_name = str(question)
-            #     self.dataset[table_name].update(items)
-            #     self.dataset[table_name].commit()
             print("Batch done!!!")
 
         if self.has_been_built:
             print("Dataset has already been built.")
             return
-
-        # for dataset in self.all_sets:
-        #     data_loader = DataLoader(
-        #         dataset,
-        #         batch_size=batch_size,
-        #         shuffle=False,
-        #         collate_fn=lambda x: x,
-        #         num_workers=4
-        #     )
-
-        #     max_workers = len(self.questions)
-        #     inflight_futures = []
-        #     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        #         data_iter = iter(data_loader)
-        #         for w in range(max_workers):
-        #             inflight_futures.append(
-        #                 executor.submit(build_for_question, self.questions[w], data_iter)
-        #             )
-        #         for future in as_completed(inflight_futures):
-        #             inflight_futures.remove(future)
-        #             future.result()
 
         for dataset in self.all_sets:
             data_loader = DataLoader(
@@ -268,7 +196,7 @@ class ObjDectDatasetBuilder(Dataset):
                 batch_size=batch_size,
                 shuffle=False,
                 collate_fn=lambda x: x,
-                num_workers=7,
+                num_workers=5,
             )
 
             max_workers = 10
@@ -305,48 +233,6 @@ class ObjDectDatasetBuilder(Dataset):
 
             self.writer_queue.put(None)
             writer_thread.join()
-
-        #     # with ThreadPoolExecutor(max_workers=10) as executor:
-        #     #     executor.map(process_batch, tqdm(data_loader))
-
-        #     # for batch in tqdm(data_loader, desc="generating dataset..."):
-
-        #     #     batch_images = torch.stack([sample["image"] for sample in batch])
-        #     #     batch_names = [sample["path"] for sample in batch]   # using path would simpler
-
-        #     #     if model is not None:
-        #     #         # labels = model.identify_for_image_batch(batch_images)
-        #     #         labels = model.identify_for_image(batch_images)
-        #     #         if labels == [None]:
-        #     #             continue
-        #     #     else:
-        #     #         labels = [sample["labels"] for sample in batch]
-
-        #     #     for j, lbl in enumerate(labels):
-        #     #         image = batch_images[j].permute(1, 2, 0).cpu().numpy()
-        #     #         image = Image.fromarray(image.astype(np.uint8))
-        #     #         name = batch_names[j]
-        #     #         for question in self.questions:
-        #     #             table_name = str(question)
-
-        #     #             if question.is_applicable(image, lbl):
-        #     #                 qa_list = question.apply(image, lbl)
-        #     #                 # because of Python semantics, sqlitedict cannot
-        #     #                 # know when a mutable SqliteDict-backed entry
-        #     #                 # was modified in RAM. You'll need to explicitly
-        #     #                 # assign the mutated object back to SqliteDict:
-        #     #                 # https://github.com/piskvorky/sqlitedict
-        #     #                 self.dataset[table_name][name] = {
-        #     #                     "qa_list": qa_list,
-        #     #                     "split": self.split,
-        #     #                     "num of labels": len(lbl),
-        #     #                 }
-        #     #             else:
-        #     #                 self.dataset[table_name][name] = {
-        #     #                     "qa_list": [],
-        #     #                     "split": self.split,
-        #     #                     "num of labels": len(lbl),
-        #     #                 }
 
         for table_name in self.dataset:
             if not self.dataset[table_name]:

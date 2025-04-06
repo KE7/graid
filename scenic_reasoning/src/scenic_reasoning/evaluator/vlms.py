@@ -2,11 +2,13 @@ import base64
 import json
 import os
 import re
-from google import genai
-from google.genai import types
+import time
+
 import requests
 import torch
 from dotenv import load_dotenv
+from google import genai
+from google.genai import types
 from openai import OpenAI
 from PIL import Image
 from torchvision import transforms
@@ -81,7 +83,7 @@ class Gemini:
             vertexai=True, project="graid-451620", location="us-central1",
             )
         self.model = "gemini-1.5-pro"
-    
+
     def encode_image(self, image):
         if isinstance(image, str):
             image = Image.open(image)
@@ -101,9 +103,7 @@ class Gemini:
             try:
                 response = self.client.models.generate_content(
                     model=self.model,
-                    contents=[
-                        prompt, image
-                    ],
+                    contents=[prompt, image],
                 )
                 break
             except Exception as e:
@@ -111,7 +111,7 @@ class Gemini:
                 time.sleep(5)
 
         return response.text, prompt
-    
+
     def __str__(self):
         return "Gemini"
 
@@ -179,12 +179,9 @@ class Llama:
         else:
             print(f"Error {response.status_code}: {response.text}")
             return None, prompt
-    
+
     def __str__(self):
         return "Llama"
-
-
-
 
 
 # from prompts import ZeroShotPrompt

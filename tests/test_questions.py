@@ -25,7 +25,7 @@ from scenic_reasoning.questions.ObjectDetectionQ import (
     WhichMore,
     ObjectsInRow,
     ObjectsInLine,
-    MostClusteredObjects
+    MostClusteredObjects,
 )
 from scenic_reasoning.utilities.common import (
     get_default_device,
@@ -79,9 +79,7 @@ niu_original = NuImagesDataset(
 my_dataset = bdd
 original_dataset = bdd_original
 
-q_list = [
-    WhichMore()
-]
+q_list = [WhichMore()]
 
 for i in range(100):
     print(i)
@@ -98,9 +96,8 @@ for i in range(100):
     labels = list(filter(lambda x: x.get_area().item() > threshold, labels))
     print("Num labels after filtering: ", len(labels))
     at_least_one_was_applicable = False
-    
+
     for q in q_list:
-        
         if q.is_applicable(image, labels):
             qa_list = q.apply(image, labels)
             if len(qa_list) == 0:

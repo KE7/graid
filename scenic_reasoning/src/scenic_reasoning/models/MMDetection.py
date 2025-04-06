@@ -1,8 +1,12 @@
+#  hack_registry.py
+import logging
 from pathlib import Path
-from typing import Iterator, List, Optional, Union
+from typing import Iterator, List, Optional, Type, Union
 
 import numpy as np
 import torch
+from mmengine.logging import print_log
+from mmengine.registry import Registry
 from PIL import Image
 from scenic_reasoning.interfaces.InstanceSegmentationI import (
     InstanceSegmentationModelI,
@@ -16,21 +20,15 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
     ObjectDetectionUtils,
 )
 from scenic_reasoning.utilities.coco import coco_label
-from scenic_reasoning.utilities.common import get_default_device
-
-#  hack_registry.py
-import logging
-
-from mmengine.registry import Registry
-from mmengine.logging import print_log
-from typing import Type, Optional, Union, List
 
 
 # https://github.com/open-mmlab/mmdetection/issues/12008
-def _register_module(self,
-                     module: Type,
-                     module_name: Optional[Union[str, List[str]]] = None,
-                     force: bool = False) -> None:
+def _register_module(
+    self,
+    module: Type,
+    module_name: Optional[Union[str, List[str]]] = None,
+    force: bool = False,
+) -> None:
     """Register a module.
 
     Args:
@@ -43,7 +41,7 @@ def _register_module(self,
             name. Defaults to False.
     """
     if not callable(module):
-        raise TypeError(f'module must be Callable, but got {type(module)}')
+        raise TypeError(f"module must be Callable, but got {type(module)}")
 
     if module_name is None:
         module_name = module.__name__
@@ -55,10 +53,10 @@ def _register_module(self,
             # raise KeyError(f'{name} is already registered in {self.name} '
             #                f'at {existed_module.__module__}')
             print_log(
-                f'{name} is already registered in {self.name} '
-                f'at {existed_module.__module__}. Registration ignored.',
-                logger='current',
-                level=logging.INFO
+                f"{name} is already registered in {self.name} "
+                f"at {existed_module.__module__}. Registration ignored.",
+                logger="current",
+                level=logging.INFO,
             )
         self._module_dict[name] = module
 
@@ -67,10 +65,10 @@ Registry._register_module = _register_module
 
 # fmt: off
 import mmdet
-from mmdet.apis import DetInferencer, inference_detector, init_detector
-from mmdet.registry import VISUALIZERS
+from mmdet.apis import inference_detector, init_detector
 from mmengine.utils import get_git_hash
 from mmengine.utils.dl_utils import collect_env as collect_base_env
+
 # fmt: on
 
 
@@ -111,13 +109,22 @@ class MMdetection_obj(ObjectDetectionModelI):
             represents the batch of images, and the inner list represents the
             detections in a particular image.
         """
+        # if len(image.shape) == 3:
+        #     # single image, add batch dimension
+        #     image = image.unsqueeze(0) if isinstance(image, torch.Tensor) else np.expand_dims(image, 0)
+        # image_list = [
+        #     image[i].permute(1, 2, 0).cpu().numpy().astype(np.uint8)
+        #     for i in range(len(image))
+        # ]
+        # image_hw = image_list[0].shape[:-1]
+        image = (
+            image.permute(1, 2, 0).cpu().numpy()
+            if isinstance(image, torch.Tensor)
+            else image
+        )
+        image = image.astype(np.uint8)
 
-        # image is batched input. MMdetection only supports Union[InputType, Sequence[InputType]], where InputType = Union[str, np.ndarray]
-        image_list = [
-            image[i].permute(1, 2, 0).cpu().numpy().astype(np.uint8) for i in range(len(image))
-        ]
-        image_hw = image_list[0].shape[:-1]
-        predictions = inference_detector(self._model, image_list)
+        predictions = inference_detector(self._model, image, **kwargs)
 
         all_objects = []
 
@@ -145,13 +152,11 @@ class MMdetection_obj(ObjectDetectionModelI):
             all_objects.append(objects)
 
         if debug:
-            for i in range(len(image_list)):
-                curr_img = image_list[i]
-                if image_list[i].dtype == np.float32:
-                    curr_img = curr_img.astype(np.uint8)
-                ObjectDetectionUtils.show_image_with_detections(
-                    Image.fromarray(curr_img), all_objects[i]
-                )
+            if image.dtype == np.float32:
+                curr_img = curr_img.astype(np.uint8)
+            ObjectDetectionUtils.show_image_with_detections(
+                Image.fromarray(curr_img), all_objects[i]
+            )
 
         return all_objects
 
@@ -174,7 +179,6 @@ class MMdetection_obj(ObjectDetectionModelI):
             represents the batch of images, and the inner list represents the
             detections in a particular image.
         """
-        return self.identify_for_image(image, debug, **kwargs)
         if isinstance(image, torch.Tensor):
             image = image.permute(0, 2, 3, 1).cpu().numpy().astype(np.uint8)
         elif isinstance(image, np.ndarray):
@@ -182,7 +186,7 @@ class MMdetection_obj(ObjectDetectionModelI):
         else:
             raise ValueError("Image must be a numpy array or a torch tensor.")
 
-        predictions = inference_detector(self._model, image)
+        predictions = inference_detector(self._model, image, **kwargs)
 
         all_objects = []
         for i in range(predictions.shape[0]):

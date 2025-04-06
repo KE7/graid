@@ -413,19 +413,19 @@ class ObjectDetectionUtils:
         score = metric.compute()
         score["TN"] = 0
         for p, t in zip(preds, targets):
-            if p["boxes"].shape == torch.Size([0]) and t[
-                "boxes"
-            ].shape == torch.Size([0]):
+            if p["boxes"].shape == torch.Size([0]) and t["boxes"].shape == torch.Size(
+                [0]
+            ):
                 score["TN"] += 1
-        
+
         # ret = max(0, score['map'].item())
-        ret = score['map'].item()
+        ret = score["map"].item()
         print("!!!!!!!!!!!!!!!!!!", ret)
 
         metric.reset()
         del metric
         del score
-        
+
         # print(score['map'], "!!!!!!!!!!!!!!!!")
         return ret
 

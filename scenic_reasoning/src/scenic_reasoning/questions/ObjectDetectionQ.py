@@ -243,6 +243,13 @@ class ObjectDetectionPredicates:
                 counts[class_name] = counts.get(class_name, 0) + 1
 
         return len(counts) >= x
+    
+    @staticmethod
+    def at_least_x_detections(
+        image: Image, detections: List[ObjectDetectionResultI], x: int
+    ) -> bool:
+        return len(detections) >= 3
+
 
     @staticmethod
     def at_least_x_detections(
@@ -271,7 +278,6 @@ class ObjectDetectionPredicates:
     def has_clusters(
         image: Image, detections: List[ObjectDetectionResultI], threshold=50
     ) -> bool:
-
         import numpy as np
         from scipy.spatial.distance import pdist, squareform
 
@@ -1024,7 +1030,7 @@ class RightMost(Question):
         # logic to check if the bbox is actually on the right side of the image
         if not (
             rightmost_detection[1][0] > image_width / 2
-            and rightmost_detection[1][2] > image_width / 2
+            and rightmost_detection[1][2] > image_width / 2``
         ):
             logger.debug(
                 "RightMost question not ask-able due to not being on the right side of the image"
@@ -1104,17 +1110,13 @@ class AreMore(Question):
                     )
             else:
                 detection_counts[class_name] = detection_counts.get(class_name, 0) + 1
-
         question_answer_pairs = []
         detected_classes = list(detection_counts.keys())
 
         for i in range(len(detected_classes)):
             for j in range(i + 1, len(detected_classes)):
                 object_1, object_2 = detected_classes[i], detected_classes[j]
-                count_1, count_2 = (
-                    detection_counts[object_1],
-                    detection_counts[object_2],
-                )
+                count_1, count_2 = detection_counts[object_1], detection_counts[object_2]
 
                 if count_1 > count_2:
                     answer = "Yes"
@@ -1129,7 +1131,7 @@ class AreMore(Question):
 
         return question_answer_pairs
 
-
+      
 class WhichMore(Question):
     def __init__(self) -> None:
         super().__init__(
@@ -1158,7 +1160,6 @@ class WhichMore(Question):
                     )
             else:
                 detection_counts[class_name] = detection_counts.get(class_name, 0) + 1
-
         question_answer_pairs = []
         detected_classes = list(detection_counts.keys())
 
@@ -1421,7 +1422,6 @@ class ObjectsInRow(Question):
         image: Image.Image,
         detections: List[ObjectDetectionResultI],
     ) -> List[Tuple[str, str]]:
-
         if len(detections) < 3:
             return [(self.question, "No")]
 
@@ -1476,8 +1476,7 @@ class ObjectsInLine(Question):
                 lambda image, detections: ObjectDetectionPredicates.at_least_x_many_class_detections(
                     image, detections, 1
                 ),
-                lambda image, detections: ObjectsInRow().apply(image, detections)[0][1]
-                == "Yes",
+                lambda image, detections: ObjectsInRow().apply(image, detections)[0][1] == "Yes"
             ],
         )
 
@@ -1486,7 +1485,6 @@ class ObjectsInLine(Question):
         image: Image.Image,
         detections: List[ObjectDetectionResultI],
     ) -> List[Tuple[str, str]]:
-
         bboxes = [detection.as_xyxy().squeeze(0) for detection in detections]
 
         detections_sorted_by_x = sorted(
@@ -1495,7 +1493,6 @@ class ObjectsInLine(Question):
         bboxes_sorted_by_x = [
             detection.as_xyxy().squeeze(0) for detection in detections_sorted_by_x
         ]
-        # bboxes_sorted_by_x = sorted(bboxes, key=lambda bbox: bbox[0])  # Sorted by left boundary
 
         def y_overlap(min_y1, max_y1, min_y2, max_y2):
             inter = max(0, min(max_y1, max_y2) - max(min_y1, min_y2))

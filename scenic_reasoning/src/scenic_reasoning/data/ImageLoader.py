@@ -4,8 +4,10 @@ import json
 import logging
 import os
 import pickle
-from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 import re
+from datetime import time
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
+
 import numpy as np
 import pandas as pd
 import torch
@@ -29,7 +31,6 @@ from torch import Tensor
 from torch.utils.data import Dataset
 from torchvision import transforms
 from tqdm import tqdm
-from datetime import time
 
 logger = logging.getLogger(__name__)
 
@@ -294,25 +295,33 @@ class Bdd100kDataset(ImageDataset):
     def category_to_coco_cls(self, category: str) -> int:
         return self._CATEGORIES_TO_COCO[category]
 
-    def __len__(self) -> int:
-        return len(self.img_labels)
-
     def __repr__(self):
-        return f"BDD100K Dataset {self.split} split with {len(self.img_labels)} images"
+        return f"BDD100K Dataset {self.split} split with {self.__len__()} images"
 
     def __init__(
         self,
         split: Literal["train", "val", "test"] = "train",
         use_original_categories: bool = True,
         use_extended_annotations: bool = True,
+        use_time_filtered: bool = True,
         rebuild: bool = False,
         **kwargs,
     ):
         self.split = split
+        self.use_time_filtered = use_time_filtered
 
         root_dir = project_root_dir() / "data" / "bdd100k"
         img_dir = root_dir / "images" / "100k" / split
-        annotations_file = root_dir / "labels" / "det_20" / f"det_{split}_filtered.json"
+        annotations_file = (
+            root_dir
+            / "labels"
+            / "det_20"
+            / (
+                f"det_{split}_filtered.json"
+                if use_time_filtered
+                else f"det_{split}.json"
+            )
+        )
 
         def merge_transform(
             image: Tensor,
@@ -366,14 +375,6 @@ class Bdd100kDataset(ImageDataset):
 
             return image, results, timestamp
 
-        super().__init__(
-            annotations_file=str(annotations_file),
-            img_dir=str(img_dir),
-            merge_transform=merge_transform,
-            use_extended_annotations=use_extended_annotations,
-            **kwargs,
-        )
-
         # finally, filter out following labels
         #   'other person', 'other vehicle' and 'trail'
         # because they are uncertain objects: https://github.com/bdd100k/bdd100k/blob/master/bdd100k/common/typing.py#L4
@@ -391,9 +392,20 @@ class Bdd100kDataset(ImageDataset):
         ]
 
         # Save each element of the img_labels as its own pickle file
-        save_dir = project_root_dir() / "data" / f"bdd_{self.split}_filtered"
+        save_dir = (
+            project_root_dir()
+            / "data"
+            / (
+                f"bdd_{self.split}_filtered"
+                if use_time_filtered
+                else f"bdd_{self.split}"
+            )
+        )
         save_dir.mkdir(parents=True, exist_ok=True)
-        # os.chmod(save_dir, 0o777)
+        try:
+            os.chmod(save_dir, 0o777)
+        except Exception as e:
+            logger.warning(f"Failed to set permissions on {save_dir}: {e}")
 
         if rebuild:
             for idx, label in tqdm(
@@ -414,12 +426,37 @@ class Bdd100kDataset(ImageDataset):
                     )
                     os.chmod(save_path, 0o777)
 
+        super().__init__(
+            annotations_file=str(annotations_file),
+            img_dir=str(img_dir),
+            merge_transform=merge_transform,
+            use_extended_annotations=use_extended_annotations,
+            **kwargs,
+        )
+
     def __len__(self) -> int:
-        save_path = project_root_dir() / "data" / f"bdd_{self.split}_filtered"
+        save_path = (
+            project_root_dir()
+            / "data"
+            / (
+                f"bdd_{self.split}_filtered"
+                if self.use_time_filtered
+                else f"bdd_{self.split}"
+            )
+        )
         return len(os.listdir(save_path))
 
     def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
-        save_path = project_root_dir() / "data" / f"bdd_{self.split}_filtered" / f"{idx}.pkl"
+        save_path = (
+            project_root_dir()
+            / "data"
+            / (
+                f"bdd_{self.split}_filtered"
+                if self.use_time_filtered
+                else f"bdd_{self.split}"
+            )
+            / f"{idx}.pkl"
+        )
 
         if not save_path.exists():
             raise FileNotFoundError(f"File not found: {save_path}")
@@ -586,9 +623,7 @@ class NuImagesDataset(ImageDataset):
         return filtered_list
 
     def __repr__(self):
-        return (
-            f"NuImages Dataset {self.split} split with {self.__len__()} images"
-        )
+        return f"NuImages Dataset {self.split} split with {self.__len__()} images"
 
     def _get_image_label(self, i: int):
         sample = self.nuim.sample[i]
@@ -624,12 +659,12 @@ class NuImagesDataset(ImageDataset):
             "img_filename": img_filename,
             "timestamp": timestamp,
         }
-    
+
     def is_time_in_working_hours(self, filename: str) -> bool:
         match = re.search(r"\d{4}-\d{2}-\d{2}-(\d{2})-(\d{2})-", filename)
         if not match:
             raise ValueError("Time not found in filename.")
-        
+
         hour = int(match.group(1))
         minute = int(match.group(2))
         t = time(hour, minute)
@@ -641,12 +676,12 @@ class NuImagesDataset(ImageDataset):
         split: Literal["train", "val", "test", "mini"] = "val",
         size: Literal["mini", "full"] = "full",
         rebuild: bool = False,
+        use_time_filtered: bool = True,
         **kwargs,
     ):
-        
-
         self.size = size
         self.split = split
+        self.use_time_filtered = use_time_filtered
 
         root_dir = project_root_dir() / "data" / "nuimages" / size
         subdir = "v1.0-" + (size if size == "mini" else split)
@@ -661,19 +696,29 @@ class NuImagesDataset(ImageDataset):
         self.category_labels = json.load(open(categories_file))
         self.obj_annotations = json.load(open(obj_annotations_file))
 
-        
-
         if rebuild:
             from nuimages import NuImages
+
             self.nuim = NuImages(
                 dataroot=img_dir,
                 version=subdir,
                 verbose=False,
                 lazy=True,  # verbose off to avoid excessive print statement
             )
-            save_path_parent = project_root_dir() / "data" / f"nuimages_{self.split}_filtered"
+            save_path_parent = (
+                project_root_dir()
+                / "data"
+                / (
+                    f"nuimages_{self.split}_filtered"
+                    if use_time_filtered
+                    else f"nuimages_{self.split}"
+                )
+            )
             save_path_parent.mkdir(parents=True, exist_ok=True)
-            os.chmod(save_path_parent, 0o777)
+            try:
+                os.chmod(save_path_parent, 0o777)
+            except Exception as e:
+                logger.warning(f"Failed to set permissions on {save_path_parent}: {e}")
 
             empty_count = 0
             idx = 0
@@ -776,7 +821,15 @@ class NuImagesDataset(ImageDataset):
         )
 
     def __len__(self) -> int:
-        save_path = project_root_dir() / "data" / f"nuimages_{self.split}_filtered"
+        save_path = (
+            project_root_dir()
+            / "data"
+            / (
+                f"nuimages_{self.split}_filtered"
+                if self.use_time_filtered
+                else f"nuimages_{self.split}"
+            )
+        )
         return len(os.listdir(save_path))
 
     def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
@@ -786,7 +839,14 @@ class NuImagesDataset(ImageDataset):
         #     timestamp = self.img_labels[idx][0]["timestamp"]
         # else:
         save_path = (
-            project_root_dir() / "data" / f"nuimages_{self.split}_filtered" / f"{idx}.pkl"
+            project_root_dir()
+            / "data"
+            / (
+                f"nuimages_{self.split}_filtered"
+                if self.use_time_filtered
+                else f"nuimages_{self.split}"
+            )
+            / f"{idx}.pkl"
         )
         if not save_path.exists():
             raise FileNotFoundError(f"File not found: {save_path}")
@@ -1133,9 +1193,11 @@ class WaymoDataset(ImageDataset):
         self,
         split: Literal["training", "validation", "testing"] = "training",
         rebuild: bool = False,
+        use_time_filtered: bool = True,
         **kwargs,
     ):
         self.split = split
+        self.use_time_filtered = use_time_filtered
 
         root_dir = project_root_dir() / "data" / "waymo"
         self.camera_img_dir = root_dir / f"{split}" / "camera_image"
@@ -1163,9 +1225,14 @@ class WaymoDataset(ImageDataset):
         idx = 0
 
         if rebuild:
-            save_path_parent = project_root_dir() / "data" / f"waymo_{self.split}_interesting"
+            save_path_parent = (
+                project_root_dir() / "data" / f"waymo_{self.split}_interesting"
+            )
             save_path_parent.mkdir(parents=True, exist_ok=True)
-            os.chmod(save_path_parent, 0o777)
+            try:
+                os.chmod(save_path_parent, 0o777)
+            except Exception as e:
+                logger.warning(f"Failed to set permissions on {save_path_parent}: {e}")
 
             for image_file in tqdm(
                 camera_image_files, desc="Pre-Processing Waymo dataset..."
@@ -1240,9 +1307,8 @@ class WaymoDataset(ImageDataset):
                     # Save the current img label according to the idx as a pickle file
                     save_path = save_path_parent / f"{idx}.pkl"
                     if not save_path.exists():
-                        print("creating idx... ", idx)
                         with open(save_path, "wb") as f:
-                            # os.chmod(save_path, 0o777)
+                            os.chmod(save_path, 0o777)
                             pickle.dump(
                                 {
                                     "name": group_name[0],
@@ -1283,15 +1349,21 @@ class WaymoDataset(ImageDataset):
         super().__init__(
             annotations_file=None,
             img_dir=str(self.camera_img_dir),
-            # img_labels=self.img_labels,
             merge_transform=merge_transform,
             **kwargs,
         )
 
     def __len__(self) -> int:
-        save_path = project_root_dir() / "data" / f"waymo_{self.split}_interesting"
+        save_path = (
+            project_root_dir()
+            / "data"
+            / (
+                f"waymo_{self.split}_interesting"
+                if self.use_time_filtered
+                else f"waymo_{self.split}"
+            )
+        )
         return len(os.listdir(save_path))
-        # return len(self.img_labels)
 
     def __getitem__(self, idx: int) -> Dict:
         """Retrieve an image and its annotations."""
@@ -1300,7 +1372,15 @@ class WaymoDataset(ImageDataset):
                 f"Index {idx} out of range for dataset with {len(self.img_labels)} samples."
             )
 
-        save_path = project_root_dir() / "data" / f"waymo_{self.split}_interesting"
+        save_path = (
+            project_root_dir()
+            / "data"
+            / (
+                f"waymo_{self.split}_interesting"
+                if self.use_time_filtered
+                else f"waymo_{self.split}"
+            )
+        )
         file_path = os.path.join(save_path, f"{idx}.pkl")
         with open(file_path, "rb") as f:
             img_data = pickle.load(f)

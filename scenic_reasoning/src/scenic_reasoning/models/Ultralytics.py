@@ -16,10 +16,7 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
     ObjectDetectionResultI,
     ObjectDetectionUtils,
 )
-from scenic_reasoning.utilities.common import get_default_device
 from ultralytics import RTDETR, YOLO
-
-# TODO: Need class for InstanceSegmentation here
 
 
 class Yolo(ObjectDetectionModelI):
@@ -65,7 +62,8 @@ class Yolo(ObjectDetectionModelI):
         # https://github.com/ultralytics/ultralytics/issues/9912
         image = image[:, [2, 1, 0], ...]
         image = image / 255.0
-        predictions = self._model.predict(image, verbose, **kwargs)
+        with torch.no_grad():
+            predictions = self._model.predict(image, verbose, **kwargs)
         # undo the conversion
         image = image[:, [2, 1, 0], ...]
         image = image * 255.0

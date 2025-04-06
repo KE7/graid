@@ -10,7 +10,6 @@ from scenic_reasoning.utilities.common import (
     yolo_nuscene_transform,
     yolo_waymo_transform,
 )
-import ray
 
 bdd_transform = lambda i, l: yolo_bdd_transform(i, l, new_shape=(768, 1280))
 nuimage_transform = lambda i, l: yolo_nuscene_transform(i, l, new_shape=(896, 1600))
@@ -19,16 +18,15 @@ waymo_transform = lambda i, l: yolo_waymo_transform(i, l, (1280, 1920))
 
 rtdetr = RT_DETR("rtdetr-x.pt")
 
-BATCH_SIZE = 32
+BATCH_SIZE = 64
 
 
-# @ray.remote(num_gpus=1)
 def generate_db(dataset_name, split, conf, model=None):
 
     if model:
         model.set_threshold(conf)
-        db_name = f"{dataset_name}_{split}_{str(model)}"
-        model.to("cuda:6")
+        db_name = f"{dataset_name}_{split}_{conf}_{str(model)}"
+        model.to("cuda:5")
     else:
         db_name = f"{dataset_name}_{split}_gt"
 
@@ -49,10 +47,7 @@ def generate_db(dataset_name, split, conf, model=None):
         db_builder.build(model=model, batch_size=BATCH_SIZE)
 
 
-
 if __name__ == "__main__":
-
-    # ray.init()
 
     parser = argparse.ArgumentParser(
         description="Distributed dataset generator with Ray."
@@ -62,7 +57,7 @@ if __name__ == "__main__":
         "--dataset",
         type=str,
         choices=["bdd", "nuimage", "waymo"],
-        default="nuimage",
+        default="bdd",
         help="Select which dataset to use: 'bdd', 'nuimage', or 'waymo'.",
     )
 
@@ -70,7 +65,7 @@ if __name__ == "__main__":
         "--split",
         type=str,
         choices=["train", "val"],
-        default="train",
+        default="val",
         help="Select which split to use: 'train' or 'val'.",
     )
 
@@ -84,11 +79,10 @@ if __name__ == "__main__":
     # models = [rtdetr]
     # models = [None]
     # confs = [c for c in np.arange(0.05, 0.90, 0.05)]
-    confs = [0.2]
+    confs = [0.7]
 
     datasets = [args.dataset]
     split = args.split
-
 
     tasks = []
 
@@ -98,8 +92,3 @@ if __name__ == "__main__":
             # task_train = generate_db(d, "train", conf, model=model)
             # generate_db(d, "val", conf, model=model)
             # generate_db(d, "train", conf, model=model)
-
-            tasks.append(task_val)
-            # tasks.append(task_train)
-
-    # ray.get(tasks)

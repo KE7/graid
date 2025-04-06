@@ -3,7 +3,6 @@ import io
 import json
 import logging
 import os
-from pathlib import Path
 
 import pandas as pd
 from PIL import Image
@@ -131,7 +130,7 @@ def choose_best(camera_image_files, split):
             "score": best_score,
             "image": base64.b64encode(image).decode("utf-8"),
             "bboxes": bboxes,
-            "index": i + idx
+            "index": i + idx,
         }
 
     output_file = f"{split}_best_frames.json"
@@ -146,7 +145,6 @@ def choose_best(camera_image_files, split):
 if __name__ == "__main__":
 
     split = "training"
-    # root_dir = Path("/work/ke-public/graid_data/waymo")
     root_dir = project_root_dir() / "data" / "waymo"
     camera_img_dir = root_dir / f"{split}" / "camera_image"
     camera_box_dir = root_dir / f"{split}" / "camera_box"

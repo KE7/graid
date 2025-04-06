@@ -1,8 +1,9 @@
 import difflib
 import os
 import re
-import numpy as np
+
 import cv2
+import numpy as np
 import openai
 import supervision as sv
 from scenic_reasoning.utilities.common import get_default_device
@@ -25,7 +26,7 @@ class ZeroShotPrompt(PromptingStrategy):
         {questions}
         """
         return image, prompt
-    
+
     def __str__(self):
         return "ZeroShotPrompt"
 
@@ -39,7 +40,7 @@ class CoT(PromptingStrategy):
         {questions}
         """
         return image, prompt
-    
+
     def __str__(self):
         return "CoT"
 
@@ -64,7 +65,7 @@ class FewShotPrompt(PromptingStrategy):
 
         prompt += f"Now, answer the following question:\n{question}"
         return prompt
-    
+
     def __str__(self):
         return "FewShotPrompt"
 

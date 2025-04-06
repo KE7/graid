@@ -21,6 +21,7 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
     ObjectDetectionUtils,
 )
 from scenic_reasoning.models.Detectron import Detectron_obj
+
 # from scenic_reasoning.models.MMDetection import MMdetection_obj
 from scenic_reasoning.models.Ultralytics import RT_DETR, Yolo
 from scenic_reasoning.utilities.common import (
@@ -32,7 +33,6 @@ from scenic_reasoning.utilities.common import (
 from torch.utils.data import DataLoader
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
 from tqdm import tqdm
-
 
 num_cpu_workers = 1  # must be one
 BATCH_SIZE = 16
@@ -58,10 +58,7 @@ faster_rcnn_R_50_FPN_3x = Detectron_obj(
 
 MMDETECTION_PATH = project_root_dir() / "install" / "mmdetection"
 
-DINO_config = str(
-    MMDETECTION_PATH
-    / "configs/dino/dino-5scale_swin-l_8xb2-12e_coco.py"
-)
+DINO_config = str(MMDETECTION_PATH / "configs/dino/dino-5scale_swin-l_8xb2-12e_coco.py")
 DINO_checkpoint = str(
     "https://download.openmmlab.com/mmdetection/v3.0/dino/dino-5scale_swin-l_8xb2-12e_coco/dino-5scale_swin-l_8xb2-12e_coco_20230228_072924-a654145f.pth"
 )
@@ -102,13 +99,9 @@ def producer(
 
     if model_name == "DINO":
         # MMDetection models are not serializable, so we can't pass them in Ray
-        model = MMdetection_obj(
-            DINO_config, DINO_checkpoint
-        )
+        model = MMdetection_obj(DINO_config, DINO_checkpoint)
     elif model_name == "Co_DETR":
-        model = MMdetection_obj(
-            Co_DETR_config, Co_DETR_checkpoint
-        )
+        model = MMdetection_obj(Co_DETR_config, Co_DETR_checkpoint)
 
     print(f"[GPU Task] Starting inference: {dataset}")
     start_time = time.time()
@@ -203,7 +196,6 @@ def consumer(
         odrs_list = item["odrs"]
         images = item["images"]
 
-
         for conf in confs:
             for image, odrs, gt in zip(images, odrs_list, gt_list):
                 # key = (dataset, model_name, conf)
@@ -226,7 +218,6 @@ def consumer(
                     penalize_for_extra_predicitions=False,
                     image=image,
                 )
-                
 
                 score_pen = ObjectDetectionUtils.compute_metrics_for_single_img(
                     relevant_odrs,
@@ -241,11 +232,10 @@ def consumer(
                 if score == -1 or score_pen == -1:
                     print("-1 detected. Skipping...")
                     continue
-                
+
                 # if score == -1:
                 #     print("-1 detected. Skipping...")
                 #     continue
-
 
                 metrics_no_pen[conf].append(score)
                 metrics_with_pen[conf].append(score_pen)
@@ -296,7 +286,6 @@ def consumer(
     for conf in tqdm(confs, desc="Computing COCO metrics..."):
         no_pen_scores[conf] = sum(metrics_no_pen[conf]) / len(metrics_no_pen[conf])
         pen_scores[conf] = sum(metrics_with_pen[conf]) / len(metrics_with_pen[conf])
-        
 
         #
         # no_pen_scores[conf] = metrics_no_pen[conf].compute()
