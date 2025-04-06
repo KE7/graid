@@ -18,8 +18,6 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
 )
 from ultralytics import RTDETR, YOLO
 
-# TODO: Need class for InstanceSegmentation here
-
 
 class Yolo(ObjectDetectionModelI):
     def __init__(self, model: Union[str, Path]) -> None:
