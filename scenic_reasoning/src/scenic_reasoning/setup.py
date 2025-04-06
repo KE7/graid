@@ -187,6 +187,14 @@ def install_idea_dino() -> None:
     # Compile the CUDA extensions for DINO
     subprocess.run(["python", "setup.py", "build", "install"])
 
+    os.chdir(root_dir)
+    if not os.path.exists("checkpoints"):
+        os.makedirs("checkpoints")
+
+    os.chdir("checkpoints")
+    if not os.path.exists("checkpoint0011_4scale_swin.pth"):
+        subprocess.run(["gdown", "1TgHeJlgAfhHxmHq3ND9o1P1L_wbrbyj8"])
+
 
 def clean_idea_dino() -> None:
     root_dir = PROJECT_DIR

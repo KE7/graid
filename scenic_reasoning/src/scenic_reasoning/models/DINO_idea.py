@@ -1,4 +1,4 @@
-from typing import List, Union
+from typing import Iterator, List, Optional, Union
 
 import numpy as np
 import torch
@@ -145,3 +145,20 @@ class DINO_IDEA(ObjectDetectionModelI):
         return self.identify_for_image(
             image=image, debug=debug, verbose=verbose, **kwargs
         )
+    
+    def identify_for_video(
+        self,
+        video: Union[
+            Iterator[Union[np.ndarray, torch.Tensor]],
+            List[Union[np.ndarray, torch.Tensor]],
+        ],
+        batch_size: int = 1,
+    ) -> Iterator[List[Optional[ObjectDetectionResultI]]]:
+        raise NotImplementedError(
+            "DINO_IDEA does not support video identification directly. "
+            "Please use identify_for_image for each frame in the video."
+        )
+
+
+    def to(self, device: Union[str, torch.device]):
+        self._model.to(device)

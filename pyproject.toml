@@ -53,6 +53,7 @@ flake8-annotations = "^3.1.1"
 nbconvert = "^7.16.4"
 pyarrow = "^18.1.0"
 ipykernel = "^6.29.5"
+gdown = "^5.2.0"
 
 
 [tool.poetry.group.mmdetection.dependencies]

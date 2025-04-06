@@ -12,6 +12,7 @@ from scenic_reasoning.data.ImageLoader import (
     WaymoDataset,
 )
 from scenic_reasoning.models.Detectron import Detectron_obj
+from scenic_reasoning.models.DINO_idea import DINO_IDEA
 from scenic_reasoning.models.MMDetection import MMdetection_obj
 from scenic_reasoning.models.Ultralytics import RT_DETR, Yolo
 from scenic_reasoning.utilities.common import (
@@ -24,7 +25,9 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 NUM_EXAMPLES_TO_SHOW = 20
-BATCH_SIZE = 16
+BATCH_SIZE = 1
+SEED = 7
+torch.manual_seed(SEED)
 
 args = argparse.ArgumentParser()
 args.add_argument(
@@ -70,10 +73,10 @@ args.add_argument(
     choices=[0, 1, 2, 3, 4, 5, 6, 7],
 )
 
-args = args.parse_args()
+# args = args.parse_args()
 
 device = torch.device(f"cuda:{args.device_id}" if torch.cuda.is_available() else "cpu")
-torch.cuda.set_device(args.device_id)
+torch.cuda.set_device(device)
 
 dataset = args.dataset
 if dataset == "bdd":
@@ -96,16 +99,6 @@ else:
         transform=lambda i, l: yolo_waymo_transform(i, l, (1280, 1920)),
     )
 
-data_loader = DataLoader(
-    dataset,
-    batch_size=BATCH_SIZE,
-    shuffle=False,
-    num_workers=2,
-    collate_fn=lambda x: x,
-)
-
-
-# Initialize the model
 """
 Yolo(model="yolo11n.pt")"
  Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.094
@@ -127,15 +120,18 @@ if "yolov6" in model:
 elif "yolo" in model:
     model = Yolo(model=f"{model}.pt")
 elif model == "DINO":
-    MMDETECTION_PATH = project_root_dir() / "install" / "mmdetection"
-    DINO_config = str(
-        MMDETECTION_PATH / "configs/dino/dino-5scale_swin-l_8xb2-12e_coco.py"
-    )
-    DINO_checkpoint = str(
-        "https://download.openmmlab.com/mmdetection/v3.0/dino/dino-5scale_swin-l_8xb2-12e_coco/dino-5scale_swin-l_8xb2-12e_coco_20230228_072924-a654145f.pth"
-    )
-    model = MMdetection_obj(DINO_config, DINO_checkpoint)
-    BATCH_SIZE = 1  # MMDetection does not support batch size > 1
+    # MMDETECTION_PATH = project_root_dir() / "install" / "mmdetection"
+    # DINO_config = str(
+    #     MMDETECTION_PATH / "configs/dino/dino-5scale_swin-l_8xb2-12e_coco.py"
+    # )
+    # DINO_checkpoint = str(
+    #     "https://download.openmmlab.com/mmdetection/v3.0/dino/dino-5scale_swin-l_8xb2-12e_coco/dino-5scale_swin-l_8xb2-12e_coco_20230228_072924-a654145f.pth"
+    # )
+    # model = MMdetection_obj(DINO_config, DINO_checkpoint)
+    # BATCH_SIZE = 1  # MMDetection does not support batch size > 1
+    model_config_path = project_root_dir + "/install/DINO/config/DINO/DINO_4scale_swin.py" 
+    model_checkpoint_path = project_root_dir + "/checkpoints/checkpoint0011_4scale_swin.pth"
+    model = DINO_IDEA(config_file=model_config_path, checkpoint_file=model_checkpoint_path)
 elif model == "Co_DETR":
     MMDETECTION_PATH = project_root_dir() / "install" / "mmdetection"
     Co_DETR_config = str(
@@ -184,6 +180,16 @@ elif model == "faster_rcnn_R_101_FPN_3x":
     )
 
 model.to(device)
+print("Using device:", device)
+
+data_loader = DataLoader(
+    dataset,
+    batch_size=BATCH_SIZE,
+    shuffle=True,
+    pin_memory=True,
+    num_workers=4,
+    collate_fn=lambda x: x,
+)
 
 # Define COCO category information
 categories = [
@@ -340,3 +346,6 @@ leval = COCOeval(cocoGt, cocoDt, iouType="bbox")
 leval.evaluate()
 leval.accumulate()
 leval.summarize()
+
+coco_dt_path.unlink()
+coco_gt_path.unlink()
