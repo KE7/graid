@@ -70,7 +70,7 @@ class FewShotPrompt(PromptingStrategy):
 
 
 class SetOfMarkPrompt(PromptingStrategy):
-    def __init__(self):
+    def __init__(self, gpu=1):
         from segment_anything import (
             SamAutomaticMaskGenerator,
             SamPredictor,
@@ -84,14 +84,18 @@ class SetOfMarkPrompt(PromptingStrategy):
         MODEL_TYPE = "vit_h"
 
         sam = sam_model_registry[MODEL_TYPE](checkpoint=CHECKPOINT_PATH).to(
-            device=DEVICE
+            device=f"cuda:{gpu}"
         )
         self.mask_generator = SamAutomaticMaskGenerator(sam)
         self.MIN_AREA_PERCENTAGE = 0.005
         self.MAX_AREA_PERCENTAGE = 0.05
 
     def generate_prompt(self, image, question):
-        image_bgr = cv2.imread(image)
+        if isinstance(image, str):
+            image_bgr = cv2.imread(image)
+        elif isinstance(image, torch.Tensor):
+            image_bgr = image.mul(255).permute(1, 2, 0).numpy().astype(np.uint8)
+
         image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
 
         sam_result = self.mask_generator.generate(image_rgb)
@@ -172,3 +176,6 @@ class SetOfMarkPrompt(PromptingStrategy):
             )
 
         return annotated_image, question
+
+    def __str__(self):
+        return "SoM"

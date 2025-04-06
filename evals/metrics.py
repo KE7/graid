@@ -35,7 +35,7 @@ class LLMJudge(EvaluationMetric):
         Determine if the prediction matches the solution:
         Solution: {gts}
         Prediction: {preds}
-        Score each prediction with either 0 (incorrect) or 1 (correct). Give an average score for all predictions in json format as follows:
+        Score each prediction with either 0 (incorrect) or 1 (correct). Give the score for all predictions in json format as follows:
             {{
             "Solution": ...,
             "Prediction": ...,
@@ -120,14 +120,25 @@ class LLMJudge(EvaluationMetric):
         return "LLMJudge"
 
 
+
+from pydantic import BaseModel
+
+from outlines import models, generate
+
+
+class Scores(BaseModel):
+    score: list
+
+
 class ConstraintDecoding(EvaluationMetric):
     """Constraint decoding metric."""
 
-    def __init__(self):
+    def __init__(self, gpu=0):
 
-        model_name = "HuggingFaceTB/SmolLM2-360M-Instruct"
+        model = models.transformers("microsoft/Phi-3-mini-4k-instruct", device=f"cuda:{gpu}")
         print(f"downloading {model_name}")
-        self.model = outlines.models.transformers(model_name)
+        # self.model = outlines.models.transformers(model_name)
+        self.generator = generate.json(model, Scores)
 
     def evaluate(self, pred, gt):
         prompt = f"""
@@ -139,16 +150,20 @@ class ConstraintDecoding(EvaluationMetric):
         Determine if the prediction matches the solution:
         Solution: {gt}
         Prediction: {pred}
-        Score the prediction with either 0 (incorrect) or 1 (correct).
+        Score each prediction with either 0 (incorrect) or 1 (correct). Give the score for all predictions in json format
 
         <|im_end|>
         <|im_start|>assistant
         """
 
-        generator = outlines.generate.choice(self.model, ["0", "1"])
-        correctness = generator(prompt)
+        result = self.generator(prompt)
 
-        return correctness == "1"
+        # generator = outlines.generate.choice(self.model, ["0", "1"])
+        # correctness = generator(prompt)
+
+        import pdb
+        pdb.set_trace()
+        return result.score
 
     def __str__(self):
         return "ConstraintDecoding"

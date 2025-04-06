@@ -13,6 +13,7 @@ from torchvision import transforms
 import time
 import cv2
 import numpy as np
+import io
 
 
 class GPT:
@@ -24,11 +25,12 @@ class GPT:
 
     def encode_image(self, image):
         if isinstance(image, torch.Tensor):
-            transform = transforms.ToPILImage()
-            pil_image = transform(image)
-            image_bytes = pil_image.tobytes()
-            base64_string = base64.b64encode(image_bytes).decode("utf-8")
-            return base64_string
+            np_img = image.mul(255).byte().numpy().transpose(1, 2, 0)
+            img_pil = Image.fromarray(np_img)
+            buffer = io.BytesIO()
+            img_pil.save(buffer, format="JPEG")
+            base64_str = base64.b64encode(buffer.getvalue()).decode('utf-8')
+            return base64_str
         elif isinstance(image, str):
             with open(image, "rb") as image_file:
                 return base64.b64encode(image_file.read()).decode("utf-8")
@@ -84,8 +86,8 @@ class Gemini:
         if isinstance(image, str):
             image = Image.open(image)
             return image
-        elif isinstance(img_np, np.ndarray):
-            return Image.fromarray(img_np)
+        elif isinstance(image, np.ndarray):
+            return Image.fromarray(image)
         else:
             transform = transforms.ToPILImage()
             pil_image = transform(image)
@@ -125,11 +127,12 @@ class Llama:
 
     def encode_image(self, image):
         if isinstance(image, torch.Tensor):
-            transform = transforms.ToPILImage()
-            pil_image = transform(tensor)
-            image_bytes = pil_image.tobytes()
-            base64_string = base64.b64encode(image_bytes).decode()
-            return base64_string
+            np_img = image.mul(255).byte().numpy().transpose(1, 2, 0)
+            img_pil = Image.fromarray(np_img)
+            buffer = io.BytesIO()
+            img_pil.save(buffer, format="JPEG")
+            base64_str = base64.b64encode(buffer.getvalue()).decode('utf-8')
+            return base64_str
         elif isinstance(image, np.ndarray):
             success, buffer = cv2.imencode('.jpg', image)
             return base64.b64encode(buffer).decode('utf-8')
@@ -138,9 +141,11 @@ class Llama:
                 return base64.b64encode(image_file.read()).decode("utf-8")
 
     def generate_answer(self, image, questions: str, prompting_style):
-        base64_image = self.encode_image(image)
-        image_gcs_url = f"data:image/jpeg;base64,{base64_image}"
         image, prompt = prompting_style.generate_prompt(image, questions)
+        base64_image = self.encode_image(image)
+
+        image_gcs_url = f"data:image/jpeg;base64,{base64_image}"
+        
 
         payload = {
             "model": self.model,
@@ -161,7 +166,7 @@ class Llama:
             "n": 1,
         }
 
-        token = "ya29.a0AeXRPp6ikg2fDVbZbDnXJgpo3JQBtOW_GDEGqrVLzYRt1YMYOPm97jiA-_wNWZ53UkD17ejwXsLbnbbmgUjyPnk_nk77IoF1UlJjxZwJ1p22TitIp92rHPutJXx0ByX1uy8kTdJJYSRIE_naSx2LXvfmZ6tRv1YgxrSYLmgk_NXwZ230aCgYKAX4SARMSFQHGX2MiWyhWnflfKV_SL98_ju4-6Q0183"
+        token = "ya29.a0AeXRPp5d0U2L8kR_Vf7X0DTSfKWeNmcPzYUtSY8VkUEk2OhcWSMNAS0B3GCyUBCB9vnay24M3yMb8h6fomDpiB8usm6WbgHPYfoOiEm6BUKyucfQve1tx5BViHb-YAszAtjkaLElU1YOjUMb6SBS0qhtYd0Zi-kX2Qr3hTfGr_6hcgxeaCgYKAX0SARMSFQHGX2MipmicDMm4Z5OQ9MCKtDaDHg0183"
 
         headers = {
             "Authorization": f"Bearer {token}",
