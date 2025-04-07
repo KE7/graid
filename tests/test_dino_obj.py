@@ -68,17 +68,17 @@ for d in [bdd]:  # , nu, waymo]:
             print("gt classes:", [c._class for c in results[i]["labels"]])
             print("pred classes:", [c._class for c in results[i]["predictions"]])
 
-            print(f"{i}th image")
-            measurements = results[i]["measurements"]
-            print("global map", measurements["map"])
-            print("map 50", measurements["map_50"])
-            print("map 75", measurements["map_75"])
-            print("map_small", measurements["map_small"])
-            print("map_medium", measurements["map_medium"])
-            print("map_large", measurements["map_large"])
-            print("mar_small", measurements["mar_small"])
-            print("mar_medium", measurements["mar_medium"])
-            print("mar_large", measurements["mar_large"])
+            # print(f"{i}th image")
+            # measurements = results[i]["measurements"]
+            # print("global map", measurements["map"])
+            # print("map 50", measurements["map_50"])
+            # print("map 75", measurements["map_75"])
+            # print("map_small", measurements["map_small"])
+            # print("map_medium", measurements["map_medium"])
+            # print("map_large", measurements["map_large"])
+            # print("mar_small", measurements["mar_small"])
+            # print("mar_medium", measurements["mar_medium"])
+            # print("mar_large", measurements["mar_large"])
 
             # img_to_show = ObjectDetectionUtils.show_image_with_detections_and_gt(
             #     Image.fromarray(

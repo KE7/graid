@@ -8,7 +8,7 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
     ObjectDetectionResultI,
 )
 from scenic_reasoning.utilities.coco import coco_label
-
+from torchvision.transforms import ToPILImage
 # fmt: off
 from scenic_reasoning.utilities.common import project_root_dir
 import sys
@@ -78,24 +78,23 @@ class DINO_IDEA(ObjectDetectionModelI):
             represents the batch of images, and the inner list represents the
             detections in a particular image.
         """
-        # import pdb
-        # pdb.set_trace()
+        
 
         # if isinstance(image, np.ndarray):
         #     pass
         # elif isinstance(image, torch.Tensor):
         #     image = image.cpu().numpy()
-        
         images = None
         if image.ndim == 3:
-            # img_tensor, _ = self.transform(image, None)
+            img_tensor, _ = self.transform(image, None)
             images = img_tensor.unsqueeze(0)  # (1, C, H, W)
         elif image.ndim == 4:
             # already a batch of images
             images = []
             for img in image:
-                # img_tensor, _ = self.transform(img, None)
-                images.append(img)
+                img = ToPILImage()(img)
+                img_tensor, _ = self.transform(img, None)
+                images.append(img_tensor)
             images = torch.stack(images)
         else:
             raise ValueError(
@@ -130,8 +129,6 @@ class DINO_IDEA(ObjectDetectionModelI):
 
                 score = scores[i].item()
                 label = str(labels[i].item())
-                if label not in to_coco:
-                    continue
                 label = to_coco[label]
 
                 odr = ObjectDetectionResultI(
