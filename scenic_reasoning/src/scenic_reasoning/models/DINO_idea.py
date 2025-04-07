@@ -16,8 +16,22 @@ sys.path.insert(0, str(project_root_dir() / "install" / "DINO"))
 sys.path.insert(0, str(project_root_dir() / "install" ))
 from DINO.main import build_model_main
 from DINO.util.slconfig import SLConfig
+from DINO.util import box_ops
 from DINO.datasets import transforms as T
 # fmt: on
+
+
+to_coco = {
+    "1": 0, "2": 1, "3": 2, "4": 3, "5": 4, "6": 5, "7": 6, "8": 7, "9": 8, "10": 9, "11": 10,
+    "13": 11, "14": 12, "15": 13, "16": 14, "17": 15, "18": 16, "19": 17, "20": 18, "21": 19,
+    "22": 20, "23": 21, "24": 22, "25": 23, "27": 24, "28": 25, "31": 26, "32": 27, "33": 28,
+    "34": 29, "35": 30, "36": 31, "37": 32, "38": 33, "39": 34, "40": 35, "41": 36, "42": 37,
+    "43": 38, "44": 39, "46": 40, "47": 41, "48": 42, "49": 43, "50": 44, "51": 45, "52": 46,
+    "53": 47, "54": 48, "55": 49, "56": 50, "57": 51, "58": 52, "59": 53, "60": 54, "61": 55,
+    "62": 56, "63": 57, "64": 58, "65": 59, "67": 60, "70": 61, "72": 62, "73": 63, "74": 64,
+    "75": 65, "76": 66, "77": 67, "78": 68, "79": 69, "80": 70, "81": 71, "82": 72, "84": 73,
+    "85": 74, "86": 75, "87": 76, "88": 77, "89": 78, "90": 79
+}
 
 
 class DINO_IDEA(ObjectDetectionModelI):
@@ -64,21 +78,24 @@ class DINO_IDEA(ObjectDetectionModelI):
             represents the batch of images, and the inner list represents the
             detections in a particular image.
         """
-        if isinstance(image, np.ndarray):
-            pass
-        elif isinstance(image, torch.Tensor):
-            image = image.numpy()
+        # import pdb
+        # pdb.set_trace()
+
+        # if isinstance(image, np.ndarray):
+        #     pass
+        # elif isinstance(image, torch.Tensor):
+        #     image = image.cpu().numpy()
         
         images = None
         if image.ndim == 3:
-            img_tensor, _ = self.transform(image, None)
+            # img_tensor, _ = self.transform(image, None)
             images = img_tensor.unsqueeze(0)  # (1, C, H, W)
         elif image.ndim == 4:
             # already a batch of images
             images = []
             for img in image:
-                img_tensor, _ = self.transform(img, None)
-                images.append(img_tensor)
+                # img_tensor, _ = self.transform(img, None)
+                images.append(img)
             images = torch.stack(images)
         else:
             raise ValueError(
@@ -93,6 +110,7 @@ class DINO_IDEA(ObjectDetectionModelI):
 
         formatted_results = []
         for y_hat in predictions:
+
             result_for_image = []
             scores = y_hat['scores']
             boxes = y_hat['boxes'] # is in xyxy format
@@ -103,17 +121,26 @@ class DINO_IDEA(ObjectDetectionModelI):
                 continue
 
             for i in range(len(boxes)):
-                box = boxes[i]
-                score = scores[i].item()
-                label = labels[i].item()
                 image_hw = (int(images.shape[2]), int(images.shape[3]))
+                box = boxes[i].tolist()
+                box[0] = int(box[0] * image_hw[1])
+                box[1] = int(box[1] * image_hw[0])
+                box[2] = int(box[2] * image_hw[1])
+                box[3] = int(box[3] * image_hw[0])
+
+                score = scores[i].item()
+                label = str(labels[i].item())
+                if label not in to_coco:
+                    continue
+                label = to_coco[label]
+
                 odr = ObjectDetectionResultI(
                     score=score,
                     cls=label,
                     label=coco_label[label],
-                    bbox=box.cpu(),
+                    bbox=box,
                     image_hw=image_hw,
-                    bbox_format=BBox_Format.UltralyticsBox,
+                    bbox_format=BBox_Format.XYXY,
                 )
 
                 result_for_image.append(odr)

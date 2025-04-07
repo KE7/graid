@@ -21,7 +21,7 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
     ObjectDetectionUtils,
 )
 from scenic_reasoning.models.Detectron import Detectron_obj
-
+from scenic_reasoning.models.DINO_idea import DINO_IDEA
 # from scenic_reasoning.models.MMDetection import MMdetection_obj
 from scenic_reasoning.models.Ultralytics import RT_DETR, Yolo
 from scenic_reasoning.utilities.common import (
@@ -58,10 +58,8 @@ faster_rcnn_R_50_FPN_3x = Detectron_obj(
 
 MMDETECTION_PATH = project_root_dir() / "install" / "mmdetection"
 
-DINO_config = str(MMDETECTION_PATH / "configs/dino/dino-5scale_swin-l_8xb2-12e_coco.py")
-DINO_checkpoint = str(
-    "https://download.openmmlab.com/mmdetection/v3.0/dino/dino-5scale_swin-l_8xb2-12e_coco/dino-5scale_swin-l_8xb2-12e_coco_20230228_072924-a654145f.pth"
-)
+DINO_config = project_root_dir() / "install/DINO/config/DINO/DINO_4scale_swin.py"
+DINO_checkpoint = project_root_dir() / "checkpoints/checkpoint0011_4scale_swin.pth"
 # DINO = MMdetection_obj(DINO_config, DINO_checkpoint) # 837 MB
 
 Co_DETR_config = str(
@@ -99,7 +97,7 @@ def producer(
 
     if model_name == "DINO":
         # MMDetection models are not serializable, so we can't pass them in Ray
-        model = MMdetection_obj(DINO_config, DINO_checkpoint)
+        model = DINO_IDEA(DINO_config, DINO_checkpoint)
     elif model_name == "Co_DETR":
         model = MMdetection_obj(Co_DETR_config, Co_DETR_checkpoint)
 

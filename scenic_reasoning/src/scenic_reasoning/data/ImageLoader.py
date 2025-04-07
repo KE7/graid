@@ -323,6 +323,8 @@ class Bdd100kDataset(ImageDataset):
             )
         )
 
+        self.img_labels = self.load_annotations(annotations_file)
+
         def merge_transform(
             image: Tensor,
             labels: List[Dict[str, Any]],
@@ -411,7 +413,7 @@ class Bdd100kDataset(ImageDataset):
             for idx, label in tqdm(
                 enumerate(self.img_labels),
                 total=len(self.img_labels),
-                desc="Pre-Processing BDD100K dataset...",
+                desc="Indexing BDD100K dataset...",
             ):
                 save_path = save_dir / f"{idx}.pkl"
                 print("creating idx... ", idx)
@@ -760,7 +762,8 @@ class NuImagesDataset(ImageDataset):
                 print("creating idx... ", idx)
                 # if save_path.exists():
                 #     continue
-                if not self.is_time_in_working_hours(img_filename):
+                if self.use_time_filtered and not self.is_time_in_working_hours(img_filename):
+                    print("invalid")
                     continue
 
                 with open(save_path, "wb") as f:

@@ -29,31 +29,37 @@ import argparse
 
 
 def run_bdd():
-    json_file_path = project_root_dir() / 'data/bdd100k/labels/det_20/det_train.json'
-    with open(json_file_path, 'r') as file:
-        data = json.load(file)
+    # json_file_path = project_root_dir() / 'data/bdd100k/labels/det_20/det_train.json'
+    # with open(json_file_path, 'r') as file:
+    #     data = json.load(file)
 
-    weather_set = set(['partly cloudy', 'clear'])
-    timeofday_set = set(['daytime'])
+    # weather_set = set(['partly cloudy', 'clear'])
+    # timeofday_set = set(['daytime'])
 
-    count = 0
-    empty_count = 0
-    new_data = []
+    # count = 0
+    # empty_count = 0
+    # new_data = []
 
-    for d in tqdm(data):
-        if 'labels' not in d or len(d['labels']) == 0:
-            empty_count += 1
-        if d['attributes']['weather'] not in weather_set and d['attributes']['timeofday'] not in timeofday_set:
-            continue
-        count += 1
-        new_data.append(d)
+    # for d in tqdm(data):
+    #     if 'labels' not in d or len(d['labels']) == 0:
+    #         empty_count += 1
+    #     if d['attributes']['weather'] not in weather_set and d['attributes']['timeofday'] not in timeofday_set:
+    #         continue
+    #     count += 1
+    #     new_data.append(d)
 
-    output_file_path = project_root_dir() / 'data/bdd100k/labels/det_20/det_train_filtered.json'
-    with open(output_file_path, 'w') as output_file:
-        json.dump(new_data, output_file, indent=4)
+    # output_file_path = project_root_dir() / 'data/bdd100k/labels/det_20/det_train_filtered.json'
+    # with open(output_file_path, 'w') as output_file:
+    #     json.dump(new_data, output_file, indent=4)
 
-    print(f'Filtered {count} entries (Empty: {empty_count})')
-    print(f'Filtered data saved to {output_file_path}')
+    # print(f'{count}/{len(data)} valid entries (Empty: {empty_count})')
+    # print(f'Filtered data saved to {output_file_path}')
+    bdd = Bdd100kDataset(
+        split="train",
+        transform=lambda i, l: yolo_bdd_transform(i, l, new_shape=(896, 1600)),
+        rebuild=True,
+        use_time_filtered=True,
+    )
 
 
 def is_time_in_working_hours(filename: str) -> bool:
@@ -71,28 +77,29 @@ def run_nuimage():
         split="train",
         size="all",
         transform=lambda i, l: yolo_nuscene_transform(i, l, new_shape=(896, 1600)),
-        rebuild=False
+        rebuild=True,
+        use_time_filtered=True,
     )
 
-    data_loader = DataLoader(
-        nu,
-        batch_size=1,
-        shuffle=False,
-        num_workers=2,
-        collate_fn=lambda x: x,
-    )
+    # data_loader = DataLoader(
+    #     nu,
+    #     batch_size=1,
+    #     shuffle=False,
+    #     num_workers=2,
+    #     collate_fn=lambda x: x,
+    # )
 
-    # print(is_time_in_working_hours("n014-2018-06-25-21-20-52-0400__CAM_FRONT_LEFT__1529976333254899.jpg"))
-    # exit()   
-    count = total_count = 0
-    for idx, batch in enumerate(tqdm(data_loader, desc="Loading NuImages Batches")):
-        for b in batch:
-            total_count += 1
-            if not is_time_in_working_hours(b['name']):
-                print("found!")
-                count += 1
+    # # print(is_time_in_working_hours("n014-2018-06-25-21-20-52-0400__CAM_FRONT_LEFT__1529976333254899.jpg"))
+    # # exit()   
+    # count = total_count = 0
+    # for idx, batch in enumerate(tqdm(data_loader, desc="Loading NuImages Batches")):
+    #     for b in batch:
+    #         total_count += 1
+    #         if not is_time_in_working_hours(b['name']):
+    #             print("invalid")
+    #             count += 1
 
-    print(f"Filtered {count} out of {total_count} images outside working hours.")
+    # print(f"Filtered {count} out of {total_count} images outside working hours.")
 
 
 def is_within_working_hours(timestamp_micro: str) -> bool:
