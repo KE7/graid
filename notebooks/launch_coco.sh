@@ -4,7 +4,8 @@
 # to a file named by the combination of parameters.
 
 datasets=("bdd" "nuimage" "waymo")
-models=("rtdetr" "yolov10x" "yolo11x" "retinanet_R_101_FPN_3x" "faster_rcnn_R_50_FPN_3x" "DINO" "Co_DETR")
+# models=("rtdetr" "yolov10x" "yolo11x" "retinanet_R_101_FPN_3x" "faster_rcnn_R_50_FPN_3x" "DINO" "Co_DETR")
+models=("DINO" "Co_DETR")
 confs=(0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9)
 gpus=(2 3 4 5 6 7)
 
