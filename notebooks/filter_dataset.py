@@ -29,31 +29,6 @@ import argparse
 
 
 def run_bdd():
-    # json_file_path = project_root_dir() / 'data/bdd100k/labels/det_20/det_train.json'
-    # with open(json_file_path, 'r') as file:
-    #     data = json.load(file)
-
-    # weather_set = set(['partly cloudy', 'clear'])
-    # timeofday_set = set(['daytime'])
-
-    # count = 0
-    # empty_count = 0
-    # new_data = []
-
-    # for d in tqdm(data):
-    #     if 'labels' not in d or len(d['labels']) == 0:
-    #         empty_count += 1
-    #     if d['attributes']['weather'] not in weather_set and d['attributes']['timeofday'] not in timeofday_set:
-    #         continue
-    #     count += 1
-    #     new_data.append(d)
-
-    # output_file_path = project_root_dir() / 'data/bdd100k/labels/det_20/det_train_filtered.json'
-    # with open(output_file_path, 'w') as output_file:
-    #     json.dump(new_data, output_file, indent=4)
-
-    # print(f'{count}/{len(data)} valid entries (Empty: {empty_count})')
-    # print(f'Filtered data saved to {output_file_path}')
     bdd = Bdd100kDataset(
         split="train",
         transform=lambda i, l: yolo_bdd_transform(i, l, new_shape=(896, 1600)),
@@ -81,26 +56,6 @@ def run_nuimage():
         use_time_filtered=True,
     )
 
-    # data_loader = DataLoader(
-    #     nu,
-    #     batch_size=1,
-    #     shuffle=False,
-    #     num_workers=2,
-    #     collate_fn=lambda x: x,
-    # )
-
-    # # print(is_time_in_working_hours("n014-2018-06-25-21-20-52-0400__CAM_FRONT_LEFT__1529976333254899.jpg"))
-    # # exit()   
-    # count = total_count = 0
-    # for idx, batch in enumerate(tqdm(data_loader, desc="Loading NuImages Batches")):
-    #     for b in batch:
-    #         total_count += 1
-    #         if not is_time_in_working_hours(b['name']):
-    #             print("invalid")
-    #             count += 1
-
-    # print(f"Filtered {count} out of {total_count} images outside working hours.")
-
 
 def is_within_working_hours(timestamp_micro: str) -> bool:
     timestamp_sec = int(timestamp_micro) / 1e6
@@ -109,27 +64,24 @@ def is_within_working_hours(timestamp_micro: str) -> bool:
 
 
 def run_waymo():
-    waymo = WaymoDataset(
-        split="training",
-        transform=lambda i, l: yolo_waymo_transform(i, l, (1280, 1920))
-    )
+    import os
+    import pickle
 
-    data_loader = DataLoader(
-        waymo,
-        batch_size=1,
-        shuffle=False,
-        num_workers=2,
-        collate_fn=lambda x: x,
-    )
-
-    total_count = count = 0
-    for idx, batch in enumerate(tqdm(data_loader, desc="Loading Waymo Batches")):
-        for b in batch:
-            total_count += 1
-            if not is_within_working_hours(b['timestamp']):
-                count += 1
-
-    print(f"Filtered {count} out of {total_count} frames outside working hours.")
+    source_dir = project_root_dir() / "data/waymo_training_interesting"
+    dest_dir = project_root_dir() / "data/waymo_training_interesting_filtered"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    idx = 0
+    for file_name in tqdm(os.listdir(source_dir), desc="Processing files"):
+        file_path = source_dir / file_name
+        with open(file_path, "rb") as f:
+            img_data = pickle.load(f)
+        timestamp = img_data["timestamp"]
+        if not is_within_working_hours(timestamp):
+            print("skipping")
+            continue
+        with open(dest_dir / f"{idx}.pkl", "wb") as f:
+            pickle.dump(img_data, f)
+        idx += 1
 
 
 if __name__ == '__main__':

@@ -31,6 +31,7 @@ from torch import Tensor
 from torch.utils.data import Dataset
 from torchvision import transforms
 from tqdm import tqdm
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -1188,6 +1189,11 @@ class WaymoDataset(ImageDataset):
 
     def cls_to_category(self, cls: int) -> str:
         return self._CATEGORIES_R[cls]
+    
+    def is_time_in_working_hours(self, timestamp_micro: str) -> bool:
+        timestamp_sec = int(timestamp_micro) / 1e6
+        dt = datetime.utcfromtimestamp(timestamp_sec)
+        return time(8, 0) <= dt.time() < time(18, 0)
 
     def __repr__(self):
         return f"Waymo Dataset {self.split} split with {self.__len__()} images"
@@ -1229,7 +1235,8 @@ class WaymoDataset(ImageDataset):
 
         if rebuild:
             save_path_parent = (
-                project_root_dir() / "data" / f"waymo_{self.split}_interesting"
+                # project_root_dir() / "data" / f"waymo_{self.split}_interesting"
+                project_root_dir() / "data" / f"waymo_{self.split}_filtered" if self.use_time_filtered else f"waymo_{self.split}"
             )
             save_path_parent.mkdir(parents=True, exist_ok=True)
             try:
@@ -1238,7 +1245,7 @@ class WaymoDataset(ImageDataset):
                 logger.warning(f"Failed to set permissions on {save_path_parent}: {e}")
 
             for image_file in tqdm(
-                camera_image_files, desc="Pre-Processing Waymo dataset..."
+                camera_image_files, desc="Indexing Waymo dataset..."
             ):
                 box_file = image_file.replace("camera_image", "camera_box")
                 image_path = self.camera_img_dir / image_file
@@ -1292,6 +1299,10 @@ class WaymoDataset(ImageDataset):
                     image_data = group_data.iloc[0]
                     img_bytes = image_data["[CameraImageComponent].image"]
                     frame_timestamp_micros = image_data["key.frame_timestamp_micros"]
+
+                    if self.use_time_filtered and not self.is_time_in_working_hours(frame_timestamp_micros):
+                        print("invalid")
+                        continue
 
                     labels = []
                     for _, row in group_data.iterrows():
