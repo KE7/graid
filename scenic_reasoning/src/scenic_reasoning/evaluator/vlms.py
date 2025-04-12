@@ -18,10 +18,12 @@ import numpy as np
 import io
 
 
+
+
 class GPT:
     def __init__(self, model_name="gpt-4o", port=None):
         load_dotenv()
-        OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+        OPENAI_API_KEY = "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"
         self.client = OpenAI(api_key=OPENAI_API_KEY)
         self.model_name = model_name
 
@@ -124,6 +126,8 @@ class Llama:
         self.model = model_name
 
         self.url = f"https://{ENDPOINT}/v1beta1/projects/{PROJECT_ID}/locations/{REGION}/endpoints/openapi/chat/completions"
+        with open("token.txt", "r") as token_file:
+            self.token = token_file.read().strip()
 
     def encode_image(self, image):
         if isinstance(image, torch.Tensor):
@@ -166,10 +170,9 @@ class Llama:
             "n": 1,
         }
 
-        token = "ya29.a0AeXRPp5d0U2L8kR_Vf7X0DTSfKWeNmcPzYUtSY8VkUEk2OhcWSMNAS0B3GCyUBCB9vnay24M3yMb8h6fomDpiB8usm6WbgHPYfoOiEm6BUKyucfQve1tx5BViHb-YAszAtjkaLElU1YOjUMb6SBS0qhtYd0Zi-kX2Qr3hTfGr_6hcgxeaCgYKAX0SARMSFQHGX2MipmicDMm4Z5OQ9MCKtDaDHg0183"
 
         headers = {
-            "Authorization": f"Bearer {token}",
+            "Authorization": f"Bearer {self.token}",
             "Content-Type": "application/json",
         }
 

@@ -9,6 +9,7 @@ from tqdm import tqdm
 from datetime import datetime
 from brokenaxes import brokenaxes
 import numpy as np
+import json
 
 def extract_hour_nuimage(filename):
     match = re.search(r"\d{4}-\d{2}-\d{2}-(\d{2})-(\d{2})-", filename)
@@ -25,6 +26,58 @@ def extract_hour_waymo(timestamp_micro: str) -> bool:
     dt = datetime.utcfromtimestamp(timestamp_sec)
     return dt.hour
 
+
+
+def histogram_bdd():
+    f = "/home/eecs/liheng/scenic-reasoning/data/bdd100k/labels/det_20/det_train.json"
+    time_set = set()
+    weather_set = set()
+    with open(f, "r") as file:
+        data = json.load(file)
+
+    # Initialize counters for time and weather
+    time_counts = [0] * 24
+    weather_counts = {}
+
+    # Iterate through the dataset
+    for item in data:
+        attributes = item.get("attributes", {})
+        time_of_day = attributes.get("timeofday")
+        weather = attributes.get("weather")
+
+        # Update time counts
+        if time_of_day == "daytime":
+            time_counts[12] += 1
+        elif time_of_day == "night":
+            time_counts[0] += 1
+        elif time_of_day == "dawn/dusk":
+            time_counts[6] += 1
+
+        # Update weather counts
+        if weather:
+            weather_counts[weather] = weather_counts.get(weather, 0) + 1
+
+    # Plot time histogram
+    plt.figure(figsize=(10, 5))
+    plt.bar(["Night", "Dawn/Dusk", "Daytime"], [time_counts[0], time_counts[6], time_counts[12]])
+    plt.xlabel("Time of Day")
+    plt.ylabel("Number of Images")
+    plt.title("BDD100K Images by Time of Day")
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    plt.tight_layout()
+    plt.savefig("bdd_time_histogram.png")
+
+    # Plot weather histogram
+    plt.figure(figsize=(10, 5))
+    plt.bar(weather_counts.keys(), weather_counts.values())
+    plt.xlabel("Weather")
+    plt.ylabel("Number of Images")
+    plt.title("BDD100K Images by Weather")
+    plt.xticks(rotation=45)
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    plt.tight_layout()
+    plt.savefig("bdd_weather_histogram.png")
+    
 
 def histogram_waymo(directory):
     hour_counts = [0] * 24 
@@ -47,32 +100,32 @@ def histogram_waymo(directory):
         pickle.dump(hour_counts, f)
     print(f"Hour counts saved to {output_file}")
     
-    # plt.figure(figsize=(10, 5))
-    # plt.bar(range(24), hour_counts)
-    # plt.xlabel("Hour of Day")
-    # plt.ylabel("Number of Images")
-    # plt.title("Waymo by Hour")
-    # plt.xticks(range(24))
-    # plt.grid(axis='y', linestyle='--', alpha=0.7)
-    # plt.tight_layout()
-    # plt.savefig("waymo_histogram.png")
-    hours = np.arange(24)
-    counts = np.array(hour_counts)
+    plt.figure(figsize=(10, 5))
+    plt.bar(range(24), hour_counts)
+    plt.xlabel("Hour of Day")
+    plt.ylabel("Number of Images")
+    plt.title("Waymo by Hour")
+    plt.xticks(range(24))
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    plt.tight_layout()
+    plt.savefig("waymo_histogram.png")
+    # hours = np.arange(24)
+    # counts = np.array(hour_counts)
 
-    fig = plt.figure(figsize=(10, 5))
-    bax = brokenaxes(xlims=((0, 23),), hspace=.05, fig=fig)
+    # fig = plt.figure(figsize=(10, 5))
+    # bax = brokenaxes(xlims=((0, 23),), hspace=.05, fig=fig)
 
-    # Plot the bars on the broken x-axis
-    bax.bar(hours, counts, color='#377eb8', edgecolor='white')
+    # # Plot the bars on the broken x-axis
+    # bax.bar(hours, counts, color='#377eb8', edgecolor='white')
 
-    # Set labels and title
-    bax.set_xlabel('Hour')
-    bax.set_ylabel('Number of Images')
-    plt.suptitle('Waymo Images by Hour (Broken X-Axis)', fontsize=14, fontweight='bold')
+    # # Set labels and title
+    # bax.set_xlabel('Hour')
+    # bax.set_ylabel('Number of Images')
+    # plt.suptitle('Waymo Images by Hour (Broken X-Axis)', fontsize=14, fontweight='bold')
 
-    # Save the figure
-    plt.savefig("waymo_histogram_broken.png")
-    print("Saved plot to waymo_histogram_broken.png")
+    # # Save the figure
+    # plt.savefig("waymo_histogram_broken.png")
+    # print("Saved plot to waymo_histogram_broken.png")
 
 def histogram_nuimage(directory):
     hour_counts = [0] * 24 
@@ -102,7 +155,8 @@ def histogram_nuimage(directory):
 
 
 # histogram("/home/eecs/liheng/scenic-reasoning/data/nuimages_train")
-histogram_waymo("/home/eecs/liheng/scenic-reasoning/data/waymo_training_interesting")
+# histogram_waymo("/home/eecs/liheng/scenic-reasoning/data/waymo_training_interesting")
+histogram_bdd()
 
 
 

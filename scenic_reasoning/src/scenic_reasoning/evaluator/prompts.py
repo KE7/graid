@@ -22,16 +22,39 @@ class ZeroShotPrompt(PromptingStrategy):
     """Zero-shot prompting method."""
 
     def generate_prompt(self, image, questions):
-        prompt = f"""Answer the following questions related to the image. Provide your answers to each question, separated by commas. Here are the questions:
-        {questions}
-        """
+        prompt = f"""Answer this question related to the image: {questions}"""
+
         return image, prompt
 
     def __str__(self):
         return "ZeroShotPrompt"
 
+class ZeroShotPrompt_batch(PromptingStrategy):
+    """Zero-shot prompting method."""
+
+    def generate_prompt(self, image, questions):
+        prompt = f"""Answer the following questions related to the image. Provide your answers to each question, separated by commas. Here are the questions:
+        {questions}
+        """
+
+        return image, prompt
+
+    def __str__(self):
+        return "ZeroShotPrompt_batch"
+
 
 class CoT(PromptingStrategy):
+    """Zero-shot prompting method."""
+
+    def generate_prompt(self, image, questions):
+        prompt = f"""Look at the image carefully and think through the question step by step. Explain your reasoning briefly, and then provide your final answer. Here's the question: {questions}
+        """
+        return image, prompt
+
+    def __str__(self):
+        return "CoT"
+
+class CoT_batch(PromptingStrategy):
     """Zero-shot prompting method."""
 
     def generate_prompt(self, image, questions):
@@ -42,7 +65,7 @@ class CoT(PromptingStrategy):
         return image, prompt
 
     def __str__(self):
-        return "CoT"
+        return "CoT_batch"
 
 
 class FewShotPrompt(PromptingStrategy):

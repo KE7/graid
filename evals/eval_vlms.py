@@ -9,22 +9,22 @@ import sqlite3
 from pathlib import Path
 
 import pandas as pd
-from scenic_reasoning.evaluator.metrics import ConstraintDecoding, LLMJudge
+from scenic_reasoning.evaluator.metrics import ConstraintDecoding, LLMJudge, ExactMatch
 from PIL import Image
-from scenic_reasoning.evaluator.prompts import CoT, SetOfMarkPrompt, ZeroShotPrompt
+from scenic_reasoning.evaluator.prompts import CoT, CoT_batch, SetOfMarkPrompt, ZeroShotPrompt, ZeroShotPrompt_batch
 from scenic_reasoning.utilities.common import project_root_dir
 from torchvision import transforms
 from tqdm import tqdm
 from scenic_reasoning.evaluator.vlms import GPT, Gemini, Llama
 
-DB_PATH = project_root_dir() / "data/databases_final"
+DB_PATH = project_root_dir() / "data/databases_ablations"
 
 bdd_path = project_root_dir() / "data/bdd_val_filtered"
 nu_path = project_root_dir() / "data/nuimages_val_filtered"
 waymo_path = project_root_dir() / "data/waymo_validation_interesting"
 
 
-def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt):
+def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
     if "bdd" in db_path:
         db_base_path = bdd_path
     elif "nuimage" in db_path:
@@ -33,8 +33,12 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt):
         db_base_path = waymo_path
 
     conn = sqlite3.connect(db_path)
-    db_name = Path(db_path).stem
-    output_dir = DB_PATH / f"{db_name}_{my_vlm}_{my_metric}_{my_prompt}"
+    # db_name = Path(db_path).stem
+    # db_path = db_path.replace("/", "_")
+    l = db_path.split("/")
+    db_path = "_".join([l[-2], l[-1]])
+
+    output_dir = DB_PATH / f"{db_path}_{my_vlm}_{my_metric}_{my_prompt}"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Get a list of all table names
@@ -106,15 +110,25 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt):
             print(f"No questions found for image index {img_idx}, skipping...")
             continue
 
-        questions = ", ".join([item for i, item in enumerate(questions)])
-        answers = ", ".join([item for i, item in enumerate(answers)])
+        preds = []
 
-        preds, prompt = my_vlm.generate_answer(image_path, questions, my_prompt)
+        if use_batch:
+            questions = ", ".join([item for i, item in enumerate(questions)])
+            answers = ", ".join([item for i, item in enumerate(answers)])
+            preds, prompt = my_vlm.generate_answer(
+                image_path, questions, my_prompt
+            )
+            correctness = my_metric.evaluate(preds, answers)
+            preds = preds
+        else:
+            for q, a in tqdm(zip(questions, answers), total=len(questions)):
 
-        correct = my_metric.evaluate(preds, answers)
-        if isinstance(correct, int):
-            correct = [correct]
-        correctness.extend(correct)
+                pred, prompt = my_vlm.generate_answer(image_path, q, my_prompt)
+                correct = my_metric.evaluate(pred, a)
+
+                preds.append(pred)
+                correctness.append(correct)
+
 
         with open(str(output_path), "w") as log_file:
             log_file.write(f"Image Path: \n{image_path}\n")
@@ -122,7 +136,7 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt):
             log_file.write(f"Answers: \n{answers}\n")
             log_file.write(f"Prompt: \n{prompt}\n")
             log_file.write(f"Preds: \n{preds}\n")
-            log_file.write(f"Correctness: \n{correct}\n")
+            log_file.write(f"Correctness: \n{correctness}\n")
             log_file.write("\n")
 
     return sum(correctness) / len(correctness)
@@ -135,7 +149,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--db_name",
         type=str,
-        default="bdd_val_rtdetr-x.sqlite",
         help="Path to the SQLite database.",
     )
     parser.add_argument(
@@ -149,7 +162,7 @@ if __name__ == "__main__":
         "--metric",
         type=str,
         default="LLMJudge",
-        choices=["LLMJudge", "ConstraintDecoding"],
+        choices=["ExactMatch", "LLMJudge", "ConstraintDecoding"],
         help="Metric to use for evaluating answers.",
     )
     parser.add_argument(
@@ -159,7 +172,6 @@ if __name__ == "__main__":
         choices=["SetOfMarkPrompt", "ZeroShotPrompt", "CoT"],
         help="Prompt to use for generating questions.",
     )
-
     parser.add_argument(
         "--region",
         type=str,
@@ -168,16 +180,23 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    use_batch = False
+
     db_path = str(DB_PATH / args.db_name)
     if args.vlm == "GPT":
         my_vlm = GPT()
+        use_batch = True
     elif args.vlm == "Llama":
         my_vlm = Llama(region=args.region)
+        use_batch = False
     elif args.vlm == "Gemini":
         my_vlm = Gemini(location=args.region)
+        use_batch = True
 
     if args.metric == "LLMJudge":
         my_metric = LLMJudge()
+    elif args.metric == "ExactMatch":
+        my_metric = ExactMatch()
     else:
         if args.vlm == "GPT":
             my_metric = ConstraintDecoding(gpu=1)
@@ -185,8 +204,7 @@ if __name__ == "__main__":
             my_metric = ConstraintDecoding(gpu=2)
         elif args.vlm == "Gemini":
             my_metric = ConstraintDecoding(gpu=3)
-        
-        
+
 
     if args.prompt == "SetOfMarkPrompt":
         if args.vlm == "GPT":
@@ -197,9 +215,16 @@ if __name__ == "__main__":
             my_prompt = SetOfMarkPrompt(gpu=2)
         
     elif args.prompt == "CoT":
-        my_prompt = CoT()
-    else:
-        my_prompt = ZeroShotPrompt()
+        if use_batch:
+            my_prompt = CoT_batch()
+        else:
+            my_prompt = CoT()
+    elif args.prompt == "ZeroShotPrompt":
+        if use_batch:
+            my_prompt = ZeroShotPrompt_batch()
+        else:
+            my_prompt = ZeroShotPrompt()
 
-    acc = iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt)
+    
+    acc = iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=use_batch)
     print(f"Accuracy: {acc}")
