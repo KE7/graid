@@ -58,7 +58,13 @@ class CoT_batch(PromptingStrategy):
     """Zero-shot prompting method."""
 
     def generate_prompt(self, image, questions):
-        prompt = f"""Look at the image carefully and think through each question step by step. For each question, explain your reasoning briefly, and then provide your final answer. Separate your final answers for each question with commas.
+        prompt = f"""Look at the image carefully and think through each question. Use the process below to guide your reasoning and arrive at the correct answer:
+        Step 1: [Break down each question or identify what is being asked]  
+        Step 2: [For each question, identify the relevant information from the image]  
+        Step 3: [Apply logic or calculations using the information]  
+        Step 4: [Draw an intermediate conclusion or verify results of the reasoning]  
+        Step 5: [Provide the final answer with reasoning. Separate your final answers for each question with commas.]
+        
         Here're the questions:
         {questions}
         """
@@ -115,6 +121,10 @@ class SetOfMarkPrompt(PromptingStrategy):
         self.MAX_AREA_PERCENTAGE = 0.05
 
     def generate_prompt(self, image, question):
+        prompt = f"""Answer the following questions related to the image. Provide your answers to each question, separated by commas. Here are the questions:
+        {question}
+        """
+
         if isinstance(image, str):
             image_bgr = cv2.imread(image)
         elif isinstance(image, torch.Tensor):
@@ -171,6 +181,9 @@ class SetOfMarkPrompt(PromptingStrategy):
 
         all_masks = [detections[i].mask for i in range(len(detections))]
 
+        if not all_masks:
+            return image, prompt
+
         centers = Mark_Allocation(all_masks)
 
         # 6) We need to reorder the Detections as well to match the sorted area order
@@ -198,8 +211,8 @@ class SetOfMarkPrompt(PromptingStrategy):
                 1,
                 cv2.LINE_AA,
             )
-
-        return annotated_image, question
+        
+        return annotated_image, prompt
 
     def __str__(self):
-        return "SoM"
+        return "SetOfMarkPrompt"

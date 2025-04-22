@@ -163,7 +163,6 @@ class Llama:
                     ],
                 }
             ],
-            "max_tokens": 40,
             "temperature": 0.4,
             "top_k": 10,
             "top_p": 0.95,

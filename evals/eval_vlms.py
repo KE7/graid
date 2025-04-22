@@ -56,9 +56,37 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
         "Question: Is the width of the {object_1} appear to be larger than the height? (threshold: 0.3)"
     ].shape[0]
 
+    sampled_dataframes = {}
+    sample_size = 100
+    for table_name, df in dataframes.items():
+        filtered_rows = []
+        for img_idx in tqdm(range(num_images)):
+            for idx in range(len(df)):
+                row = df.iloc[idx]
+                d = row.to_dict()
+
+                pkl_path, v = d["key"], json.loads(d["value"])
+                qa_list = v.get("qa_list", None)
+
+                if not qa_list or qa_list == "Question not applicable":
+                    continue
+
+                filtered_rows.append(row)
+
+        filtered_df = pd.DataFrame(filtered_rows).reset_index(drop=True)
+        if len(filtered_df) >= sample_size:
+            sampled_df = filtered_df.sample(n=sample_size, random_state=42).reset_index(drop=True)
+        else:
+            print(f"Table '{table_name}' has only {len(filtered_df)} valid rows. Returning all.")
+            sampled_df = filtered_df.copy()
+            
+        sampled_df = filtered_df.sample(n=sample_size, random_state=42).reset_index(drop=True)
+        sampled_dataframes[table_name] = sampled_df
+
     correctness = []
     idx = 0
-    for img_idx in tqdm(range(num_images)):
+    # for img_idx in tqdm(range(num_images)):
+    for table in sampled_dataframes:
         output_path = output_dir / f"{img_idx}.txt"
         if os.path.exists(output_path):
             with open(output_path, "r") as f:
@@ -72,8 +100,10 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
 
         questions = []
         answers = []
-        for table in dataframes:
-            row = dataframes[table].iloc[img_idx]
+        # for table in dataframes:
+        # for img_idx in tqdm(range(num_images)):
+        for img_idx, row in tqdm(sampled_dataframes[table].iterrows(), total=len(sampled_dataframes[table])):
+            row = sampled_dataframes[table].iloc[img_idx]
 
             d = row.to_dict()
             pkl_path, v = d["key"], json.loads(d["value"])
@@ -103,6 +133,9 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
                     Image.open(io.BytesIO(image_data["image"]))
                 )
 
+            # if "D" in [p[0] for p in qa_list] or "D" in [p[1] for p in qa_list]:
+            #     import pdb
+            #     pdb.set_trace()
             questions += [p[0] for p in qa_list]
             answers += [p[1] for p in qa_list]
 
@@ -111,6 +144,7 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
             continue
 
         preds = []
+
 
         if use_batch:
             questions = ", ".join([item for i, item in enumerate(questions)])
@@ -121,6 +155,7 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
             correctness = my_metric.evaluate(preds, answers)
             preds = preds
         else:
+
             for q, a in tqdm(zip(questions, answers), total=len(questions)):
 
                 pred, prompt = my_vlm.generate_answer(image_path, q, my_prompt)
@@ -180,18 +215,18 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    use_batch = False
+    use_batch = True
 
     db_path = str(DB_PATH / args.db_name)
     if args.vlm == "GPT":
         my_vlm = GPT()
-        use_batch = True
+        # use_batch = True
     elif args.vlm == "Llama":
         my_vlm = Llama(region=args.region)
-        use_batch = False
+        # use_batch = False
     elif args.vlm == "Gemini":
         my_vlm = Gemini(location=args.region)
-        use_batch = True
+        # use_batch = True
 
     if args.metric == "LLMJudge":
         my_metric = LLMJudge()
