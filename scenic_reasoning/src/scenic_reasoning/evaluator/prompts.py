@@ -21,8 +21,10 @@ class PromptingStrategy:
 class ZeroShotPrompt(PromptingStrategy):
     """Zero-shot prompting method."""
 
-    def generate_prompt(self, image, questions):
-        prompt = f"""Answer this question related to the image: {questions}"""
+    def generate_prompt(self, image, question):
+        prompt = f"""Answer the following question related to the image. If this question involves object naming, you may only identify objects from the COCO dataset (80 labels). Make sure to wrap the answer in triple backticks. "```"
+        Here's the question: {question}. 
+        """
 
         return image, prompt
 
@@ -121,8 +123,8 @@ class SetOfMarkPrompt(PromptingStrategy):
         self.MAX_AREA_PERCENTAGE = 0.05
 
     def generate_prompt(self, image, question):
-        prompt = f"""Answer the following questions related to the image. Provide your answers to each question, separated by commas. Here are the questions:
-        {question}
+        prompt = f"""Answer the following question related to the image. If this question involves object naming, you may only identify objects from the COCO dataset (80 labels). Make sure to wrap the answer in triple backticks. "```"
+        Here's the question: {question}. 
         """
 
         if isinstance(image, str):

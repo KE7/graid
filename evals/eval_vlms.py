@@ -7,7 +7,6 @@ import pickle
 import re
 import sqlite3
 from pathlib import Path
-
 import pandas as pd
 from scenic_reasoning.evaluator.metrics import ConstraintDecoding, LLMJudge, ExactMatch
 from PIL import Image
@@ -33,8 +32,6 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
         db_base_path = waymo_path
 
     conn = sqlite3.connect(db_path)
-    # db_name = Path(db_path).stem
-    # db_path = db_path.replace("/", "_")
     l = db_path.split("/")
     db_path = "_".join([l[-2], l[-1]])
 
@@ -49,7 +46,7 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
     for table in tables:
         df = pd.read_sql(f"SELECT * FROM '{table}'", conn)
         dataframes[table] = df
-
+    
     conn.close()
 
     num_images = dataframes[
@@ -58,20 +55,21 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
 
     sampled_dataframes = {}
     sample_size = 100
+    print("Filtering rows...")
+
     for table_name, df in dataframes.items():
         filtered_rows = []
-        for img_idx in tqdm(range(num_images)):
-            for idx in range(len(df)):
-                row = df.iloc[idx]
-                d = row.to_dict()
+        for img_idx in tqdm(range(len(df))):
+            row = df.iloc[img_idx]
+            d = row.to_dict()
 
-                pkl_path, v = d["key"], json.loads(d["value"])
-                qa_list = v.get("qa_list", None)
+            pkl_path, v = d["key"], json.loads(d["value"])
+            qa_list = v.get("qa_list", None)
 
-                if not qa_list or qa_list == "Question not applicable":
-                    continue
+            if not qa_list or qa_list == "Question not applicable":
+                continue
 
-                filtered_rows.append(row)
+            filtered_rows.append(row)
 
         filtered_df = pd.DataFrame(filtered_rows).reset_index(drop=True)
         if len(filtered_df) >= sample_size:
@@ -85,7 +83,7 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
 
     correctness = []
     idx = 0
-    # for img_idx in tqdm(range(num_images)):
+
     for table in sampled_dataframes:
         output_path = output_dir / f"{img_idx}.txt"
         if os.path.exists(output_path):
@@ -94,14 +92,12 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
                 match = re.search(r"Correctness:\s*\n(.*?)\n", text)
                 score = match.group(1)
                 score = ast.literal_eval(score)
-                correctness.extend(score)
+                correctness.append(score)
             print(f"Skipping {output_path}")
             continue
 
         questions = []
         answers = []
-        # for table in dataframes:
-        # for img_idx in tqdm(range(num_images)):
         for img_idx, row in tqdm(sampled_dataframes[table].iterrows(), total=len(sampled_dataframes[table])):
             row = sampled_dataframes[table].iloc[img_idx]
 
@@ -134,10 +130,21 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
                 )
 
             # if "D" in [p[0] for p in qa_list] or "D" in [p[1] for p in qa_list]:
-            #     import pdb
-            #     pdb.set_trace()
-            questions += [p[0] for p in qa_list]
-            answers += [p[1] for p in qa_list]
+                
+            #     continue
+            if isinstance(qa_list[0], list):
+                import pdb
+                pdb.set_trace()
+                questions += [item[0] for item in qa_list]
+                answers += [item[1] for item in qa_list]
+            else:
+                import pdb
+                pdb.set_trace()
+                questions.append(qa_list[0])
+                answers.append(qa_list[1])
+
+            # questions += [p[0] for p in qa_list]
+            # answers += [p[1] for p in qa_list]
 
         if not questions:
             print(f"No questions found for image index {img_idx}, skipping...")
@@ -145,6 +152,8 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
 
         preds = []
 
+        import pdb
+        pdb.set_trace()
 
         if use_batch:
             questions = ", ".join([item for i, item in enumerate(questions)])
@@ -152,18 +161,19 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
             preds, prompt = my_vlm.generate_answer(
                 image_path, questions, my_prompt
             )
-            correctness = my_metric.evaluate(preds, answers)
+            correctness.append(my_metric.evaluate(preds, answers))
             preds = preds
         else:
 
             for q, a in tqdm(zip(questions, answers), total=len(questions)):
+                if len(q) < 5:  #check for "D" and "y"
+                    continue
 
                 pred, prompt = my_vlm.generate_answer(image_path, q, my_prompt)
                 correct = my_metric.evaluate(pred, a)
 
                 preds.append(pred)
                 correctness.append(correct)
-
 
         with open(str(output_path), "w") as log_file:
             log_file.write(f"Image Path: \n{image_path}\n")
