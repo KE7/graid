@@ -49,9 +49,6 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
     
     conn.close()
 
-    num_images = dataframes[
-        "Question: Is the width of the {object_1} appear to be larger than the height? (threshold: 0.3)"
-    ].shape[0]
 
     sampled_dataframes = {}
     sample_size = 100
@@ -78,7 +75,6 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
             print(f"Table '{table_name}' has only {len(filtered_df)} valid rows. Returning all.")
             sampled_df = filtered_df.copy()
             
-        sampled_df = filtered_df.sample(n=sample_size, random_state=42).reset_index(drop=True)
         sampled_dataframes[table_name] = sampled_df
 
     correctness = []
@@ -129,22 +125,14 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
                     Image.open(io.BytesIO(image_data["image"]))
                 )
 
-            # if "D" in [p[0] for p in qa_list] or "D" in [p[1] for p in qa_list]:
-                
-            #     continue
+
             if isinstance(qa_list[0], list):
-                import pdb
-                pdb.set_trace()
                 questions += [item[0] for item in qa_list]
                 answers += [item[1] for item in qa_list]
             else:
-                import pdb
-                pdb.set_trace()
                 questions.append(qa_list[0])
                 answers.append(qa_list[1])
 
-            # questions += [p[0] for p in qa_list]
-            # answers += [p[1] for p in qa_list]
 
         if not questions:
             print(f"No questions found for image index {img_idx}, skipping...")
@@ -152,8 +140,6 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
 
         preds = []
 
-        import pdb
-        pdb.set_trace()
 
         if use_batch:
             questions = ", ".join([item for i, item in enumerate(questions)])
