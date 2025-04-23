@@ -1030,7 +1030,7 @@ class RightMost(Question):
         # logic to check if the bbox is actually on the right side of the image
         if not (
             rightmost_detection[1][0] > image_width / 2
-            and rightmost_detection[1][2] > image_width / 2``
+            and rightmost_detection[1][2] > image_width / 2
         ):
             logger.debug(
                 "RightMost question not ask-able due to not being on the right side of the image"

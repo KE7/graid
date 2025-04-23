@@ -8,7 +8,7 @@ import re
 import sqlite3
 from pathlib import Path
 import pandas as pd
-from scenic_reasoning.evaluator.metrics import ConstraintDecoding, LLMJudge, ExactMatch
+from scenic_reasoning.evaluator.metrics import ConstrainedDecoding, LLMJudge, ExactMatch
 from PIL import Image
 from scenic_reasoning.evaluator.prompts import CoT, CoT_batch, SetOfMarkPrompt, ZeroShotPrompt, ZeroShotPrompt_batch
 from scenic_reasoning.utilities.common import project_root_dir
@@ -207,7 +207,7 @@ if __name__ == "__main__":
         "--metric",
         type=str,
         default="LLMJudge",
-        choices=["ExactMatch", "LLMJudge", "ConstraintDecoding"],
+        choices=["ExactMatch", "LLMJudge", "ConstrainedDecoding"],
         help="Metric to use for evaluating answers.",
     )
     parser.add_argument(
@@ -244,11 +244,11 @@ if __name__ == "__main__":
         my_metric = ExactMatch()
     else:
         if args.vlm == "GPT":
-            my_metric = ConstraintDecoding(gpu=1)
+            my_metric = ConstrainedDecoding(gpu=1, use_batch=use_batch)
         elif args.vlm == "Llama":
-            my_metric = ConstraintDecoding(gpu=2)
+            my_metric = ConstrainedDecoding(gpu=2, use_batch=use_batch)
         elif args.vlm == "Gemini":
-            my_metric = ConstraintDecoding(gpu=3)
+            my_metric = ConstrainedDecoding(gpu=3, use_batch=use_batch)
 
 
     if args.prompt == "SetOfMarkPrompt":

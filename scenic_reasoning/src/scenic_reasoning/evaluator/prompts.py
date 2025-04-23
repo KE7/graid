@@ -48,6 +48,9 @@ class ZeroShotPrompt_batch(PromptingStrategy):
 class CoT(PromptingStrategy):
     """Zero-shot prompting method."""
 
+    # TODO: add examples like 5-shot
+    # processor pool and call in parallel
+    # sample 1k questions evenly
     def generate_prompt(self, image, questions):
         prompt = f"""Look at the image carefully and think through the question step by step. Explain your reasoning briefly, and then provide your final answer. Here's the question: {questions}
         """

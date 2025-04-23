@@ -74,9 +74,12 @@ from mmengine.utils.dl_utils import collect_env as collect_base_env
 
 class MMdetection_obj(ObjectDetectionModelI):
     def __init__(self, config_file: str, checkpoint_file, **kwargs) -> None:
-        device = "cpu"  # Using mps will error, see: https://github.com/open-mmlab/mmdetection/issues/11794
-        if torch.cuda.is_available():
-            device = "cuda"
+        if kwargs.get("device", None):
+            device = "cpu"  # Using mps will error, see: https://github.com/open-mmlab/mmdetection/issues/11794
+            if torch.cuda.is_available():
+                device = "cuda"
+        else:
+            device = kwargs["device"]
 
         self._model = init_detector(config_file, checkpoint_file, device=device)
         self.model_name = config_file
@@ -179,27 +182,26 @@ class MMdetection_obj(ObjectDetectionModelI):
             represents the batch of images, and the inner list represents the
             detections in a particular image.
         """
-        if isinstance(image, torch.Tensor):
-            image = image.permute(0, 2, 3, 1).cpu().numpy().astype(np.uint8)
-        elif isinstance(image, np.ndarray):
-            image = image.transpose(0, 2, 3, 1).astype(np.uint8)
-        else:
-            raise ValueError("Image must be a numpy array or a torch tensor.")
-
-        predictions = inference_detector(self._model, image, **kwargs)
+        image_list = [
+            image[i].permute(1, 2, 0).cpu().numpy().astype(np.uint8) for i in range(len(image))
+        ]
+        image_hw = image_list[0].shape[:-1]
+        predictions = inference_detector(self._model, image_list)
 
         all_objects = []
-        for i in range(predictions.shape[0]):
-            pred = predictions[i]
+
+        for pred in predictions:
             bboxes = pred.pred_instances.bboxes.tolist()
             labels = pred.pred_instances.labels
             scores = pred.pred_instances.scores
-            image_hw = pred.pad_shape
+            image_hw = pred.pad_shape  # TODO: should I use pad_shape or img_shape?
             objects = []
+
             for i in range(len(labels)):
                 cls_id = labels[i].item()
                 score = scores[i].item()
                 bbox = bboxes[i]
+
                 odr = ObjectDetectionResultI(
                     score=score,
                     cls=cls_id,
@@ -210,14 +212,16 @@ class MMdetection_obj(ObjectDetectionModelI):
                 )
                 objects.append(odr)
             all_objects.append(objects)
+
         if debug:
-            for i in range(len(image)):
-                curr_img = image[i]
-                if image.dtype == np.float32:
+            for i in range(len(image_list)):
+                curr_img = image_list[i]
+                if image_list[i].dtype == np.float32:
                     curr_img = curr_img.astype(np.uint8)
                 ObjectDetectionUtils.show_image_with_detections(
                     Image.fromarray(curr_img), all_objects[i]
                 )
+
         return all_objects
 
     def identify_for_video(
@@ -228,10 +232,10 @@ class MMdetection_obj(ObjectDetectionModelI):
         pass
 
     def to(self, device: Union[str, torch.device]):
-        pass
+        self._model.to(device)
 
     def set_threshold(self, threshold: float):
-        self._model.cfg.model.test_cfg.rcnn.score_thr = threshold
+        pass
 
     def __str__(self):
         return self.model_name

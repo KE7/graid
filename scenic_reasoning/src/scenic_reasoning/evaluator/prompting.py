@@ -110,7 +110,7 @@ class LLMJudgeMetric(EvaluationMetric):
         return max(0.0, min(1.0, score))  # Ensure score is between 0 and 1
 
 
-class ConstraintDecodingMetric(EvaluationMetric):
+class ConstrainedDecodingMetric(EvaluationMetric):
     """Constraint decoding metric."""
 
     def __init__(self, constraint_rules):

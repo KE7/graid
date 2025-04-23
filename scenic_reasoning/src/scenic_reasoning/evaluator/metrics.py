@@ -1,9 +1,12 @@
 import json
 import os
 import re
+from typing import List
 import outlines
 from dotenv import load_dotenv
 from guidance import gen, image, models
+from outlines import models, generate
+from pydantic import BaseModel
 import requests
 import ast
 
@@ -117,7 +120,7 @@ class LLMJudge(EvaluationMetric):
 
         Example 1:
         Solution: right, left
-        Prediction: Off to the right, there's a care on the right
+        Prediction: Off to the right, there's a car on the right
         Score: 1, 0
         Return: ```[1, 0]```
 
@@ -173,36 +176,50 @@ class LLMJudge(EvaluationMetric):
         return "LLMJudge"
 
 
-
-from pydantic import BaseModel
-
-from outlines import models, generate
-
+class Score(BaseModel):
+    score: float
 
 class Scores(BaseModel):
-    score: list
+    scores: list[Score]
 
 
-class ConstraintDecoding(EvaluationMetric):
-    """Constraint decoding metric."""
+class ConstrainedDecoding(EvaluationMetric):
+    """Constrained decoding metric."""
 
-    def __init__(self, gpu=0):
+    def __init__(self, gpu=0, use_batch=False):
 
         model = models.transformers("microsoft/Phi-3-mini-4k-instruct", device=f"cuda:{gpu}")
         # print(f"downloading {model_name}")
-        self.generator = generate.json(model, Scores)
-        # self.model = outlines.models.transformers(model_name)
+        self.use_batch = use_batch
+        if use_batch:
+            self.generator = generate.json(model, Scores)
+        else:
+            self.generator = generate.json(model, Score)
 
     def evaluate(self, pred, gt):
+        return self._evaluate_batch(pred, gt) if self.use_batch else self._evaluate(pred, gt)
+
+    def _evaluate(self, pred, gt) -> float:
+        prompt = f"""
+        Determine if the prediction matches the solution:
+        Solution: {gt}
+        Prediction: {pred}
+        Score the prediction with either 0 (incorrect) or 1 (correct).
+        """
+        result: Score = self.generator(prompt) # type: ignore
+
+        return result.score
+    
+    def _evaluate_batch(self, pred, gt) -> List[float]:
         prompt = f"""
         Determine if the prediction matches the solution:
         Solution: {gt}
         Prediction: {pred}
         Score each prediction with either 0 (incorrect) or 1 (correct). Give the score for all predictions as a list whose length is the same as the number of predictions.
         """
-        result = self.generator(prompt)
+        results: Scores = self.generator(prompt) # type: ignore
 
-        return result.score
+        return [result.score for result in results.scores]
 
     def __str__(self):
-        return "ConstraintDecoding"
+        return "ConstrainedDecoding"

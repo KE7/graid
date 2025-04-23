@@ -104,7 +104,7 @@ class ObjDectDatasetBuilder(Dataset):
             idx -= len(self.dataset[d])
         raise IndexError("Index out of range")
 
-    def build(self, model: Optional[ObjectDetectionModelI] = None, batch_size: int = 1):
+    def build(self, model: Optional[ObjectDetectionModelI] = None, batch_size: int = 1, conf: float = 0.5, device: Optional[torch.device] = None):
 
         def buffered_writer():
             buffer = defaultdict(dict)
@@ -154,6 +154,7 @@ class ObjDectDatasetBuilder(Dataset):
             batch_images = torch.stack([sample["image"] for sample in batch])
 
             if model is not None:
+                batch_images = batch_images.to(device)
                 with lock:
                     labels = model.identify_for_image_batch(batch_images)
                 if labels == [None]:
@@ -170,7 +171,8 @@ class ObjDectDatasetBuilder(Dataset):
                 # print(f"Processing {name}...")
                 for question in self.questions:
                     table_name = str(question)
-                    if question.is_applicable(image, lbl):
+                    lbl = list(filter(lambda l: l.score >= conf, lbl))
+                    if len(lbl) > 0 and question.is_applicable(image, lbl):
                         qa_list = question.apply(image, lbl)
                     else:
                         qa_list = []
