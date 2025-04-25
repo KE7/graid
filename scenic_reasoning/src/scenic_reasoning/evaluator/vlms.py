@@ -133,7 +133,7 @@ class Llama:
         import openai
 
         self.client = openai.OpenAI(
-            base_url=f"https://{ENDPOINT}/v1beta1/projects/{PROJECT_ID}/locations/{REGION}/endpoints/openapi/chat/completions",
+            base_url=f"https://{ENDPOINT}/v1beta1/projects/{PROJECT_ID}/locations/{REGION}/endpoints/openapi",
             api_key=self.token,
         )
 
@@ -159,33 +159,33 @@ class Llama:
         image_gcs_url = f"data:image/jpeg;base64,{base64_image}"
         
 
-        payload = {
-            "model": self.model,
-            "stream": False,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"image_url": {"url": image_gcs_url}, "type": "image_url"},
-                        {"text": prompt, "type": "text"},
-                    ],
-                }
-            ],
-            "temperature": 0.4,
-            "top_k": 10,
-            "top_p": 0.95,
-            "n": 1,
-        }
+        # payload = {
+        #     "model": self.model,
+        #     "stream": False,
+        #     "messages": [
+        #         {
+        #             "role": "user",
+        #             "content": [
+        #                 {"image_url": {"url": image_gcs_url}, "type": "image_url"},
+        #                 {"text": prompt, "type": "text"},
+        #             ],
+        #         }
+        #     ],
+        #     "temperature": 0.4,
+        #     "top_k": 10,
+        #     "top_p": 0.95,
+        #     "n": 1,
+        # }
 
 
-        headers = {
-            "Authorization": f"Bearer {self.token}",
-            "Content-Type": "application/json",
-        }
+        # headers = {
+        #     "Authorization": f"Bearer {self.token}",
+        #     "Content-Type": "application/json",
+        # }
 
-        # response = requests.post(self.url, headers=headers, json=payload)
+        # # response = requests.post(self.url, headers=headers, json=payload)
 
-        import pdb; pdb.set_trace()
+
 
         response = self.client.chat.completions.create(
             model=self.model,
@@ -201,12 +201,7 @@ class Llama:
             temperature=0.4,
             n=1
         )
-
-        if response.status_code == 200:
-            return response.json()["choices"][0]["message"]["content"], prompt
-        else:
-            print(f"Error {response.status_code}: {response.text}")
-            return None, prompt
+        return response.choices[0].message.content, prompt
 
     def __str__(self):
         return "Llama"
@@ -398,7 +393,6 @@ class Llama_CD(Llama):
         super().__init__(model_name, region)
 
     def generate_answer(self, image, questions: str, prompting_style):
-        import pdb; pdb.set_trace()
         image, prompt = prompting_style.generate_prompt(image, questions)
         base64_image = self.encode_image(image)
 
@@ -431,6 +425,7 @@ class Llama_CD(Llama):
             "Content-Type": "application/json",
         }
 
+        import pdb; pdb.set_trace()
         response = self.client.beta.chat.completions.parse(
             model=self.model,
             messages=[
@@ -446,12 +441,14 @@ class Llama_CD(Llama):
             n=1,
             response_format=response_format,
         )
-        response = requests.post(self.url, headers=headers, json=payload)
-        if response.status_code == 200:
-            return response.json()["choices"][0]["message"]["content"], prompt
-        else:
-            print(f"Error {response.status_code}: {response.text}")
-            return None, prompt
+
+        return response.choices[0].message.parsed, prompt
+        # response = requests.post(self.url, headers=headers, json=payload)
+        # if response.status_code == 200:
+        #     return response.json()["choices"][0]["message"]["content"], prompt
+        # else:
+        #     print(f"Error {response.status_code}: {response.text}")
+        #     return None, prompt
 
     def __str__(self):
         return "Llama_CD"
