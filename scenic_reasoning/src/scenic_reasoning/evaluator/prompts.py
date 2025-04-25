@@ -46,7 +46,7 @@ class ZeroShotPrompt_batch(PromptingStrategy):
 
 
 class CoT(PromptingStrategy):
-    """Zero-shot prompting method."""
+    """CoT prompting method."""
 
     # TODO: add examples like 5-shot
     # processor pool and call in parallel
@@ -59,19 +59,60 @@ class CoT(PromptingStrategy):
     def __str__(self):
         return "CoT"
 
-class CoT_batch(PromptingStrategy):
-    """Zero-shot prompting method."""
+class CoT(PromptingStrategy):
+    """CoT prompting method."""
 
     def generate_prompt(self, image, questions):
-        prompt = f"""Look at the image carefully and think through each question. Use the process below to guide your reasoning and arrive at the correct answer:
-        Step 1: [Break down each question or identify what is being asked]  
-        Step 2: [For each question, identify the relevant information from the image]  
-        Step 3: [Apply logic or calculations using the information]  
-        Step 4: [Draw an intermediate conclusion or verify results of the reasoning]  
-        Step 5: [Provide the final answer with reasoning. Separate your final answers for each question with commas.]
-        
-        Here're the questions:
-        {questions}
+        prompt = f"""Look at the image carefully and think through each question. Use the process below to guide your reasoning and arrive at the correct answer. Here is an example of how to answer the question:
+
+        Question: Are there any motorcyclists to the right of any pedestrians? 
+
+        Reasoning:
+        1. I see three pedestrians walking on the left sidewalk, roughly in the left third of the image.
+        2. I also see a single motorcyclist riding away from the camera, positioned nearer the center of the road and center of the camera frame but clearly to the right of those pedestrians.
+        3. Comparing their horizontal positions, the motorcyclist’s x‑coordinate is larger (further to the right) than either pedestrian’s.
+
+        Final_Answer: Yes.
+
+
+        Question: What group of objects are most clustered together?
+
+        Reasoning:
+        Scanning for COCO categories only, I identify:
+        1. Person:
+            I spot three pedestrians on the left sidewalk: one nearest the foreground, one a few meters behind, and a third just past the white box truck.
+            They are spaced roughly 2–3 m apart along the sidewalk.
+
+
+        2. Motorcycle
+            A single motorcyclist is riding down the center of the road, about midway up the frame.
+            Only one instance, so no clustering.
+
+
+        3. Truck
+            A single white box truck is parked on the left curb beyond the first two pedestrians.
+            Again only one, so no cluster.
+
+
+        4. Car
+            At least six cars parked behind the french on the right and at least four cars in the distance near the center of the image
+            Both clusters of cars, especially the parked ones behind the fence occupy a small contiguous area, tightly packed together.
+
+
+        Comparing densities:
+            The three people, while grouped, are separated by a few meters each.    
+            The six-plus cars are parked immediately adjacent in a compact line.
+
+        Final_Answer: The cars are the most clustered together.
+
+
+        Question: Does the leftmost object in the image appear to be wider than it is tall?
+
+        Reasoning:
+        Among the COCO categories present, the object farthest to the left is the bench under the bus‐stop canopy.
+        That bench’s bounding area is much broader horizontally than it is tall vertically.
+
+        Final_Answer: Yes.
         """
         return image, prompt
 

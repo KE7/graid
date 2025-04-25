@@ -3,7 +3,6 @@ import json
 import os
 import re
 import time
-
 import requests
 import torch
 from dotenv import load_dotenv
@@ -16,7 +15,7 @@ import time
 import cv2
 import numpy as np
 import io
-
+from scenic_reasoning.utilities.common import project_root_dir
 
 
 
@@ -185,6 +184,297 @@ class Llama:
     def __str__(self):
         return "Llama"
 
+
+class Llama_CoT(Llama):
+    def __init__(self, model_name="meta/llama-3.2-90b-vision-instruct-maas", region="us-central1"):
+        super_().__init__(model_name, region)
+
+    def generate_answer(self, image, questions: str, prompting_style):
+        image, prompt = prompting_style.generate_prompt(image, questions)
+        base64_image = self.encode_image(image)
+        prompt_img_path = project_root_dir() / "data/nuimages/all/samples/CAM_FRONT/n010-2018-07-10-10-24-36+0800__CAM_FRONT__1531189590512488.jpg"
+        base64_image_prompt = self.encode_image(prompt_img_path)
+
+        image_gcs_url = f"data:image/jpeg;base64,{base64_image}"
+        prompt_image_url = f"data:image/jpeg;base64,{base64_image_prompt}"
+
+
+        payload = {
+            "model": self.model,
+            "stream": False,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        { "image_url": {"url": prompt_image_url}, "type": "image_url",},
+                        {"text": prompt, "type": "text"}
+                    ]
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {"image_url": {"url": image_gcs_url}, "type": "image_url"},
+                        {"text": question, "type": "text"},
+                    ],
+                }
+            ],
+            "temperature": 0.4,
+            "top_k": 10,
+            "top_p": 0.95,
+            "n": 1,
+        }
+
+
+        headers = {
+            "Authorization": f"Bearer {self.token}",
+            "Content-Type": "application/json",
+        }
+
+        response = requests.post(self.url, headers=headers, json=payload)
+        if response.status_code == 200:
+            return response.json()["choices"][0]["message"]["content"], prompt
+        else:
+            print(f"Error {response.status_code}: {response.text}")
+            return None, prompt
+
+    def __str__(self):
+        return "Llama_CoT"
+
+
+
+from pydantic import BaseModel
+from typing import Literal, Union, List
+from scenic_reasoning.utilities.coco import coco_label
+coco_label = list(coco_label.values())
+
+class IsObjectCenteredAnswer(BaseModel):
+    question: str
+    answer: Literal["left", "centered", "right"]
+
+
+class WidthVsHeightAnswer(BaseModel):
+    question: str
+    answer: Literal["yes", "no"]
+
+
+class QuadrantsAnswer(BaseModel):
+    question: str
+    answer: int  
+
+
+class LargestAppearanceAnswer(BaseModel):
+    question: str
+    answer: Literal[tuple(coco_label)]  
+
+
+class MostAppearanceAnswer(BaseModel):
+    question: str
+    answer: Literal[tuple(coco_label)]
+
+
+class LeastAppearanceAnswer(BaseModel):
+    question: str
+    answer: Literal[tuple(coco_label)]
+
+
+class LeftOfAnswer(BaseModel):
+    question: str
+    answer: Literal["Yes", "No"]
+
+
+class RightOfAnswer(BaseModel):
+    question: str
+    answer: Literal["Yes", "No"]
+
+
+class LeftMostAnswer(BaseModel):
+    question: str
+    answer: Literal[tuple(coco_label)]
+
+
+class RightMostAnswer(BaseModel):
+    question: str
+    answer: Literal[tuple(coco_label)]
+
+
+class HowManyAnswer(BaseModel):
+    question: str
+    answer: Literal[tuple(coco_label)]
+
+
+class AreMoreAnswer(BaseModel):
+    question: str
+    answer: Literal["Yes", "No"]
+
+
+class WhichMoreAnswer(BaseModel):
+    question: str
+    answer: Literal[tuple(coco_label)]  
+
+
+class LeftMostWidthVsHeightAnswer(BaseModel):
+    question: str
+    answer: Literal["yes", "no"]
+
+
+class RightMostWidthVsHeightAnswer(BaseModel):
+    question: str
+    answer: Literal["yes", "no"]
+
+
+class ObjectsInRowAnswer(BaseModel):
+    question: str
+    answer: Literal["Yes", "No"]
+
+
+class ObjectsInLineAnswer(BaseModel):
+    question: str
+    answer: Literal[tuple(coco_label)]  
+
+
+class MostClusteredObjectsAnswer(BaseModel):
+    question: str
+    answer: Literal[tuple(coco_label)]  
+
+
+QUESTION_CLASS_MAP: Dict[str, Type[BaseModel]] = {
+    r"centered in the image": IsObjectCenteredAnswer,
+    r"width of the .* larger than the height": WidthVsHeightAnswer,
+    r"In what quadrant does .* appear": QuadrantsAnswer,
+    r"appears the largest": LargestAppearanceAnswer,
+    r"appears the most frequently": MostAppearanceAnswer,
+    r"appears the least frequently": LeastAppearanceAnswer,
+    r"to the left of any": LeftOfAnswer,
+    r"to the right of any": RightOfAnswer,
+    r"leftmost object": LeftMostAnswer,
+    r"rightmost object": RightMostAnswer,
+    r"How many .* are there": HowManyAnswer,
+    r"Are there more .* than .*": AreMoreAnswer,
+    r"What appears the most in this image": WhichMoreAnswer,
+    r"leftmost object .* wider than .* tall": LeftMostWidthVsHeightAnswer,
+    r"rightmost object .* wider than .* tall": RightMostWidthVsHeightAnswer,
+    r"Are there any objects arranged in a row": ObjectsInRowAnswer,
+    r"What objects are arranged in a row": ObjectsInLineAnswer,
+    r"group of objects .* clustered together": MostClusteredObjectsAnswer,
+}
+
+def get_answer_class_from_question(question: str) -> Type[BaseModel]:
+    for pattern, cls in QUESTION_CLASS_MAP.items():
+        if re.search(pattern, question, flags=re.IGNORECASE):
+            return cls
+    raise ValueError(f"No matching answer class found for: {question}")
+
+
+
+class Llama_CD(Llama):
+    def __init__(self, model_name="meta/llama-3.2-90b-vision-instruct-maas", region="us-central1"):
+        super_().__init__(model_name, region)
+
+    def generate_answer(self, image, questions: str, prompting_style):
+        image, prompt = prompting_style.generate_prompt(image, questions)
+        base64_image = self.encode_image(image)
+
+        image_gcs_url = f"data:image/jpeg;base64,{base64_image}"
+        
+        response_format = get_answer_class_from_question(questions)
+
+        payload = {
+            "model": self.model,
+            "stream": False,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"image_url": {"url": image_gcs_url}, "type": "image_url"},
+                        {"text": prompt, "type": "text"},
+                    ],
+                }
+            ],
+            "response_format": response_format,
+            "temperature": 0.4,
+            "top_k": 10,
+            "top_p": 0.95,
+            "n": 1,
+        }
+
+
+        headers = {
+            "Authorization": f"Bearer {self.token}",
+            "Content-Type": "application/json",
+        }
+
+        response = requests.post(self.url, headers=headers, json=payload)
+        if response.status_code == 200:
+            return response.json()["choices"][0]["message"]["content"], prompt
+        else:
+            print(f"Error {response.status_code}: {response.text}")
+            return None, prompt
+
+    def __str__(self):
+        return "Llama_CD"
+
+
+
+
+from pydantic import BaseModel
+from openai import OpenAI
+
+client = OpenAI()
+
+class Step(BaseModel):
+    explanation: str
+    output: str
+
+class Reasoning(BaseModel):
+    steps: list[Step]
+    final_answer: str
+
+class Llama_CoT_CD(Llama):
+    def __init__(self, model_name="meta/llama-3.2-90b-vision-instruct-maas", region="us-central1"):
+        super_().__init__(model_name, region)
+
+    def generate_answer(self, image, questions: str, prompting_style):
+        image, prompt = prompting_style.generate_prompt(image, questions)
+        base64_image = self.encode_image(image)
+
+        image_gcs_url = f"data:image/jpeg;base64,{base64_image}"
+        response_format = get_answer_class_from_question(questions)
+        
+
+        payload = {
+            "model": self.model,
+            "stream": False,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"image_url": {"url": image_gcs_url}, "type": "image_url"},
+                        {"text": prompt, "type": "text"},
+                    ],
+                }
+            ],
+            "response_format": Reasoning,
+            "temperature": 0.4,
+            "top_k": 10,
+            "top_p": 0.95,
+            "n": 1,
+        }
+
+
+        headers = {
+            "Authorization": f"Bearer {self.token}",
+            "Content-Type": "application/json",
+        }
+
+        response = requests.post(self.url, headers=headers, json=payload)
+        if response.status_code == 200:
+            return response.json()["choices"][0]["message"]["content"], prompt
+        else:
+            print(f"Error {response.status_code}: {response.text}")
+            return None, prompt
+
+    def __str__(self):
+        return "Llama_CoT_CD"
 
 # from prompts import ZeroShotPrompt
 # model = Gemini()

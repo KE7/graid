@@ -15,6 +15,7 @@ from scenic_reasoning.utilities.common import project_root_dir
 from torchvision import transforms
 from tqdm import tqdm
 from scenic_reasoning.evaluator.vlms import GPT, Gemini, Llama
+import random
 
 DB_PATH = project_root_dir() / "data/databases_ablations"
 
@@ -63,8 +64,12 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
             pkl_path, v = d["key"], json.loads(d["value"])
             qa_list = v.get("qa_list", None)
 
+            
             if not qa_list or qa_list == "Question not applicable":
                 continue
+            
+            if isinstance(qa_list[0], list):
+                qa_list = [random.choice(qa_list)]
 
             filtered_rows.append(row)
 
