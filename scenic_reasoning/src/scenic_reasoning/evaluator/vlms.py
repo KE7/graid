@@ -270,10 +270,10 @@ class Llama_CoT(Llama):
 from enum import Enum
 from pydantic import BaseModel
 from typing import Literal, Union, List
-from scenic_reasoning.utilities.coco import coco_label
+from scenic_reasoning.utilities.coco import coco_labels
 CocoLabelEnum = Enum(
     "CocoLabelEnum",
-    coco_label.values(),
+    list(coco_labels.values()),
     type=str,
 )
 
