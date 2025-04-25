@@ -16,6 +16,7 @@ import cv2
 import numpy as np
 import io
 from scenic_reasoning.utilities.common import project_root_dir
+from typing import Dict, Type
 
 
 
@@ -125,8 +126,16 @@ class Llama:
         self.model = model_name
 
         self.url = f"https://{ENDPOINT}/v1beta1/projects/{PROJECT_ID}/locations/{REGION}/endpoints/openapi/chat/completions"
+
         with open("token.txt", "r") as token_file:
             self.token = token_file.read().strip()
+        
+        import openai
+
+        self.client = openai.OpenAI(
+            base_url=f"https://{ENDPOINT}/v1beta1/projects/{PROJECT_ID}/locations/{REGION}/endpoints/openapi/chat/completions",
+            api_key=self.token,
+        )
 
     def encode_image(self, image):
         if isinstance(image, torch.Tensor):
@@ -174,7 +183,25 @@ class Llama:
             "Content-Type": "application/json",
         }
 
-        response = requests.post(self.url, headers=headers, json=payload)
+        # response = requests.post(self.url, headers=headers, json=payload)
+
+        import pdb; pdb.set_trace()
+
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image_url", "image_url": {"url": image_gcs_url}},
+                        {"type": "text", "text": prompt}
+                    ],
+                }
+            ],
+            temperature=0.4,
+            n=1
+        )
+
         if response.status_code == 200:
             return response.json()["choices"][0]["message"]["content"], prompt
         else:
@@ -187,7 +214,7 @@ class Llama:
 
 class Llama_CoT(Llama):
     def __init__(self, model_name="meta/llama-3.2-90b-vision-instruct-maas", region="us-central1"):
-        super_().__init__(model_name, region)
+        super().__init__(model_name, region)
 
     def generate_answer(self, image, questions: str, prompting_style):
         image, prompt = prompting_style.generate_prompt(image, questions)
@@ -368,9 +395,10 @@ def get_answer_class_from_question(question: str) -> Type[BaseModel]:
 
 class Llama_CD(Llama):
     def __init__(self, model_name="meta/llama-3.2-90b-vision-instruct-maas", region="us-central1"):
-        super_().__init__(model_name, region)
+        super().__init__(model_name, region)
 
     def generate_answer(self, image, questions: str, prompting_style):
+        import pdb; pdb.set_trace()
         image, prompt = prompting_style.generate_prompt(image, questions)
         base64_image = self.encode_image(image)
 
@@ -403,6 +431,21 @@ class Llama_CD(Llama):
             "Content-Type": "application/json",
         }
 
+        response = self.client.beta.chat.completions.parse(
+            model=self.model,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image_url", "image_url": {"url": image_gcs_url}},
+                        {"type": "text", "text": prompt}
+                    ],
+                }
+            ],
+            temperature=0.4,
+            n=1,
+            response_format=response_format,
+        )
         response = requests.post(self.url, headers=headers, json=payload)
         if response.status_code == 200:
             return response.json()["choices"][0]["message"]["content"], prompt
@@ -417,9 +460,9 @@ class Llama_CD(Llama):
 
 
 from pydantic import BaseModel
-from openai import OpenAI
+# from openai import OpenAI
 
-client = OpenAI()
+# client = OpenAI()
 
 class Step(BaseModel):
     explanation: str
@@ -431,7 +474,7 @@ class Reasoning(BaseModel):
 
 class Llama_CoT_CD(Llama):
     def __init__(self, model_name="meta/llama-3.2-90b-vision-instruct-maas", region="us-central1"):
-        super_().__init__(model_name, region)
+        super().__init__(model_name, region)
 
     def generate_answer(self, image, questions: str, prompting_style):
         image, prompt = prompting_style.generate_prompt(image, questions)

@@ -10,11 +10,11 @@ from pathlib import Path
 import pandas as pd
 from scenic_reasoning.evaluator.metrics import ConstrainedDecoding, LLMJudge, ExactMatch
 from PIL import Image
-from scenic_reasoning.evaluator.prompts import CoT, CoT_batch, SetOfMarkPrompt, ZeroShotPrompt, ZeroShotPrompt_batch
+from scenic_reasoning.evaluator.prompts import CoT, SetOfMarkPrompt, ZeroShotPrompt, ZeroShotPrompt_batch
 from scenic_reasoning.utilities.common import project_root_dir
 from torchvision import transforms
 from tqdm import tqdm
-from scenic_reasoning.evaluator.vlms import GPT, Gemini, Llama
+from scenic_reasoning.evaluator.vlms import GPT, Gemini, Llama, Llama_CD, Llama_CoT, Llama_CoT_CD
 import random
 
 DB_PATH = project_root_dir() / "data/databases_ablations"
@@ -191,7 +191,7 @@ if __name__ == "__main__":
         "--vlm",
         type=str,
         default="Llama",
-        choices=["GPT", "Gemini", "Llama"],
+        choices=["GPT", "Gemini", "Llama", "Llama_CD"],
         help="VLM to use for generating answers.",
     )
     parser.add_argument(
@@ -224,6 +224,9 @@ if __name__ == "__main__":
         # use_batch = True
     elif args.vlm == "Llama":
         my_vlm = Llama(region=args.region)
+        # use_batch = False
+    elif args.vlm == "Llama_CD":
+        my_vlm = Llama_CD(region=args.region)
         # use_batch = False
     elif args.vlm == "Gemini":
         my_vlm = Gemini(location=args.region)
