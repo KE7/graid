@@ -101,7 +101,8 @@ class Gemini:
         image, prompt = prompting_style.generate_prompt(image, questions)
         image = self.encode_image(image)
 
-        for attempt in range(3):
+        response = None
+        for _ in range(3):
             try:
                 response = self.client.models.generate_content(
                     model=self.model,
@@ -112,6 +113,8 @@ class Gemini:
                 print(e)
                 time.sleep(5)
 
+        if response is None:
+            raise Exception("Failed to generate content after multiple attempts")
         return response.text, prompt
 
     def __str__(self):
@@ -203,7 +206,7 @@ class Llama:
         )
         return response.choices[0].message.content, prompt
 
-    def __str__(self):
+    def __str__(self) -> str:
         return "Llama"
 
 
@@ -236,7 +239,7 @@ class Llama_CoT(Llama):
                     "role": "user",
                     "content": [
                         {"image_url": {"url": image_gcs_url}, "type": "image_url"},
-                        {"text": question, "type": "text"},
+                        {"text": questions, "type": "text"},
                     ],
                 }
             ],
@@ -264,10 +267,16 @@ class Llama_CoT(Llama):
 
 
 
+from enum import Enum
 from pydantic import BaseModel
 from typing import Literal, Union, List
 from scenic_reasoning.utilities.coco import coco_label
-coco_label = list(coco_label.values())
+CocoLabelEnum = Enum(
+    "CocoLabelEnum",
+    coco_label.values(),
+    type=str,
+)
+
 
 class IsObjectCenteredAnswer(BaseModel):
     question: str
@@ -286,17 +295,17 @@ class QuadrantsAnswer(BaseModel):
 
 class LargestAppearanceAnswer(BaseModel):
     question: str
-    answer: Literal[tuple(coco_label)]  
+    answer: CocoLabelEnum
 
 
 class MostAppearanceAnswer(BaseModel):
     question: str
-    answer: Literal[tuple(coco_label)]
+    answer: CocoLabelEnum
 
 
 class LeastAppearanceAnswer(BaseModel):
     question: str
-    answer: Literal[tuple(coco_label)]
+    answer: CocoLabelEnum
 
 
 class LeftOfAnswer(BaseModel):
@@ -311,17 +320,17 @@ class RightOfAnswer(BaseModel):
 
 class LeftMostAnswer(BaseModel):
     question: str
-    answer: Literal[tuple(coco_label)]
+    answer: CocoLabelEnum
 
 
 class RightMostAnswer(BaseModel):
     question: str
-    answer: Literal[tuple(coco_label)]
+    answer: CocoLabelEnum
 
 
 class HowManyAnswer(BaseModel):
     question: str
-    answer: Literal[tuple(coco_label)]
+    answer: CocoLabelEnum
 
 
 class AreMoreAnswer(BaseModel):
@@ -331,7 +340,7 @@ class AreMoreAnswer(BaseModel):
 
 class WhichMoreAnswer(BaseModel):
     question: str
-    answer: Literal[tuple(coco_label)]  
+    answer: CocoLabelEnum
 
 
 class LeftMostWidthVsHeightAnswer(BaseModel):
@@ -351,12 +360,12 @@ class ObjectsInRowAnswer(BaseModel):
 
 class ObjectsInLineAnswer(BaseModel):
     question: str
-    answer: Literal[tuple(coco_label)]  
+    answer: CocoLabelEnum
 
 
 class MostClusteredObjectsAnswer(BaseModel):
     question: str
-    answer: Literal[tuple(coco_label)]  
+    answer: CocoLabelEnum
 
 
 QUESTION_CLASS_MAP: Dict[str, Type[BaseModel]] = {
@@ -442,7 +451,7 @@ class Llama_CD(Llama):
             response_format=response_format,
         )
 
-        return response.choices[0].message.parsed, prompt
+        return response.choices[0].message.content, prompt
         # response = requests.post(self.url, headers=headers, json=payload)
         # if response.status_code == 200:
         #     return response.json()["choices"][0]["message"]["content"], prompt
@@ -456,18 +465,19 @@ class Llama_CD(Llama):
 
 
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 # from openai import OpenAI
 
 # client = OpenAI()
 
 class Step(BaseModel):
+    """Represents a single step in the reasoning process."""
     explanation: str
-    output: str
 
 class Reasoning(BaseModel):
-    steps: list[Step]
-    final_answer: str
+    steps: List[Step]
+    conclusion: str = Field(description="A concluding statement summarizing or linking the steps")
+    final_answer: str = Field(description="The final answer to the question, derived from the reasoning steps")
 
 class Llama_CoT_CD(Llama):
     def __init__(self, model_name="meta/llama-3.2-90b-vision-instruct-maas", region="us-central1"):
