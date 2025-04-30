@@ -23,7 +23,7 @@ from typing import Dict, Type
 class GPT:
     def __init__(self, model_name="gpt-4o", port=None):
         load_dotenv()
-        OPENAI_API_KEY = "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"
+        OPENAI_API_KEY = ""
         self.client = OpenAI(api_key=OPENAI_API_KEY)
         self.model_name = model_name
 
@@ -396,6 +396,18 @@ def get_answer_class_from_question(question: str) -> Type[BaseModel]:
     raise ValueError(f"No matching answer class found for: {question}")
 
 
+from pydantic import BaseModel, Field
+
+class Step(BaseModel):
+    """Represents a single step in the reasoning process."""
+    explanation: str
+
+class Reasoning(BaseModel):
+    steps: List[Step]
+    conclusion: str = Field(description="A concluding statement summarizing or linking the steps")
+    final_answer: str = Field(description="The final answer to the question, derived from the reasoning steps")
+
+
 
 class Llama_CD(Llama):
     def __init__(self, model_name="meta/llama-3.2-90b-vision-instruct-maas", region="us-central1"):
@@ -407,21 +419,24 @@ class Llama_CD(Llama):
 
         image_gcs_url = f"data:image/jpeg;base64,{base64_image}"
         
-        response_format = get_answer_class_from_question(questions)
+        answer_cls = get_answer_class_from_question(questions)
+        # There doesn't seem to be a good way of dynamically setting the final answer type
+        # to be the answer_cls so we will include it in the prompt
 
         payload = {
             "model": self.model,
             "stream": False,
             "messages": [
                 {
-                    "role": "user",
+                    "role": "system",
                     "content": [
                         {"image_url": {"url": image_gcs_url}, "type": "image_url"},
                         {"text": prompt, "type": "text"},
                     ],
-                }
+                },
+                {"role": "system", "content": "The final_answer should be of type: " + str(answer_cls)},
             ],
-            "response_format": response_format,
+            "response_format": Reasoning,
             "temperature": 0.4,
             "top_k": 10,
             "top_p": 0.95,
@@ -444,11 +459,12 @@ class Llama_CD(Llama):
                         {"type": "image_url", "image_url": {"url": image_gcs_url}},
                         {"type": "text", "text": prompt}
                     ],
-                }
+                },
+                {"role": "system", "content": "The final_answer should be of type: " + str(answer_cls)},
             ],
             temperature=0.4,
             n=1,
-            response_format=response_format,
+            response_format=Reasoning,
         )
 
         return response.choices[0].message.content, prompt
@@ -465,20 +481,6 @@ class Llama_CD(Llama):
 
 
 
-from pydantic import BaseModel, Field
-# from openai import OpenAI
-
-# client = OpenAI()
-
-class Step(BaseModel):
-    """Represents a single step in the reasoning process."""
-    explanation: str
-
-class Reasoning(BaseModel):
-    steps: List[Step]
-    conclusion: str = Field(description="A concluding statement summarizing or linking the steps")
-    final_answer: str = Field(description="The final answer to the question, derived from the reasoning steps")
-
 class Llama_CoT_CD(Llama):
     def __init__(self, model_name="meta/llama-3.2-90b-vision-instruct-maas", region="us-central1"):
         super().__init__(model_name, region)
@@ -488,8 +490,10 @@ class Llama_CoT_CD(Llama):
         base64_image = self.encode_image(image)
 
         image_gcs_url = f"data:image/jpeg;base64,{base64_image}"
-        response_format = get_answer_class_from_question(questions)
         
+        answer_cls = get_answer_class_from_question(questions)
+        # There doesn't seem to be a good way of dynamically setting the final answer type
+        # to be the answer_cls so we will include it in the prompt
 
         payload = {
             "model": self.model,
@@ -501,7 +505,8 @@ class Llama_CoT_CD(Llama):
                         {"image_url": {"url": image_gcs_url}, "type": "image_url"},
                         {"text": prompt, "type": "text"},
                     ],
-                }
+                },
+                {"role": "system", "content": "The final_answer should be of type: " + str(answer_cls)},
             ],
             "response_format": Reasoning,
             "temperature": 0.4,
@@ -525,6 +530,30 @@ class Llama_CoT_CD(Llama):
 
     def __str__(self):
         return "Llama_CoT_CD"
+
+class Gemini_CoT_CD(Gemini):
+    def __init__(self, location="us-central1"):
+        super().__init__(location)
+
+    def generate_answer(self, image, questions: str, prompting_style):
+        image, prompt = prompting_style.generate_prompt(image, questions)
+        image = self.encode_image(image)
+
+        response_format = get_answer_class_from_question(questions)
+
+        response = self.client.models.generate_content(
+            model=self.model,
+            contents=[image, prompt, f"The final_answer should be of type: {response_format}"],
+            config={
+                'response_mime_type': 'application/json',
+                'response_schema': Reasoning,
+            },
+        )
+
+        return response.text, prompt
+
+    def __str__(self):
+        return "Gemini_CoT_CD"
 
 # from prompts import ZeroShotPrompt
 # model = Gemini()
