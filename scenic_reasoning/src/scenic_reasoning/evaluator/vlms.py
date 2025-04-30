@@ -1,23 +1,22 @@
 import base64
-import json
-import os
+import io
 import re
 import time
+from enum import Enum
+from typing import Dict, List, Literal, Type
+
+import cv2
+import numpy as np
 import requests
 import torch
 from dotenv import load_dotenv
 from google import genai
-from google.genai import types
 from openai import OpenAI
 from PIL import Image
-from torchvision import transforms
-import time
-import cv2
-import numpy as np
-import io
+from pydantic import BaseModel, Field
+from scenic_reasoning.utilities.coco import coco_labels
 from scenic_reasoning.utilities.common import project_root_dir
-from typing import Dict, Type
-
+from torchvision import transforms
 
 
 class GPT:
@@ -33,14 +32,14 @@ class GPT:
             img_pil = Image.fromarray(np_img)
             buffer = io.BytesIO()
             img_pil.save(buffer, format="JPEG")
-            base64_str = base64.b64encode(buffer.getvalue()).decode('utf-8')
+            base64_str = base64.b64encode(buffer.getvalue()).decode("utf-8")
             return base64_str
         elif isinstance(image, str):
             with open(image, "rb") as image_file:
                 return base64.b64encode(image_file.read()).decode("utf-8")
         elif isinstance(image, np.ndarray):
-            success, buffer = cv2.imencode('.jpg', image)
-            return base64.b64encode(buffer).decode('utf-8')
+            success, buffer = cv2.imencode(".jpg", image)
+            return base64.b64encode(buffer).decode("utf-8")
 
     def generate_answer(self, image, questions: str, prompting_style):
         # reference: https://platform.openai.com/docs/guides/vision
@@ -56,15 +55,15 @@ class GPT:
                     "role": "user",
                     "content": [
                         {
-                            "type": "text",
-                            "text": prompt,
-                        },
-                        {
                             "type": "image_url",
                             "image_url": {
                                 "url": f"data:image/jpeg;base64,{base64_image}",
                                 "detail": "high",
                             },
+                        },
+                        {
+                            "type": "text",
+                            "text": prompt,
                         },
                     ],
                 }
@@ -82,8 +81,10 @@ class GPT:
 class Gemini:
     def __init__(self, location="us-central1"):
         self.client = genai.Client(
-            vertexai=True, project="graid-451620", location="us-central1",
-            )
+            vertexai=True,
+            project="graid-451620",
+            location="us-central1",
+        )
         self.model = "gemini-1.5-pro"
 
     def encode_image(self, image):
@@ -117,12 +118,14 @@ class Gemini:
             raise Exception("Failed to generate content after multiple attempts")
         return response.text, prompt
 
-    def __str__(self):
+    def __str__(self) -> str:
         return "Gemini"
 
 
 class Llama:
-    def __init__(self, model_name="meta/llama-3.2-90b-vision-instruct-maas", region="us-central1"):
+    def __init__(
+        self, model_name="meta/llama-3.2-90b-vision-instruct-maas", region="us-central1"
+    ):
         PROJECT_ID = "graid-451620"
         REGION = region
         ENDPOINT = f"{REGION}-aiplatform.googleapis.com"
@@ -132,7 +135,7 @@ class Llama:
 
         with open("token.txt", "r") as token_file:
             self.token = token_file.read().strip()
-        
+
         import openai
 
         self.client = openai.OpenAI(
@@ -146,11 +149,11 @@ class Llama:
             img_pil = Image.fromarray(np_img)
             buffer = io.BytesIO()
             img_pil.save(buffer, format="JPEG")
-            base64_str = base64.b64encode(buffer.getvalue()).decode('utf-8')
+            base64_str = base64.b64encode(buffer.getvalue()).decode("utf-8")
             return base64_str
         elif isinstance(image, np.ndarray):
-            success, buffer = cv2.imencode('.jpg', image)
-            return base64.b64encode(buffer).decode('utf-8')
+            success, buffer = cv2.imencode(".jpg", image)
+            return base64.b64encode(buffer).decode("utf-8")
         else:
             with open(image, "rb") as image_file:
                 return base64.b64encode(image_file.read()).decode("utf-8")
@@ -160,7 +163,6 @@ class Llama:
         base64_image = self.encode_image(image)
 
         image_gcs_url = f"data:image/jpeg;base64,{base64_image}"
-        
 
         # payload = {
         #     "model": self.model,
@@ -180,15 +182,12 @@ class Llama:
         #     "n": 1,
         # }
 
-
         # headers = {
         #     "Authorization": f"Bearer {self.token}",
         #     "Content-Type": "application/json",
         # }
 
         # # response = requests.post(self.url, headers=headers, json=payload)
-
-
 
         response = self.client.chat.completions.create(
             model=self.model,
@@ -197,12 +196,12 @@ class Llama:
                     "role": "user",
                     "content": [
                         {"type": "image_url", "image_url": {"url": image_gcs_url}},
-                        {"type": "text", "text": prompt}
+                        {"type": "text", "text": prompt},
                     ],
                 }
             ],
             temperature=0.4,
-            n=1
+            n=1,
         )
         return response.choices[0].message.content, prompt
 
@@ -211,18 +210,22 @@ class Llama:
 
 
 class Llama_CoT(Llama):
-    def __init__(self, model_name="meta/llama-3.2-90b-vision-instruct-maas", region="us-central1"):
+    def __init__(
+        self, model_name="meta/llama-3.2-90b-vision-instruct-maas", region="us-central1"
+    ):
         super().__init__(model_name, region)
 
     def generate_answer(self, image, questions: str, prompting_style):
         image, prompt = prompting_style.generate_prompt(image, questions)
         base64_image = self.encode_image(image)
-        prompt_img_path = project_root_dir() / "data/nuimages/all/samples/CAM_FRONT/n010-2018-07-10-10-24-36+0800__CAM_FRONT__1531189590512488.jpg"
+        prompt_img_path = (
+            project_root_dir()
+            / "data/nuimages/all/samples/CAM_FRONT/n010-2018-07-10-10-24-36+0800__CAM_FRONT__1531189590512488.jpg"
+        )
         base64_image_prompt = self.encode_image(prompt_img_path)
 
         image_gcs_url = f"data:image/jpeg;base64,{base64_image}"
         prompt_image_url = f"data:image/jpeg;base64,{base64_image_prompt}"
-
 
         payload = {
             "model": self.model,
@@ -231,9 +234,12 @@ class Llama_CoT(Llama):
                 {
                     "role": "user",
                     "content": [
-                        { "image_url": {"url": prompt_image_url}, "type": "image_url",},
-                        {"text": prompt, "type": "text"}
-                    ]
+                        {
+                            "image_url": {"url": prompt_image_url},
+                            "type": "image_url",
+                        },
+                        {"text": prompt, "type": "text"},
+                    ],
                 },
                 {
                     "role": "user",
@@ -241,14 +247,13 @@ class Llama_CoT(Llama):
                         {"image_url": {"url": image_gcs_url}, "type": "image_url"},
                         {"text": questions, "type": "text"},
                     ],
-                }
+                },
             ],
             "temperature": 0.4,
             "top_k": 10,
             "top_p": 0.95,
             "n": 1,
         }
-
 
         headers = {
             "Authorization": f"Bearer {self.token}",
@@ -266,11 +271,6 @@ class Llama_CoT(Llama):
         return "Llama_CoT"
 
 
-
-from enum import Enum
-from pydantic import BaseModel
-from typing import Literal, Union, List
-from scenic_reasoning.utilities.coco import coco_labels
 CocoLabelEnum = Enum(
     "CocoLabelEnum",
     list(coco_labels.values()),
@@ -290,7 +290,7 @@ class WidthVsHeightAnswer(BaseModel):
 
 class QuadrantsAnswer(BaseModel):
     question: str
-    answer: int  
+    answer: int
 
 
 class LargestAppearanceAnswer(BaseModel):
@@ -389,6 +389,7 @@ QUESTION_CLASS_MAP: Dict[str, Type[BaseModel]] = {
     r"group of objects .* clustered together": MostClusteredObjectsAnswer,
 }
 
+
 def get_answer_class_from_question(question: str) -> Type[BaseModel]:
     for pattern, cls in QUESTION_CLASS_MAP.items():
         if re.search(pattern, question, flags=re.IGNORECASE):
@@ -396,21 +397,62 @@ def get_answer_class_from_question(question: str) -> Type[BaseModel]:
     raise ValueError(f"No matching answer class found for: {question}")
 
 
-from pydantic import BaseModel, Field
-
 class Step(BaseModel):
     """Represents a single step in the reasoning process."""
+
     explanation: str
+
 
 class Reasoning(BaseModel):
     steps: List[Step]
-    conclusion: str = Field(description="A concluding statement summarizing or linking the steps")
-    final_answer: str = Field(description="The final answer to the question, derived from the reasoning steps")
+    conclusion: str = Field(
+        description="A concluding statement summarizing or linking the steps"
+    )
+    final_answer: str = Field(
+        description="The final answer to the question, derived from the reasoning steps"
+    )
 
+
+class GPT_CD(GPT):
+    def __init__(self, model_name="gpt-4o", port=None):
+        super().__init__(model_name)
+
+    def generate_answer(self, image, questions: str, prompting_style):
+        image, prompt = prompting_style.generate_prompt(image, questions)
+        base64_image = self.encode_image(image)
+
+        completion = self.client.beta.chat.completions.parse(
+            model=self.model_name,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{base64_image}",
+                                "detail": "high",
+                            },
+                        },
+                        {
+                            "type": "text",
+                            "text": prompt,
+                        },
+                    ],
+                }
+            ],
+            response_format=Reasoning,
+        )
+
+        responses = completion.choices[0].message.content
+
+        return responses, prompt
 
 
 class Llama_CD(Llama):
-    def __init__(self, model_name="meta/llama-3.2-90b-vision-instruct-maas", region="us-central1"):
+    def __init__(
+        self, model_name="meta/llama-3.2-90b-vision-instruct-maas", region="us-central1"
+    ):
         super().__init__(model_name, region)
 
     def generate_answer(self, image, questions: str, prompting_style):
@@ -418,7 +460,7 @@ class Llama_CD(Llama):
         base64_image = self.encode_image(image)
 
         image_gcs_url = f"data:image/jpeg;base64,{base64_image}"
-        
+
         answer_cls = get_answer_class_from_question(questions)
         # There doesn't seem to be a good way of dynamically setting the final answer type
         # to be the answer_cls so we will include it in the prompt
@@ -434,7 +476,10 @@ class Llama_CD(Llama):
                         {"text": prompt, "type": "text"},
                     ],
                 },
-                {"role": "system", "content": "The final_answer should be of type: " + str(answer_cls)},
+                {
+                    "role": "system",
+                    "content": "The final_answer should be of type: " + str(answer_cls),
+                },
             ],
             "response_format": Reasoning,
             "temperature": 0.4,
@@ -443,13 +488,14 @@ class Llama_CD(Llama):
             "n": 1,
         }
 
-
         headers = {
             "Authorization": f"Bearer {self.token}",
             "Content-Type": "application/json",
         }
 
-        import pdb; pdb.set_trace()
+        import pdb
+
+        pdb.set_trace()
         response = self.client.beta.chat.completions.parse(
             model=self.model,
             messages=[
@@ -457,10 +503,13 @@ class Llama_CD(Llama):
                     "role": "user",
                     "content": [
                         {"type": "image_url", "image_url": {"url": image_gcs_url}},
-                        {"type": "text", "text": prompt}
+                        {"type": "text", "text": prompt},
                     ],
                 },
-                {"role": "system", "content": "The final_answer should be of type: " + str(answer_cls)},
+                {
+                    "role": "system",
+                    "content": "The final_answer should be of type: " + str(answer_cls),
+                },
             ],
             temperature=0.4,
             n=1,
@@ -479,10 +528,75 @@ class Llama_CD(Llama):
         return "Llama_CD"
 
 
+class Gemini_CD(Gemini):
+    def __init__(self, location="us-central1"):
+        super().__init__(location)
+
+    def generate_answer(self, image, questions: str, prompting_style):
+        image, prompt = prompting_style.generate_prompt(image, questions)
+        image = self.encode_image(image)
+
+        response_format = get_answer_class_from_question(questions)
+
+        response = self.client.models.generate_content(
+            model=self.model,
+            contents=[
+                image,
+                prompt,
+                f"The final_answer should be of type: {response_format}",
+            ],
+            config={
+                "response_mime_type": "application/json",
+                "response_schema": Reasoning,
+            },
+        )
+
+        return response.text, prompt
+
+    def __str__(self):
+        return "Gemini_CD"
+
+
+class GPT_CoT_CD(GPT):
+    def __init__(self, model_name="gpt-4o", port=None):
+        super().__init__(model_name)
+
+    def generate_answer(self, image, questions: str, prompting_style):
+        image, prompt = prompting_style.generate_prompt(image, questions)
+        base64_image = self.encode_image(image)
+
+        completion = self.client.beta.chat.completions.parse(
+            model=self.model_name,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{base64_image}",
+                                "detail": "high",
+                            },
+                        },
+                        {
+                            "type": "text",
+                            "text": prompt,
+                        },
+                    ],
+                }
+            ],
+            response_format=Reasoning,
+        )
+
+        responses = completion.choices[0].message.content
+
+        return responses, prompt
 
 
 class Llama_CoT_CD(Llama):
-    def __init__(self, model_name="meta/llama-3.2-90b-vision-instruct-maas", region="us-central1"):
+    def __init__(
+        self, model_name="meta/llama-3.2-90b-vision-instruct-maas", region="us-central1"
+    ):
         super().__init__(model_name, region)
 
     def generate_answer(self, image, questions: str, prompting_style):
@@ -490,7 +604,7 @@ class Llama_CoT_CD(Llama):
         base64_image = self.encode_image(image)
 
         image_gcs_url = f"data:image/jpeg;base64,{base64_image}"
-        
+
         answer_cls = get_answer_class_from_question(questions)
         # There doesn't seem to be a good way of dynamically setting the final answer type
         # to be the answer_cls so we will include it in the prompt
@@ -506,7 +620,10 @@ class Llama_CoT_CD(Llama):
                         {"text": prompt, "type": "text"},
                     ],
                 },
-                {"role": "system", "content": "The final_answer should be of type: " + str(answer_cls)},
+                {
+                    "role": "system",
+                    "content": "The final_answer should be of type: " + str(answer_cls),
+                },
             ],
             "response_format": Reasoning,
             "temperature": 0.4,
@@ -514,7 +631,6 @@ class Llama_CoT_CD(Llama):
             "top_p": 0.95,
             "n": 1,
         }
-
 
         headers = {
             "Authorization": f"Bearer {self.token}",
@@ -531,6 +647,7 @@ class Llama_CoT_CD(Llama):
     def __str__(self):
         return "Llama_CoT_CD"
 
+
 class Gemini_CoT_CD(Gemini):
     def __init__(self, location="us-central1"):
         super().__init__(location)
@@ -543,10 +660,14 @@ class Gemini_CoT_CD(Gemini):
 
         response = self.client.models.generate_content(
             model=self.model,
-            contents=[image, prompt, f"The final_answer should be of type: {response_format}"],
+            contents=[
+                image,
+                prompt,
+                f"The final_answer should be of type: {response_format}",
+            ],
             config={
-                'response_mime_type': 'application/json',
-                'response_schema': Reasoning,
+                "response_mime_type": "application/json",
+                "response_schema": Reasoning,
             },
         )
 
@@ -554,6 +675,7 @@ class Gemini_CoT_CD(Gemini):
 
     def __str__(self):
         return "Gemini_CoT_CD"
+
 
 # from prompts import ZeroShotPrompt
 # model = Gemini()

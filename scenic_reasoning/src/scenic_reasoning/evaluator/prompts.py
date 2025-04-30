@@ -1,19 +1,16 @@
-import difflib
 import os
-import re
 
 import cv2
 import numpy as np
-import openai
 import supervision as sv
-from scenic_reasoning.utilities.common import get_default_device
 import torch
+from scenic_reasoning.utilities.common import get_default_device
 
 
 class PromptingStrategy:
     """Base class for different prompting strategies."""
 
-    def generate_prompt(self, image, questions):
+    def generate_prompt(self, image, question):
         """Abstract method to be implemented by subclasses."""
         raise NotImplementedError("Each subclass must implement this method.")
 
@@ -31,12 +28,13 @@ class ZeroShotPrompt(PromptingStrategy):
     def __str__(self):
         return "ZeroShotPrompt"
 
+
 class ZeroShotPrompt_batch(PromptingStrategy):
     """Zero-shot prompting method."""
 
-    def generate_prompt(self, image, questions):
+    def generate_prompt(self, image, question):
         prompt = f"""Answer the following questions related to the image. Provide your answers to each question, separated by commas. Here are the questions:
-        {questions}
+        {question}
         """
 
         return image, prompt
@@ -48,21 +46,7 @@ class ZeroShotPrompt_batch(PromptingStrategy):
 class CoT(PromptingStrategy):
     """CoT prompting method."""
 
-    # TODO: add examples like 5-shot
-    # processor pool and call in parallel
-    # sample 1k questions evenly
-    def generate_prompt(self, image, questions):
-        prompt = f"""Look at the image carefully and think through the question step by step. Explain your reasoning briefly, and then provide your final answer. Here's the question: {questions}
-        """
-        return image, prompt
-
-    def __str__(self):
-        return "CoT"
-
-class CoT(PromptingStrategy):
-    """CoT prompting method."""
-
-    def generate_prompt(self, image, questions):
+    def generate_prompt(self, image, question):
         prompt = f"""Look at the image carefully and think through each question. Use the process below to guide your reasoning and arrive at the correct answer. Here is an example of how to answer the question:
 
         Question: Are there any motorcyclists to the right of any pedestrians? 
@@ -113,6 +97,11 @@ class CoT(PromptingStrategy):
         That bench’s bounding area is much broader horizontally than it is tall vertically.
 
         Final_Answer: Yes.
+
+        Question: {question}
+        
+        Reasoning:
+
         """
         return image, prompt
 
@@ -175,6 +164,10 @@ class SetOfMarkPrompt(PromptingStrategy):
             image_bgr = cv2.imread(image)
         elif isinstance(image, torch.Tensor):
             image_bgr = image.mul(255).permute(1, 2, 0).numpy().astype(np.uint8)
+        else:
+            raise ValueError(
+                f"Input image should be either a numpy array or a tensor of shape (B, C, H, W), but got {image.shape}"
+            )
 
         image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
 
@@ -257,7 +250,7 @@ class SetOfMarkPrompt(PromptingStrategy):
                 1,
                 cv2.LINE_AA,
             )
-        
+
         return annotated_image, prompt
 
     def __str__(self):

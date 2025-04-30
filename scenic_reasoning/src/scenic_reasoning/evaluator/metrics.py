@@ -1,14 +1,16 @@
+import ast
 import json
 import os
 import re
 from typing import List
+
 import outlines
+import requests
 from dotenv import load_dotenv
 from guidance import gen, image, models
-from outlines import models, generate
+from outlines import generate, models
 from pydantic import BaseModel
-import requests
-import ast
+
 
 class EvaluationMetric:
     """Base class for different evaluation metrics."""
@@ -28,9 +30,9 @@ class ExactMatch(EvaluationMetric):
             pred = match.group(1).strip()
         else:
             pred = pred.strip()
-        
+
         return 1.0 if pred.lower() == gt.strip().lower() else 0.0
-    
+
     def __str__(self):
         return "ExactMatch"
 
@@ -88,15 +90,12 @@ class ExactMatch(EvaluationMetric):
 #         match = re.search(r'\d', score)
 #         if match:
 #             pred = match.group()
-        
+
 #         return int(pred)
 
-            
 
 #     def __str__(self):
 #         return "LLMJudge"
-
-
 
 
 class LLMJudge(EvaluationMetric):
@@ -104,6 +103,7 @@ class LLMJudge(EvaluationMetric):
 
     def __init__(self, llm_model="gpt-4"):
         from openai import OpenAI
+
         OPENAI_API_KEY = "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"
         self.client = OpenAI(api_key=OPENAI_API_KEY)
 
@@ -144,7 +144,6 @@ class LLMJudge(EvaluationMetric):
         Return: ```[0]```
         """
 
-
         for attempt in range(3):
             try:
                 completion = self.client.chat.completions.create(
@@ -179,6 +178,7 @@ class LLMJudge(EvaluationMetric):
 class Score(BaseModel):
     score: float
 
+
 class Scores(BaseModel):
     scores: list[Score]
 
@@ -188,7 +188,9 @@ class ConstrainedDecoding(EvaluationMetric):
 
     def __init__(self, gpu=0, use_batch=False):
 
-        model = models.transformers("microsoft/Phi-3-mini-4k-instruct", device=f"cuda:{gpu}")
+        model = models.transformers(
+            "microsoft/Phi-3-mini-4k-instruct", device=f"cuda:{gpu}"
+        )
         # print(f"downloading {model_name}")
         self.use_batch = use_batch
         if use_batch:
@@ -197,7 +199,11 @@ class ConstrainedDecoding(EvaluationMetric):
             self.generator = generate.json(model, Score)
 
     def evaluate(self, pred, gt):
-        return self._evaluate_batch(pred, gt) if self.use_batch else self._evaluate(pred, gt)
+        return (
+            self._evaluate_batch(pred, gt)
+            if self.use_batch
+            else self._evaluate(pred, gt)
+        )
 
     def _evaluate(self, pred, gt) -> float:
         prompt = f"""
@@ -206,10 +212,10 @@ class ConstrainedDecoding(EvaluationMetric):
         Prediction: {pred}
         Score the prediction with either 0 (incorrect) or 1 (correct).
         """
-        result: Score = self.generator(prompt) # type: ignore
+        result: Score = self.generator(prompt)  # type: ignore
 
         return result.score
-    
+
     def _evaluate_batch(self, pred, gt) -> List[float]:
         prompt = f"""
         Determine if the prediction matches the solution:
@@ -217,7 +223,7 @@ class ConstrainedDecoding(EvaluationMetric):
         Prediction: {pred}
         Score each prediction with either 0 (incorrect) or 1 (correct). Give the score for all predictions as a list whose length is the same as the number of predictions.
         """
-        results: Scores = self.generator(prompt) # type: ignore
+        results: Scores = self.generator(prompt)  # type: ignore
 
         return [result.score for result in results.scores]
 
