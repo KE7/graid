@@ -12,6 +12,7 @@ from scenic_reasoning.evaluator.metrics import ConstrainedDecoding, LLMJudge, Ex
 from PIL import Image
 from scenic_reasoning.evaluator.prompts import CoT, SetOfMarkPrompt, ZeroShotPrompt, ZeroShotPrompt_batch
 from scenic_reasoning.utilities.common import project_root_dir
+from sqlitedict import SqliteDict
 from torchvision import transforms
 from tqdm import tqdm
 from scenic_reasoning.evaluator.vlms import GPT, Gemini, Llama, Llama_CD, Llama_CoT, Llama_CoT_CD
@@ -38,6 +39,15 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
 
     output_dir = DB_PATH / f"{db_path}_{my_vlm}_{my_metric}_{my_prompt}"
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    vlm_cache_loc = output_dir / f"{my_vlm}_cache.db"
+    vlm_cache = SqliteDict(
+        str(vlm_cache_loc),
+        tablename="vlm_cache",
+        autocommit=True,
+        encode=json.dumps,
+        decode=json.loads,
+    )
 
     # Get a list of all table names
     tables_query = "SELECT name FROM sqlite_master WHERE type='table';"
@@ -149,18 +159,28 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
         if use_batch:
             questions = ", ".join([item for i, item in enumerate(questions)])
             answers = ", ".join([item for i, item in enumerate(answers)])
-            preds, prompt = my_vlm.generate_answer(
-                image_path, questions, my_prompt
-            )
+            _, cache_key = my_prompt.generate_prompt(image_path, questions)
+            if cache_key in vlm_cache:
+                preds = vlm_cache[cache_key]
+            else:
+                preds, prompt = my_vlm.generate_answer(
+                    image_path, questions, my_prompt
+                )
+                vlm_cache[cache_key] = preds
             correctness.append(my_metric.evaluate(preds, answers))
             preds = preds
         else:
-
             for q, a in tqdm(zip(questions, answers), total=len(questions)):
                 if len(q) < 5:  #check for "D" and "y"
-                    continue
+                    raise ValueError(f"Question too short: {q}")
 
-                pred, prompt = my_vlm.generate_answer(image_path, q, my_prompt)
+                # the prompt is the cache key
+                _, cache_key = my_prompt.generate_prompt(image_path, q)
+                if cache_key in vlm_cache:
+                    pred = vlm_cache[cache_key]
+                else:
+                    pred, prompt = my_vlm.generate_answer(image_path, q, my_prompt)
+                    vlm_cache[cache_key] = pred
                 correct = my_metric.evaluate(pred, a)
 
                 preds.append(pred)
