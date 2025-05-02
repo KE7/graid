@@ -14,7 +14,7 @@ from google import genai
 from openai import OpenAI
 from PIL import Image
 from pydantic import BaseModel, Field
-from scenic_reasoning.utilities.coco import coco_labels
+from scenic_reasoning.utilities.coco import coco_label
 from scenic_reasoning.utilities.common import project_root_dir
 from torchvision import transforms
 
@@ -273,7 +273,7 @@ class Llama_CoT(Llama):
 
 CocoLabelEnum = Enum(
     "CocoLabelEnum",
-    list(coco_labels.values()),
+    list(coco_label.values()),
     type=str,
 )
 
