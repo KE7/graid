@@ -15,7 +15,17 @@ from scenic_reasoning.utilities.common import project_root_dir
 from sqlitedict import SqliteDict
 from torchvision import transforms
 from tqdm import tqdm
-from scenic_reasoning.evaluator.vlms import GPT, Gemini, Llama, Llama_CD, Llama_CoT, Llama_CoT_CD
+from scenic_reasoning.evaluator.vlms import (
+    GPT, 
+    GPT_CD,
+    GPT_CoT_CD,
+    Gemini, 
+    Gemini_CD,
+    Gemini_CoT_CD,
+    Llama,
+    Llama_CD,
+    Llama_CoT_CD
+)
 import random
 
 DB_PATH = project_root_dir() / "data/databases_ablations"
@@ -211,14 +221,14 @@ if __name__ == "__main__":
         "--vlm",
         type=str,
         default="Llama",
-        choices=["GPT", "Gemini", "Llama", "Llama_CD"],
+        choices=["GPT", "GPT_CD", "GPT_CoT_CD", "Gemini", "Gemini_CD", "Gemini_CoT_CD", "Llama", "Llama_CD", "Llama_CoT_CD"],
         help="VLM to use for generating answers.",
     )
     parser.add_argument(
         "--metric",
         type=str,
         default="LLMJudge",
-        choices=["ExactMatch", "LLMJudge", "ConstrainedDecoding"],
+        choices=["ExactMatch", "LLMJudge"],
         help="Metric to use for evaluating answers.",
     )
     parser.add_argument(
@@ -242,28 +252,35 @@ if __name__ == "__main__":
     if args.vlm == "GPT":
         my_vlm = GPT()
         # use_batch = True
+    elif args.vlm == "GPT_CD":
+        my_vlm = GPT_CD()
+    elif args.vlm == "GPT_CoT_CD":
+        my_vlm = GPT_CoT_CD()
     elif args.vlm == "Llama":
         my_vlm = Llama(region=args.region)
         # use_batch = False
     elif args.vlm == "Llama_CD":
         my_vlm = Llama_CD(region=args.region)
+    elif args.vlm == "Llama_CoT_CD":
+        my_vlm = Llama_CoT_CD(region=args.region)
         # use_batch = False
     elif args.vlm == "Gemini":
         my_vlm = Gemini(location=args.region)
         # use_batch = True
+    elif args.vlm == "Gemini_CD":
+        my_vlm = Gemini_CD(location=args.region)
+    elif args.vlm == "Gemini_CoT_CD":
+        my_vlm = Gemini_CoT_CD(location=args.region)
+        # use_batch = False
+    else:
+        raise ValueError(f"Unknown VLM: {args.vlm}")
 
     if args.metric == "LLMJudge":
         my_metric = LLMJudge()
     elif args.metric == "ExactMatch":
         my_metric = ExactMatch()
     else:
-        if args.vlm == "GPT":
-            my_metric = ConstrainedDecoding(gpu=1, use_batch=use_batch)
-        elif args.vlm == "Llama":
-            my_metric = ConstrainedDecoding(gpu=2, use_batch=use_batch)
-        elif args.vlm == "Gemini":
-            my_metric = ConstrainedDecoding(gpu=3, use_batch=use_batch)
-
+        raise ValueError(f"Unknown metric: {args.metric}")
 
     if args.prompt == "SetOfMarkPrompt":
         if args.vlm == "GPT":
@@ -272,10 +289,12 @@ if __name__ == "__main__":
             my_prompt = SetOfMarkPrompt(gpu=5)
         elif args.vlm == "Gemini":
             my_prompt = SetOfMarkPrompt(gpu=2)
+        else:
+            raise ValueError(f"SetOfMarkPrompt not supported for VLM: {args.vlm}")
         
     elif args.prompt == "CoT":
         if use_batch:
-            my_prompt = CoT_batch()
+            raise ValueError("CoT does not support batch processing.")
         else:
             my_prompt = CoT()
     elif args.prompt == "ZeroShotPrompt":
@@ -283,7 +302,8 @@ if __name__ == "__main__":
             my_prompt = ZeroShotPrompt_batch()
         else:
             my_prompt = ZeroShotPrompt()
-
+    else:
+        raise ValueError(f"Unknown prompt: {args.prompt}")
     
     acc = iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=use_batch)
     print(f"Accuracy: {acc}")
