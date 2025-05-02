@@ -236,7 +236,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    use_batch = True
+    use_batch = False
 
     db_path = str(DB_PATH / args.db_name)
     if args.vlm == "GPT":
