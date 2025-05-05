@@ -1,4 +1,5 @@
 import os
+from textwrap import dedent
 
 import cv2
 import numpy as np
@@ -19,11 +20,13 @@ class ZeroShotPrompt(PromptingStrategy):
     """Zero-shot prompting method."""
 
     def generate_prompt(self, image, question):
-        prompt = f"""Answer the following question related to the image. If this question involves object naming, you may only identify objects from the COCO dataset (80 labels). Make sure to wrap the answer in triple backticks. "```"
-        Here's the question: {question}. 
+        prompt = f"""\
+            Answer the following question related to the image. If this question involves object naming, you may only identify objects from the COCO dataset (80 labels). Make sure to wrap the answer in triple backticks. "```"
+
+            Here's the question: {question}. 
         """
 
-        return image, prompt
+        return image, dedent(prompt)
 
     def __str__(self):
         return "ZeroShotPrompt"

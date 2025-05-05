@@ -1,5 +1,5 @@
 # https://github.com/HumanSignal/label-studio/blob/develop/docs/source/tutorials/object-detector.md
-coco_label = {
+coco_labels = {
     -1: "undefined",
     0: "person",
     1: "bicycle",
@@ -83,4 +83,4 @@ coco_label = {
     79: "toothbrush",
 }
 
-inverse_coco_label = {v: k for k, v in coco_label.items()}
+inverse_coco_label = {v: k for k, v in coco_labels.items()}

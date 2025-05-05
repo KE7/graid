@@ -3,7 +3,7 @@ import io
 import re
 import time
 from enum import Enum
-from typing import Dict, List, Literal, Type
+from typing import Dict, List, Literal, Type, cast
 
 import cv2
 import numpy as np
@@ -14,7 +14,7 @@ from google import genai
 from openai import OpenAI
 from PIL import Image
 from pydantic import BaseModel, Field
-from scenic_reasoning.utilities.coco import coco_label
+from scenic_reasoning.utilities.coco import coco_labels
 from scenic_reasoning.utilities.common import project_root_dir
 from torchvision import transforms
 
@@ -273,7 +273,7 @@ class Llama_CoT(Llama):
 
 CocoLabelEnum = Enum(
     "CocoLabelEnum",
-    list(coco_label.values()),
+    list(coco_labels.values()),
     type=str,
 )
 
@@ -478,7 +478,7 @@ class Llama_CD(Llama):
                 },
                 {
                     "role": "system",
-                    "content": "The final_answer should be of type: " + str(answer_cls),
+                    "content": f"The final_answer should be of type: {answer_cls.model_json_schema()}",
                 },
             ],
             "response_format": Reasoning,
@@ -508,7 +508,7 @@ class Llama_CD(Llama):
                 },
                 {
                     "role": "system",
-                    "content": "The final_answer should be of type: " + str(answer_cls),
+                    "content": f"The final_answer should be of type: {answer_cls.model_json_schema()}",
                 },
             ],
             temperature=0.4,
@@ -543,7 +543,7 @@ class Gemini_CD(Gemini):
             contents=[
                 image,
                 prompt,
-                f"The final_answer should be of type: {response_format}",
+                f"The final_answer should be of type: {response_format.model_json_schema()}",
             ],
             config={
                 "response_mime_type": "application/json",
@@ -551,7 +551,10 @@ class Gemini_CD(Gemini):
             },
         )
 
-        return response.text, prompt
+        reasoning_response : Reasoning = cast(Reasoning, response.parsed)
+        final_answer = reasoning_response.final_answer
+
+        return final_answer, prompt
 
     def __str__(self):
         return "Gemini_CD"
@@ -622,7 +625,7 @@ class Llama_CoT_CD(Llama):
                 },
                 {
                     "role": "system",
-                    "content": "The final_answer should be of type: " + str(answer_cls),
+                    "content": f"The final_answer should be of type: {answer_cls.model_json_schema()}",
                 },
             ],
             "response_format": Reasoning,
@@ -663,7 +666,7 @@ class Gemini_CoT_CD(Gemini):
             contents=[
                 image,
                 prompt,
-                f"The final_answer should be of type: {response_format}",
+                f"The final_answer should be of type: {response_format.model_json_schema()}",
             ],
             config={
                 "response_mime_type": "application/json",

@@ -19,7 +19,7 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
     ObjectDetectionResultI,
     ObjectDetectionUtils,
 )
-from scenic_reasoning.utilities.coco import coco_label
+from scenic_reasoning.utilities.coco import coco_labels
 
 
 # https://github.com/open-mmlab/mmdetection/issues/12008
@@ -146,7 +146,7 @@ class MMdetection_obj(ObjectDetectionModelI):
                 odr = ObjectDetectionResultI(
                     score=score,
                     cls=cls_id,
-                    label=coco_label[cls_id],
+                    label=coco_labels[cls_id],
                     bbox=bbox,
                     image_hw=image_hw,
                     bbox_format=BBox_Format.XYXY,
@@ -183,7 +183,8 @@ class MMdetection_obj(ObjectDetectionModelI):
             detections in a particular image.
         """
         image_list = [
-            image[i].permute(1, 2, 0).cpu().numpy().astype(np.uint8) for i in range(len(image))
+            image[i].permute(1, 2, 0).cpu().numpy().astype(np.uint8)
+            for i in range(len(image))
         ]
         image_hw = image_list[0].shape[:-1]
         predictions = inference_detector(self._model, image_list)
@@ -205,7 +206,7 @@ class MMdetection_obj(ObjectDetectionModelI):
                 odr = ObjectDetectionResultI(
                     score=score,
                     cls=cls_id,
-                    label=coco_label[cls_id],
+                    label=coco_labels[cls_id],
                     bbox=bbox,
                     image_hw=image_hw,
                     bbox_format=BBox_Format.XYXY,
@@ -305,7 +306,7 @@ class MMdetection_seg(InstanceSegmentationModelI):
                 instance = InstanceSegmentationResultI(
                     score=score,
                     cls=cls_id,
-                    label=coco_label[cls_id],
+                    label=coco_labels[cls_id],
                     instance_id=i,
                     mask=mask.unsqueeze(0),
                     image_hw=image_hw,
