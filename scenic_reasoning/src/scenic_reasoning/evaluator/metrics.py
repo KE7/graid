@@ -25,11 +25,16 @@ class ExactMatch(EvaluationMetric):
         pass
 
     def evaluate(self, pred, gt):
-        match = re.search(r"```(.*?)```", pred, re.DOTALL)
-        if match:
-            pred = match.group(1).strip()
+        if hasattr(pred, "answer"):
+            pred = pred.answer
+        elif hasattr(pred, "final_answer"):
+            pred = pred.final_answer
         else:
-            pred = pred.strip()
+            match = re.search(r"```(.*?)```", pred, re.DOTALL)
+            if match:
+                pred = match.group(1).strip()
+            else:
+                pred = pred.strip()
 
         return 1.0 if pred.lower() == gt.strip().lower() else 0.0
 

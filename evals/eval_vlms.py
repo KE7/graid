@@ -72,7 +72,7 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
 
 
     sampled_dataframes = {}
-    sample_size = 100
+    sample_size = 100 # this is per table not across all tables
     print("Filtering rows...")
 
     for table_name, df in dataframes.items():
@@ -314,7 +314,7 @@ if __name__ == "__main__":
         if use_batch:
             my_prompt = ZeroShotPrompt_batch()
         else:
-            my_prompt = ZeroShotPrompt()
+            my_prompt = ZeroShotPrompt(using_cd=("CD" in args.vlm))
     else:
         raise ValueError(f"Unknown prompt: {args.prompt}")
     

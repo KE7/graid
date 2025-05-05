@@ -19,9 +19,13 @@ class PromptingStrategy:
 class ZeroShotPrompt(PromptingStrategy):
     """Zero-shot prompting method."""
 
+    def __init__(self, using_cd=False):
+        self.using_cd = using_cd
+        self.ans_format_str = " Make sure to wrap the answer in triple backticks. '```'" if not self.using_cd else ""
+
     def generate_prompt(self, image, question):
         prompt = f"""\
-            Answer the following question related to the image. If this question involves object naming, you may only identify objects from the COCO dataset (80 labels). Make sure to wrap the answer in triple backticks. "```"
+            Answer the following question related to the image. If this question involves object naming, you may only identify objects from the COCO dataset (80 labels).{self.ans_format_str}
 
             Here's the question: {question}. 
         """
@@ -36,11 +40,12 @@ class ZeroShotPrompt_batch(PromptingStrategy):
     """Zero-shot prompting method."""
 
     def generate_prompt(self, image, question):
-        prompt = f"""Answer the following questions related to the image. Provide your answers to each question, separated by commas. Here are the questions:
+        prompt = f"""\
+        Answer the following questions related to the image. Provide your answers to each question, separated by commas. Here are the questions:
         {question}
         """
 
-        return image, prompt
+        return image, dedent(prompt)
 
     def __str__(self):
         return "ZeroShotPrompt_batch"
@@ -50,7 +55,8 @@ class CoT(PromptingStrategy):
     """CoT prompting method."""
 
     def generate_prompt(self, image, question):
-        prompt = f"""Look at the image carefully and think through each question. Use the process below to guide your reasoning and arrive at the correct answer. Here is an example of how to answer the question:
+        prompt = f"""\
+        Look at the image carefully and think through each question. Use the process below to guide your reasoning and arrive at the correct answer. Here is an example of how to answer the question:
 
         Question: Are there any motorcyclists to the right of any pedestrians? 
 
@@ -106,7 +112,7 @@ class CoT(PromptingStrategy):
         Reasoning:
 
         """
-        return image, prompt
+        return image, dedent(prompt)
 
     def __str__(self):
         return "CoT_batch"
