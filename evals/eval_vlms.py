@@ -105,20 +105,24 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
     correctness = []
     idx = 0
 
-    for table in sampled_dataframes:
-        output_path = output_dir / f"{img_idx}.txt"
+    for table_idx, table in enumerate(sampled_dataframes):
+        output_path = output_dir / f"{table_idx}.txt"
         if os.path.exists(output_path):
             with open(output_path, "r") as f:
                 text = f.read()
                 match = re.search(r"Correctness:\s*\n(.*?)\n", text)
-                score = match.group(1)
-                score = ast.literal_eval(score)
-                correctness.append(score)
+                if match:
+                    score = match.group(1)
+                    score = ast.literal_eval(score)
+                    correctness.append(score)
+                else:
+                    print(f"No correctness score found in {output_path}, skipping...")
             print(f"Skipping {output_path}")
             continue
 
         questions = []
         answers = []
+        image, image_path = None, None  # Initialize image_path to avoid 'possibly unbound' errors
         for img_idx, row in tqdm(sampled_dataframes[table].iterrows(), total=len(sampled_dataframes[table])):
             row = sampled_dataframes[table].iloc[img_idx]
 
@@ -139,15 +143,18 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
                 image_path = str(
                     project_root_dir() / f"data/bdd100k/images/100k/val/{image_path}"
                 )
+                image = image_path
             elif "nuimage" in db_path:
                 image_path = image_data["filename"]
                 image_path = str(
                     project_root_dir()
                     / f"/home/eecs/liheng/scenic-reasoning/data/nuimages/all/{image_path}"
                 )
+                image = image_path
             else:
-                image_path = transforms.ToTensor()(
-                    Image.open(io.BytesIO(image_data["image"]))
+                image_path = image_data["image"]
+                image = transforms.ToTensor()(
+                    Image.open(io.BytesIO(image_path))
                 )
 
 
@@ -159,24 +166,29 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
                 answers.append(qa_list[1])
 
 
-        if not questions:
-            print(f"No questions found for image index {img_idx}, skipping...")
-            continue
+            if len(questions) == 0:
+                print(f"No questions found for image index {img_idx}, skipping...")
+                continue
 
         preds = []
-
-
-        if use_batch:
+        prompt = ""
+        
+        if use_batch and image_path is not None:
             questions = ", ".join([item for i, item in enumerate(questions)])
             answers = ", ".join([item for i, item in enumerate(answers)])
-            _, cache_key = my_prompt.generate_prompt(image_path, questions)
-            if cache_key in vlm_cache:
-                preds = vlm_cache[cache_key]
+            _, prompt = my_prompt.generate_prompt(image_path, questions)
+            if image_path is not None:
+                cache_key = f"{image_path}_{prompt}"
+                if cache_key in vlm_cache:
+                    preds = vlm_cache[cache_key]
+                else:
+                    preds, prompt = my_vlm.generate_answer(
+                        image_path, questions, my_prompt
+                    )
+                    vlm_cache[cache_key] = preds
             else:
-                preds, prompt = my_vlm.generate_answer(
-                    image_path, questions, my_prompt
-                )
-                vlm_cache[cache_key] = preds
+                print("Warning: image_path is None, skipping batch processing")
+                preds = []
             correctness.append(my_metric.evaluate(preds, answers))
             preds = preds
         else:
@@ -184,12 +196,13 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
                 if len(q) < 5:  #check for "D" and "y"
                     raise ValueError(f"Question too short: {q}")
 
-                # the prompt is the cache key
-                _, cache_key = my_prompt.generate_prompt(image_path, q)
+                # the cache key should be image_path + prompt
+                _, prompt = my_prompt.generate_prompt(image, q)
+                cache_key = f"{image_path}_{prompt}"
                 if cache_key in vlm_cache:
                     pred = vlm_cache[cache_key]
                 else:
-                    pred, prompt = my_vlm.generate_answer(image_path, q, my_prompt)
+                    pred, prompt = my_vlm.generate_answer(image, q, my_prompt)
                     vlm_cache[cache_key] = pred
                 correct = my_metric.evaluate(pred, a)
 
@@ -197,7 +210,7 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
                 correctness.append(correct)
 
         with open(str(output_path), "w") as log_file:
-            log_file.write(f"Image Path: \n{image_path}\n")
+            log_file.write(f"Image Path: \n{image_path if image_path is not None else 'None'}\n")
             log_file.write(f"Questions: \n{questions}\n")
             log_file.write(f"Answers: \n{answers}\n")
             log_file.write(f"Prompt: \n{prompt}\n")
@@ -246,7 +259,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    use_batch = True
+    use_batch = False # args.db_name = "bdd_val_0.2_/co_dino_5scale_swin_l_lsj_16xb1_3x_coco.py.sqlite"; args.vlm="Gemini_CD"; args.metric="ExactMatch"; args.prompt="ZeroShotPrompt"
 
     db_path = str(DB_PATH / args.db_name)
     if args.vlm == "GPT":

@@ -3,7 +3,7 @@ import io
 import re
 import time
 from enum import Enum
-from typing import Dict, List, Literal, Type, cast
+from typing import Any, Dict, List, Literal, Type, cast
 
 import cv2
 import numpy as np
@@ -107,7 +107,7 @@ class Gemini:
             try:
                 response = self.client.models.generate_content(
                     model=self.model,
-                    contents=[prompt, image],
+                    contents=[image, prompt],
                 )
                 break
             except Exception as e:
@@ -278,97 +278,101 @@ CocoLabelEnum = Enum(
 )
 
 
-class IsObjectCenteredAnswer(BaseModel):
-    question: str
-    answer: Literal["left", "centered", "right"]
+class Answer(BaseModel):
+    answer: Any
 
 
-class WidthVsHeightAnswer(BaseModel):
-    question: str
-    answer: Literal["yes", "no"]
+class IsObjectCenteredAnswer(Answer):
+    # question: str
+    answer: Literal["Left", "Centered", "Right"]
 
 
-class QuadrantsAnswer(BaseModel):
-    question: str
+class WidthVsHeightAnswer(Answer):
+    # question: str
+    answer: Literal["Yes", "No"]
+
+
+class QuadrantsAnswer(Answer):
+    # question: str
     answer: int
 
 
-class LargestAppearanceAnswer(BaseModel):
-    question: str
+class LargestAppearanceAnswer(Answer):
+    # question: str
     answer: CocoLabelEnum
 
 
-class MostAppearanceAnswer(BaseModel):
-    question: str
+class MostAppearanceAnswer(Answer):
+    # question: str
     answer: CocoLabelEnum
 
 
-class LeastAppearanceAnswer(BaseModel):
-    question: str
+class LeastAppearanceAnswer(Answer):
+    # question: str
     answer: CocoLabelEnum
 
 
-class LeftOfAnswer(BaseModel):
-    question: str
+class LeftOfAnswer(Answer):
+    # question: str
     answer: Literal["Yes", "No"]
 
 
-class RightOfAnswer(BaseModel):
-    question: str
+class RightOfAnswer(Answer):
+    # question: str
     answer: Literal["Yes", "No"]
 
 
-class LeftMostAnswer(BaseModel):
-    question: str
+class LeftMostAnswer(Answer):
+    # question: str
     answer: CocoLabelEnum
 
 
-class RightMostAnswer(BaseModel):
-    question: str
+class RightMostAnswer(Answer):
+    # question: str
     answer: CocoLabelEnum
 
 
-class HowManyAnswer(BaseModel):
-    question: str
+class HowManyAnswer(Answer):
+    # question: str
     answer: CocoLabelEnum
 
 
-class AreMoreAnswer(BaseModel):
-    question: str
+class AreMoreAnswer(Answer):
+    # question: str
     answer: Literal["Yes", "No"]
 
 
-class WhichMoreAnswer(BaseModel):
-    question: str
+class WhichMoreAnswer(Answer):
+    # question: str
     answer: CocoLabelEnum
 
 
-class LeftMostWidthVsHeightAnswer(BaseModel):
-    question: str
-    answer: Literal["yes", "no"]
-
-
-class RightMostWidthVsHeightAnswer(BaseModel):
-    question: str
-    answer: Literal["yes", "no"]
-
-
-class ObjectsInRowAnswer(BaseModel):
-    question: str
+class LeftMostWidthVsHeightAnswer(Answer):
+    # question: str
     answer: Literal["Yes", "No"]
 
 
-class ObjectsInLineAnswer(BaseModel):
-    question: str
+class RightMostWidthVsHeightAnswer(Answer):
+    # question: str
+    answer: Literal["Yes", "No"]
+
+
+class ObjectsInRowAnswer(Answer):
+    # question: str
+    answer: Literal["Yes", "No"]
+
+
+class ObjectsInLineAnswer(Answer):
+    # question: str
     answer: CocoLabelEnum
 
 
-class MostClusteredObjectsAnswer(BaseModel):
-    question: str
+class MostClusteredObjectsAnswer(Answer):
+    # question: str
     answer: CocoLabelEnum
 
 
-QUESTION_CLASS_MAP: Dict[str, Type[BaseModel]] = {
+QUESTION_CLASS_MAP: Dict[str, Type[Answer]] = {
     r"centered in the image": IsObjectCenteredAnswer,
     r"width of the .* larger than the height": WidthVsHeightAnswer,
     r"In what quadrant does .* appear": QuadrantsAnswer,
@@ -390,7 +394,7 @@ QUESTION_CLASS_MAP: Dict[str, Type[BaseModel]] = {
 }
 
 
-def get_answer_class_from_question(question: str) -> Type[BaseModel]:
+def get_answer_class_from_question(question: str) -> Type[Answer]:
     for pattern, cls in QUESTION_CLASS_MAP.items():
         if re.search(pattern, question, flags=re.IGNORECASE):
             return cls
@@ -421,6 +425,8 @@ class GPT_CD(GPT):
         image, prompt = prompting_style.generate_prompt(image, questions)
         base64_image = self.encode_image(image)
 
+        answer_cls = get_answer_class_from_question(questions)
+
         completion = self.client.beta.chat.completions.parse(
             model=self.model_name,
             messages=[
@@ -441,12 +447,16 @@ class GPT_CD(GPT):
                     ],
                 }
             ],
-            response_format=Reasoning,
+            response_format=answer_cls,
         )
 
-        responses = completion.choices[0].message.content
+        message = completion.choices[0].message
+        if message.parsed:
+            final_answer = message.parsed.answer
+        else:
+            final_answer = message.refusal
 
-        return responses, prompt
+        return final_answer, prompt
 
 
 class Llama_CD(Llama):
@@ -476,16 +486,12 @@ class Llama_CD(Llama):
                         {"text": prompt, "type": "text"},
                     ],
                 },
-                {
-                    "role": "system",
-                    "content": f"The final_answer should be of type: {answer_cls.model_json_schema()}",
-                },
             ],
-            "response_format": Reasoning,
-            "temperature": 0.4,
-            "top_k": 10,
-            "top_p": 0.95,
-            "n": 1,
+            "response_format": answer_cls,
+            # "temperature": 0.4,
+            # "top_k": 10,
+            # "top_p": 0.95,
+            # "n": 1,
         }
 
         headers = {
@@ -506,17 +512,19 @@ class Llama_CD(Llama):
                         {"type": "text", "text": prompt},
                     ],
                 },
-                {
-                    "role": "system",
-                    "content": f"The final_answer should be of type: {answer_cls.model_json_schema()}",
-                },
             ],
-            temperature=0.4,
-            n=1,
-            response_format=Reasoning,
+            # temperature=0.4,
+            # n=1,
+            response_format=answer_cls,
         )
 
-        return response.choices[0].message.content, prompt
+        message = response.choices[0].message
+        if message.parsed:
+            final_answer = message.parsed.answer
+        else:
+            final_answer = message.refusal
+
+        return final_answer, prompt
         # response = requests.post(self.url, headers=headers, json=payload)
         # if response.status_code == 200:
         #     return response.json()["choices"][0]["message"]["content"], prompt
@@ -543,16 +551,16 @@ class Gemini_CD(Gemini):
             contents=[
                 image,
                 prompt,
-                f"The final_answer should be of type: {response_format.model_json_schema()}",
+                # f"The final_answer should be of type: {response_format.model_json_schema()}",
             ],
             config={
                 "response_mime_type": "application/json",
-                "response_schema": Reasoning,
+                "response_schema": response_format,
             },
         )
 
-        reasoning_response : Reasoning = cast(Reasoning, response.parsed)
-        final_answer = reasoning_response.final_answer
+        answers : Answer = cast(Answer, response.parsed)
+        final_answer = answers.answer
 
         return final_answer, prompt
 
@@ -586,14 +594,23 @@ class GPT_CoT_CD(GPT):
                             "text": prompt,
                         },
                     ],
-                }
+                },
+                {
+                    "role": "system",
+                    "content": f"The final_answer should be of type: {get_answer_class_from_question(questions).model_json_schema()}",
+                },
             ],
             response_format=Reasoning,
         )
 
-        responses = completion.choices[0].message.content
+        message = completion.choices[0].message
+        if message.parsed:
+            output = message.parsed
+            output = output.model_dump_json()
+        else:
+            output = message.refusal
 
-        return responses, prompt
+        return output, prompt
 
 
 class Llama_CoT_CD(Llama):
@@ -629,10 +646,10 @@ class Llama_CoT_CD(Llama):
                 },
             ],
             "response_format": Reasoning,
-            "temperature": 0.4,
-            "top_k": 10,
-            "top_p": 0.95,
-            "n": 1,
+            # "temperature": 0.4,
+            # "top_k": 10,
+            # "top_p": 0.95,
+            # "n": 1,
         }
 
         headers = {
@@ -642,7 +659,7 @@ class Llama_CoT_CD(Llama):
 
         response = requests.post(self.url, headers=headers, json=payload)
         if response.status_code == 200:
-            return response.json()["choices"][0]["message"]["content"], prompt
+            return response.json()["choices"][0]["message"]["parsed"], prompt
         else:
             print(f"Error {response.status_code}: {response.text}")
             return None, prompt
@@ -674,7 +691,10 @@ class Gemini_CoT_CD(Gemini):
             },
         )
 
-        return response.text, prompt
+        reasoning_response : Reasoning = cast(Reasoning, response.parsed)
+        # final_answer = reasoning_response.final_answer
+
+        return reasoning_response, prompt
 
     def __str__(self):
         return "Gemini_CoT_CD"
