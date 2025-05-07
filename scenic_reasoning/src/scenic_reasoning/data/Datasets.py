@@ -104,7 +104,13 @@ class ObjDectDatasetBuilder(Dataset):
             idx -= len(self.dataset[d])
         raise IndexError("Index out of range")
 
-    def build(self, model: Optional[ObjectDetectionModelI] = None, batch_size: int = 1, conf: float = 0.5, device: Optional[torch.device] = None):
+    def build(
+        self,
+        model: Optional[ObjectDetectionModelI] = None,
+        batch_size: int = 1,
+        conf: float = 0.5,
+        device: Optional[torch.device] = None,
+    ):
 
         def buffered_writer():
             buffer = defaultdict(dict)

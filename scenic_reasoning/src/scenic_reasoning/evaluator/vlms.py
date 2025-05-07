@@ -3,7 +3,7 @@ import io
 import re
 import time
 from enum import Enum
-from typing import Dict, List, Literal, Type
+from typing import Any, Dict, List, Literal, Type, cast
 
 import cv2
 import numpy as np
@@ -14,7 +14,7 @@ from google import genai
 from openai import OpenAI
 from PIL import Image
 from pydantic import BaseModel, Field
-from scenic_reasoning.utilities.coco import coco_label
+from scenic_reasoning.utilities.coco import coco_labels
 from scenic_reasoning.utilities.common import project_root_dir
 from torchvision import transforms
 
@@ -68,6 +68,7 @@ class GPT:
                     ],
                 }
             ],
+            temperature=0.0,
         )
 
         responses = completion.choices[0].message.content
@@ -107,7 +108,7 @@ class Gemini:
             try:
                 response = self.client.models.generate_content(
                     model=self.model,
-                    contents=[prompt, image],
+                    contents=[image, prompt],
                 )
                 break
             except Exception as e:
@@ -123,15 +124,14 @@ class Gemini:
 
 
 class Llama:
-    def __init__(
-        self, model_name="meta/llama-3.2-90b-vision-instruct-maas", region="us-central1"
-    ):
+    def __init__(self, model_name="unsloth/Llama-3.2-90B-Vision-Instruct"):
         PROJECT_ID = "graid-451620"
-        REGION = region
-        ENDPOINT = f"{REGION}-aiplatform.googleapis.com"
+        REGION = "us-central1"
+        ENDPOINT = f"http://127.0.0.1:9099/v1/"
         self.model = model_name
 
-        self.url = f"https://{ENDPOINT}/v1beta1/projects/{PROJECT_ID}/locations/{REGION}/endpoints/openapi/chat/completions"
+        # self.url = f"https://{ENDPOINT}/v1beta1/projects/{PROJECT_ID}/locations/{REGION}/endpoints/openapi/chat/completions"
+        self.url = ENDPOINT
 
         with open("token.txt", "r") as token_file:
             self.token = token_file.read().strip()
@@ -139,8 +139,10 @@ class Llama:
         import openai
 
         self.client = openai.OpenAI(
-            base_url=f"https://{ENDPOINT}/v1beta1/projects/{PROJECT_ID}/locations/{REGION}/endpoints/openapi",
-            api_key=self.token,
+            base_url=self.url,
+            api_key="vLLM",
+            # base_url=f"https://{ENDPOINT}/v1beta1/projects/{PROJECT_ID}/locations/{REGION}/endpoints/openapi",
+            # api_key=self.token,
         )
 
     def encode_image(self, image):
@@ -164,31 +166,6 @@ class Llama:
 
         image_gcs_url = f"data:image/jpeg;base64,{base64_image}"
 
-        # payload = {
-        #     "model": self.model,
-        #     "stream": False,
-        #     "messages": [
-        #         {
-        #             "role": "user",
-        #             "content": [
-        #                 {"image_url": {"url": image_gcs_url}, "type": "image_url"},
-        #                 {"text": prompt, "type": "text"},
-        #             ],
-        #         }
-        #     ],
-        #     "temperature": 0.4,
-        #     "top_k": 10,
-        #     "top_p": 0.95,
-        #     "n": 1,
-        # }
-
-        # headers = {
-        #     "Authorization": f"Bearer {self.token}",
-        #     "Content-Type": "application/json",
-        # }
-
-        # # response = requests.post(self.url, headers=headers, json=payload)
-
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
@@ -200,8 +177,7 @@ class Llama:
                     ],
                 }
             ],
-            temperature=0.4,
-            n=1,
+            temperature=0.0,
         )
         return response.choices[0].message.content, prompt
 
@@ -209,166 +185,167 @@ class Llama:
         return "Llama"
 
 
-class Llama_CoT(Llama):
-    def __init__(
-        self, model_name="meta/llama-3.2-90b-vision-instruct-maas", region="us-central1"
-    ):
-        super().__init__(model_name, region)
+# class Llama_CoT(Llama):
+#     def __init__(
+#         self, model_name="unsloth/Llama-3.2-90B-Vision-Instruct"
+#     ):
+#         super().__init__(model_name)
 
-    def generate_answer(self, image, questions: str, prompting_style):
-        image, prompt = prompting_style.generate_prompt(image, questions)
-        base64_image = self.encode_image(image)
-        prompt_img_path = (
-            project_root_dir()
-            / "data/nuimages/all/samples/CAM_FRONT/n010-2018-07-10-10-24-36+0800__CAM_FRONT__1531189590512488.jpg"
-        )
-        base64_image_prompt = self.encode_image(prompt_img_path)
+#     def generate_answer(self, image, questions: str, prompting_style):
+#         image, prompt = prompting_style.generate_prompt(image, questions)
+#         base64_image = self.encode_image(image)
+#         prompt_img_path = (
+#             project_root_dir()
+#             / "data/nuimages/all/samples/CAM_FRONT/n010-2018-07-10-10-24-36+0800__CAM_FRONT__1531189590512488.jpg"
+#         )
+#         base64_image_prompt = self.encode_image(prompt_img_path)
 
-        image_gcs_url = f"data:image/jpeg;base64,{base64_image}"
-        prompt_image_url = f"data:image/jpeg;base64,{base64_image_prompt}"
+#         image_gcs_url = f"data:image/jpeg;base64,{base64_image}"
+#         prompt_image_url = f"data:image/jpeg;base64,{base64_image_prompt}"
 
-        payload = {
-            "model": self.model,
-            "stream": False,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "image_url": {"url": prompt_image_url},
-                            "type": "image_url",
-                        },
-                        {"text": prompt, "type": "text"},
-                    ],
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        {"image_url": {"url": image_gcs_url}, "type": "image_url"},
-                        {"text": questions, "type": "text"},
-                    ],
-                },
-            ],
-            "temperature": 0.4,
-            "top_k": 10,
-            "top_p": 0.95,
-            "n": 1,
-        }
+#         payload = {
+#             "model": self.model,
+#             "stream": False,
+#             "messages": [
+#                 {
+#                     "role": "user",
+#                     "content": [
+#                         {
+#                             "image_url": {"url": prompt_image_url},
+#                             "type": "image_url",
+#                         },
+#                         {"text": prompt, "type": "text"},
+#                     ],
+#                 },
+#                 {
+#                     "role": "user",
+#                     "content": [
+#                         {"image_url": {"url": image_gcs_url}, "type": "image_url"},
+#                         {"text": questions, "type": "text"},
+#                     ],
+#                 },
+#             ],
+#             "temperature": 0.0,
+#         }
 
-        headers = {
-            "Authorization": f"Bearer {self.token}",
-            "Content-Type": "application/json",
-        }
+#         headers = {
+#             "Authorization": f"Bearer {self.token}",
+#             "Content-Type": "application/json",
+#         }
 
-        response = requests.post(self.url, headers=headers, json=payload)
-        if response.status_code == 200:
-            return response.json()["choices"][0]["message"]["content"], prompt
-        else:
-            print(f"Error {response.status_code}: {response.text}")
-            return None, prompt
+#         response = requests.post(self.url, headers=headers, json=payload)
+#         if response.status_code == 200:
+#             return response.json()["choices"][0]["message"]["content"], prompt
+#         else:
+#             print(f"Error {response.status_code}: {response.text}")
+#             return None, prompt
 
-    def __str__(self):
-        return "Llama_CoT"
+#     def __str__(self):
+#         return "Llama_CoT"
 
 
 CocoLabelEnum = Enum(
     "CocoLabelEnum",
-    list(coco_label.values()),
+    list(coco_labels.values()),
     type=str,
 )
 
 
-class IsObjectCenteredAnswer(BaseModel):
-    question: str
-    answer: Literal["left", "centered", "right"]
+class Answer(BaseModel):
+    answer: Any
 
 
-class WidthVsHeightAnswer(BaseModel):
-    question: str
-    answer: Literal["yes", "no"]
+class IsObjectCenteredAnswer(Answer):
+    # question: str
+    answer: Literal["Left", "Centered", "Right"]
 
 
-class QuadrantsAnswer(BaseModel):
-    question: str
+class WidthVsHeightAnswer(Answer):
+    # question: str
+    answer: Literal["Yes", "No"]
+
+
+class QuadrantsAnswer(Answer):
+    # question: str
     answer: int
 
 
-class LargestAppearanceAnswer(BaseModel):
-    question: str
+class LargestAppearanceAnswer(Answer):
+    # question: str
     answer: CocoLabelEnum
 
 
-class MostAppearanceAnswer(BaseModel):
-    question: str
+class MostAppearanceAnswer(Answer):
+    # question: str
     answer: CocoLabelEnum
 
 
-class LeastAppearanceAnswer(BaseModel):
-    question: str
+class LeastAppearanceAnswer(Answer):
+    # question: str
     answer: CocoLabelEnum
 
 
-class LeftOfAnswer(BaseModel):
-    question: str
+class LeftOfAnswer(Answer):
+    # question: str
     answer: Literal["Yes", "No"]
 
 
-class RightOfAnswer(BaseModel):
-    question: str
+class RightOfAnswer(Answer):
+    # question: str
     answer: Literal["Yes", "No"]
 
 
-class LeftMostAnswer(BaseModel):
-    question: str
+class LeftMostAnswer(Answer):
+    # question: str
     answer: CocoLabelEnum
 
 
-class RightMostAnswer(BaseModel):
-    question: str
+class RightMostAnswer(Answer):
+    # question: str
     answer: CocoLabelEnum
 
 
-class HowManyAnswer(BaseModel):
-    question: str
+class HowManyAnswer(Answer):
+    # question: str
     answer: CocoLabelEnum
 
 
-class AreMoreAnswer(BaseModel):
-    question: str
+class AreMoreAnswer(Answer):
+    # question: str
     answer: Literal["Yes", "No"]
 
 
-class WhichMoreAnswer(BaseModel):
-    question: str
+class WhichMoreAnswer(Answer):
+    # question: str
     answer: CocoLabelEnum
 
 
-class LeftMostWidthVsHeightAnswer(BaseModel):
-    question: str
-    answer: Literal["yes", "no"]
-
-
-class RightMostWidthVsHeightAnswer(BaseModel):
-    question: str
-    answer: Literal["yes", "no"]
-
-
-class ObjectsInRowAnswer(BaseModel):
-    question: str
+class LeftMostWidthVsHeightAnswer(Answer):
+    # question: str
     answer: Literal["Yes", "No"]
 
 
-class ObjectsInLineAnswer(BaseModel):
-    question: str
+class RightMostWidthVsHeightAnswer(Answer):
+    # question: str
+    answer: Literal["Yes", "No"]
+
+
+class ObjectsInRowAnswer(Answer):
+    # question: str
+    answer: Literal["Yes", "No"]
+
+
+class ObjectsInLineAnswer(Answer):
+    # question: str
     answer: CocoLabelEnum
 
 
-class MostClusteredObjectsAnswer(BaseModel):
-    question: str
+class MostClusteredObjectsAnswer(Answer):
+    # question: str
     answer: CocoLabelEnum
 
 
-QUESTION_CLASS_MAP: Dict[str, Type[BaseModel]] = {
+QUESTION_CLASS_MAP: Dict[str, Type[Answer]] = {
     r"centered in the image": IsObjectCenteredAnswer,
     r"width of the .* larger than the height": WidthVsHeightAnswer,
     r"In what quadrant does .* appear": QuadrantsAnswer,
@@ -390,7 +367,7 @@ QUESTION_CLASS_MAP: Dict[str, Type[BaseModel]] = {
 }
 
 
-def get_answer_class_from_question(question: str) -> Type[BaseModel]:
+def get_answer_class_from_question(question: str) -> Type[Answer]:
     for pattern, cls in QUESTION_CLASS_MAP.items():
         if re.search(pattern, question, flags=re.IGNORECASE):
             return cls
@@ -421,6 +398,8 @@ class GPT_CD(GPT):
         image, prompt = prompting_style.generate_prompt(image, questions)
         base64_image = self.encode_image(image)
 
+        answer_cls = get_answer_class_from_question(questions)
+
         completion = self.client.beta.chat.completions.parse(
             model=self.model_name,
             messages=[
@@ -441,19 +420,22 @@ class GPT_CD(GPT):
                     ],
                 }
             ],
-            response_format=Reasoning,
+            response_format=answer_cls,
+            temperature=0.0,
         )
 
-        responses = completion.choices[0].message.content
+        message = completion.choices[0].message
+        if message.parsed:
+            final_answer = message.parsed.answer
+        else:
+            final_answer = message.refusal
 
-        return responses, prompt
+        return final_answer, prompt
 
 
 class Llama_CD(Llama):
-    def __init__(
-        self, model_name="meta/llama-3.2-90b-vision-instruct-maas", region="us-central1"
-    ):
-        super().__init__(model_name, region)
+    def __init__(self, model_name="unsloth/Llama-3.2-90B-Vision-Instruct"):
+        super().__init__(model_name)
 
     def generate_answer(self, image, questions: str, prompting_style):
         image, prompt = prompting_style.generate_prompt(image, questions)
@@ -465,37 +447,6 @@ class Llama_CD(Llama):
         # There doesn't seem to be a good way of dynamically setting the final answer type
         # to be the answer_cls so we will include it in the prompt
 
-        payload = {
-            "model": self.model,
-            "stream": False,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": [
-                        {"image_url": {"url": image_gcs_url}, "type": "image_url"},
-                        {"text": prompt, "type": "text"},
-                    ],
-                },
-                {
-                    "role": "system",
-                    "content": "The final_answer should be of type: " + str(answer_cls),
-                },
-            ],
-            "response_format": Reasoning,
-            "temperature": 0.4,
-            "top_k": 10,
-            "top_p": 0.95,
-            "n": 1,
-        }
-
-        headers = {
-            "Authorization": f"Bearer {self.token}",
-            "Content-Type": "application/json",
-        }
-
-        import pdb
-
-        pdb.set_trace()
         response = self.client.beta.chat.completions.parse(
             model=self.model,
             messages=[
@@ -506,23 +457,18 @@ class Llama_CD(Llama):
                         {"type": "text", "text": prompt},
                     ],
                 },
-                {
-                    "role": "system",
-                    "content": "The final_answer should be of type: " + str(answer_cls),
-                },
             ],
-            temperature=0.4,
-            n=1,
-            response_format=Reasoning,
+            temperature=0.0,
+            response_format=answer_cls,
         )
 
-        return response.choices[0].message.content, prompt
-        # response = requests.post(self.url, headers=headers, json=payload)
-        # if response.status_code == 200:
-        #     return response.json()["choices"][0]["message"]["content"], prompt
-        # else:
-        #     print(f"Error {response.status_code}: {response.text}")
-        #     return None, prompt
+        message = response.choices[0].message
+        if message.parsed:
+            final_answer = message.parsed.answer
+        else:
+            final_answer = message.refusal
+
+        return final_answer, prompt
 
     def __str__(self):
         return "Llama_CD"
@@ -543,15 +489,20 @@ class Gemini_CD(Gemini):
             contents=[
                 image,
                 prompt,
-                f"The final_answer should be of type: {response_format}",
+                # f"The final_answer should be of type: {response_format.model_json_schema()}",
             ],
             config={
                 "response_mime_type": "application/json",
-                "response_schema": Reasoning,
+                "response_schema": response_format,
+                "temperature": 0.0,
+                "topK": 1,
             },
         )
 
-        return response.text, prompt
+        answers: Answer = cast(Answer, response.parsed)
+        final_answer = answers.answer
+
+        return final_answer, prompt
 
     def __str__(self):
         return "Gemini_CD"
@@ -583,21 +534,29 @@ class GPT_CoT_CD(GPT):
                             "text": prompt,
                         },
                     ],
-                }
+                },
+                {
+                    "role": "system",
+                    "content": f"The final_answer should be of type: {get_answer_class_from_question(questions).model_json_schema()}",
+                },
             ],
             response_format=Reasoning,
+            temperature=0.0,
         )
 
-        responses = completion.choices[0].message.content
+        message = completion.choices[0].message
+        if message.parsed:
+            output = message.parsed
+            output = output.model_dump_json()
+        else:
+            output = message.refusal
 
-        return responses, prompt
+        return output, prompt
 
 
 class Llama_CoT_CD(Llama):
-    def __init__(
-        self, model_name="meta/llama-3.2-90b-vision-instruct-maas", region="us-central1"
-    ):
-        super().__init__(model_name, region)
+    def __init__(self, model_name="unsloth/Llama-3.2-90B-Vision-Instruct"):
+        super().__init__(model_name)
 
     def generate_answer(self, image, questions: str, prompting_style):
         image, prompt = prompting_style.generate_prompt(image, questions)
@@ -609,40 +568,33 @@ class Llama_CoT_CD(Llama):
         # There doesn't seem to be a good way of dynamically setting the final answer type
         # to be the answer_cls so we will include it in the prompt
 
-        payload = {
-            "model": self.model,
-            "stream": False,
-            "messages": [
+        response = self.client.beta.chat.completions.parse(
+            model=self.model,
+            messages=[
                 {
                     "role": "user",
                     "content": [
-                        {"image_url": {"url": image_gcs_url}, "type": "image_url"},
-                        {"text": prompt, "type": "text"},
+                        {"type": "image_url", "image_url": {"url": image_gcs_url}},
+                        {"type": "text", "text": prompt},
                     ],
                 },
                 {
                     "role": "system",
-                    "content": "The final_answer should be of type: " + str(answer_cls),
+                    "content": f"The final_answer should be of type: {answer_cls.model_json_schema()}",
                 },
             ],
-            "response_format": Reasoning,
-            "temperature": 0.4,
-            "top_k": 10,
-            "top_p": 0.95,
-            "n": 1,
-        }
+            response_format=Reasoning,
+            temperature=0.0,
+        )
 
-        headers = {
-            "Authorization": f"Bearer {self.token}",
-            "Content-Type": "application/json",
-        }
-
-        response = requests.post(self.url, headers=headers, json=payload)
-        if response.status_code == 200:
-            return response.json()["choices"][0]["message"]["content"], prompt
+        message = response.choices[0].message
+        if message.parsed:
+            final_answer = message.parsed
+            final_answer = final_answer.model_dump_json()
         else:
-            print(f"Error {response.status_code}: {response.text}")
-            return None, prompt
+            final_answer = message.refusal
+
+        return final_answer, prompt
 
     def __str__(self):
         return "Llama_CoT_CD"
@@ -663,15 +615,20 @@ class Gemini_CoT_CD(Gemini):
             contents=[
                 image,
                 prompt,
-                f"The final_answer should be of type: {response_format}",
+                f"The final_answer should be of type: {response_format.model_json_schema()}",
             ],
             config={
                 "response_mime_type": "application/json",
                 "response_schema": Reasoning,
+                "temperature": 0.0,
+                "topK": 1,
             },
         )
 
-        return response.text, prompt
+        reasoning_response: Reasoning = cast(Reasoning, response.parsed)
+        # final_answer = reasoning_response.final_answer
+
+        return reasoning_response, prompt
 
     def __str__(self):
         return "Gemini_CoT_CD"

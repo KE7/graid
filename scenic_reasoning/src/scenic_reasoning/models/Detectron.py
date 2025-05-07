@@ -30,7 +30,13 @@ from scenic_reasoning.utilities.common import get_default_device
 
 
 class Detectron_obj(ObjectDetectionModelI):
-    def __init__(self, config_file: str, weights_file: str, threshold: float = 0.1, device: Optional[Union[str, torch.device]] = None):
+    def __init__(
+        self,
+        config_file: str,
+        weights_file: str,
+        threshold: float = 0.1,
+        device: Optional[Union[str, torch.device]] = None,
+    ):
         # Input Detectron2 config file and weights file
         cfg = get_cfg()
         cfg.MODEL.DEVICE = str(get_default_device()) if device is None else device

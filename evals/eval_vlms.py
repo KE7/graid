@@ -4,29 +4,35 @@ import io
 import json
 import os
 import pickle
+import random
 import re
 import sqlite3
 from pathlib import Path
+
 import pandas as pd
-from scenic_reasoning.evaluator.metrics import ConstrainedDecoding, LLMJudge, ExactMatch
 from PIL import Image
-from scenic_reasoning.evaluator.prompts import CoT, SetOfMarkPrompt, ZeroShotPrompt, ZeroShotPrompt_batch
-from scenic_reasoning.utilities.common import project_root_dir
-from sqlitedict import SqliteDict
-from torchvision import transforms
-from tqdm import tqdm
+from scenic_reasoning.evaluator.metrics import ConstrainedDecoding, ExactMatch, LLMJudge
+from scenic_reasoning.evaluator.prompts import (
+    CoT,
+    SetOfMarkPrompt,
+    ZeroShotPrompt,
+    ZeroShotPrompt_batch,
+)
 from scenic_reasoning.evaluator.vlms import (
-    GPT, 
+    GPT,
     GPT_CD,
     GPT_CoT_CD,
-    Gemini, 
+    Gemini,
     Gemini_CD,
     Gemini_CoT_CD,
     Llama,
     Llama_CD,
-    Llama_CoT_CD
+    Llama_CoT_CD,
 )
-import random
+from scenic_reasoning.utilities.common import project_root_dir
+from sqlitedict import SqliteDict
+from torchvision import transforms
+from tqdm import tqdm
 
 DB_PATH = project_root_dir() / "data/databases_ablations"
 
@@ -47,10 +53,12 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
     l = db_path.split("/")
     db_path = "_".join([l[-2], l[-1]])
 
-    output_dir = DB_PATH / f"{db_path}_{my_vlm}_{my_metric}_{my_prompt}"
+    output_dir = db_path.split(".py")[0]
+    output_dir = Path(output_dir)
+    output_dir = output_dir / f"{my_vlm}_{my_prompt}_{my_metric}"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    vlm_cache_loc = output_dir / f"{my_vlm}_cache.db"
+    vlm_cache_loc = output_dir / f"{my_vlm}_{my_prompt}_{my_metric}_cache.db"
     vlm_cache = SqliteDict(
         str(vlm_cache_loc),
         tablename="vlm_cache",
@@ -67,12 +75,11 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
     for table in tables:
         df = pd.read_sql(f"SELECT * FROM '{table}'", conn)
         dataframes[table] = df
-    
+
     conn.close()
 
-
     sampled_dataframes = {}
-    sample_size = 100
+    sample_size = 100  # this is per table not across all tables
     print("Filtering rows...")
 
     for table_name, df in dataframes.items():
@@ -84,10 +91,9 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
             pkl_path, v = d["key"], json.loads(d["value"])
             qa_list = v.get("qa_list", None)
 
-            
             if not qa_list or qa_list == "Question not applicable":
                 continue
-            
+
             if isinstance(qa_list[0], list):
                 qa_list = [random.choice(qa_list)]
 
@@ -95,31 +101,43 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
 
         filtered_df = pd.DataFrame(filtered_rows).reset_index(drop=True)
         if len(filtered_df) >= sample_size:
-            sampled_df = filtered_df.sample(n=sample_size, random_state=42).reset_index(drop=True)
+            sampled_df = filtered_df.sample(n=sample_size, random_state=42).reset_index(
+                drop=True
+            )
         else:
-            print(f"Table '{table_name}' has only {len(filtered_df)} valid rows. Returning all.")
+            print(
+                f"Table '{table_name}' has only {len(filtered_df)} valid rows. Returning all."
+            )
             sampled_df = filtered_df.copy()
-            
+
         sampled_dataframes[table_name] = sampled_df
 
     correctness = []
-    idx = 0
 
-    for table in sampled_dataframes:
-        output_path = output_dir / f"{img_idx}.txt"
+    for table_idx, table in enumerate(sampled_dataframes):
+        output_path = output_dir / f"{table_idx}.txt"
         if os.path.exists(output_path):
             with open(output_path, "r") as f:
                 text = f.read()
                 match = re.search(r"Correctness:\s*\n(.*?)\n", text)
-                score = match.group(1)
-                score = ast.literal_eval(score)
-                correctness.append(score)
+                if match:
+                    score = match.group(1)
+                    score = ast.literal_eval(score)
+                    correctness.append(score)
+                else:
+                    print(f"No correctness score found in {output_path}, skipping...")
             print(f"Skipping {output_path}")
             continue
 
         questions = []
         answers = []
-        for img_idx, row in tqdm(sampled_dataframes[table].iterrows(), total=len(sampled_dataframes[table])):
+        image, image_path = (
+            None,
+            None,
+        )  # Initialize image_path to avoid 'possibly unbound' errors
+        for img_idx, row in tqdm(
+            sampled_dataframes[table].iterrows(), total=len(sampled_dataframes[table])
+        ):
             row = sampled_dataframes[table].iloc[img_idx]
 
             d = row.to_dict()
@@ -139,17 +157,17 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
                 image_path = str(
                     project_root_dir() / f"data/bdd100k/images/100k/val/{image_path}"
                 )
+                image = image_path
             elif "nuimage" in db_path:
                 image_path = image_data["filename"]
                 image_path = str(
                     project_root_dir()
                     / f"/home/eecs/liheng/scenic-reasoning/data/nuimages/all/{image_path}"
                 )
+                image = image_path
             else:
-                image_path = transforms.ToTensor()(
-                    Image.open(io.BytesIO(image_data["image"]))
-                )
-
+                image_path = image_data["image"]
+                image = transforms.ToTensor()(Image.open(io.BytesIO(image_path)))
 
             if isinstance(qa_list[0], list):
                 questions += [item[0] for item in qa_list]
@@ -158,38 +176,43 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
                 questions.append(qa_list[0])
                 answers.append(qa_list[1])
 
-
-        if not questions:
-            print(f"No questions found for image index {img_idx}, skipping...")
-            continue
+            if len(questions) == 0:
+                print(f"No questions found for image index {img_idx}, skipping...")
+                continue
 
         preds = []
+        prompt = ""
 
-
-        if use_batch:
+        if use_batch and image_path is not None:
             questions = ", ".join([item for i, item in enumerate(questions)])
             answers = ", ".join([item for i, item in enumerate(answers)])
-            _, cache_key = my_prompt.generate_prompt(image_path, questions)
-            if cache_key in vlm_cache:
-                preds = vlm_cache[cache_key]
+            _, prompt = my_prompt.generate_prompt(image_path, questions)
+            if image_path is not None:
+                cache_key = f"{image_path}_{prompt}"
+                if cache_key in vlm_cache:
+                    preds = vlm_cache[cache_key]
+                else:
+                    preds, prompt = my_vlm.generate_answer(
+                        image_path, questions, my_prompt
+                    )
+                    vlm_cache[cache_key] = preds
             else:
-                preds, prompt = my_vlm.generate_answer(
-                    image_path, questions, my_prompt
-                )
-                vlm_cache[cache_key] = preds
+                print("Warning: image_path is None, skipping batch processing")
+                preds = []
             correctness.append(my_metric.evaluate(preds, answers))
             preds = preds
         else:
             for q, a in tqdm(zip(questions, answers), total=len(questions)):
-                if len(q) < 5:  #check for "D" and "y"
+                if len(q) < 5:  # check for "D" and "y"
                     raise ValueError(f"Question too short: {q}")
 
-                # the prompt is the cache key
-                _, cache_key = my_prompt.generate_prompt(image_path, q)
+                # the cache key should be image_path + prompt
+                _, prompt = my_prompt.generate_prompt(image, q)
+                cache_key = f"{image_path}_{prompt}"
                 if cache_key in vlm_cache:
                     pred = vlm_cache[cache_key]
                 else:
-                    pred, prompt = my_vlm.generate_answer(image_path, q, my_prompt)
+                    pred, prompt = my_vlm.generate_answer(image, q, my_prompt)
                     vlm_cache[cache_key] = pred
                 correct = my_metric.evaluate(pred, a)
 
@@ -197,13 +220,18 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
                 correctness.append(correct)
 
         with open(str(output_path), "w") as log_file:
-            log_file.write(f"Image Path: \n{image_path}\n")
+            log_file.write(
+                f"Image Path: \n{image_path if image_path is not None else 'None'}\n"
+            )
             log_file.write(f"Questions: \n{questions}\n")
             log_file.write(f"Answers: \n{answers}\n")
             log_file.write(f"Prompt: \n{prompt}\n")
             log_file.write(f"Preds: \n{preds}\n")
             log_file.write(f"Correctness: \n{correctness}\n")
             log_file.write("\n")
+
+    vlm_cache.close()
+    conn.close()
 
     return sum(correctness) / len(correctness)
 
@@ -221,7 +249,17 @@ if __name__ == "__main__":
         "--vlm",
         type=str,
         default="Llama",
-        choices=["GPT", "GPT_CD", "GPT_CoT_CD", "Gemini", "Gemini_CD", "Gemini_CoT_CD", "Llama", "Llama_CD", "Llama_CoT_CD"],
+        choices=[
+            "GPT",
+            "GPT_CD",
+            "GPT_CoT_CD",
+            "Gemini",
+            "Gemini_CD",
+            "Gemini_CoT_CD",
+            "Llama",
+            "Llama_CD",
+            "Llama_CoT_CD",
+        ],
         help="VLM to use for generating answers.",
     )
     parser.add_argument(
@@ -246,7 +284,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    use_batch = False
+    use_batch = False  # args.db_name = "bdd_val_0.2_/co_dino_5scale_swin_l_lsj_16xb1_3x_coco.py.sqlite"; args.vlm="Llama_CD"; args.metric="ExactMatch"; args.prompt="ZeroShotPrompt"
 
     db_path = str(DB_PATH / args.db_name)
     if args.vlm == "GPT":
@@ -257,12 +295,12 @@ if __name__ == "__main__":
     elif args.vlm == "GPT_CoT_CD":
         my_vlm = GPT_CoT_CD()
     elif args.vlm == "Llama":
-        my_vlm = Llama(region=args.region)
+        my_vlm = Llama()
         # use_batch = False
     elif args.vlm == "Llama_CD":
-        my_vlm = Llama_CD(region=args.region)
+        my_vlm = Llama_CD()
     elif args.vlm == "Llama_CoT_CD":
-        my_vlm = Llama_CoT_CD(region=args.region)
+        my_vlm = Llama_CoT_CD()
         # use_batch = False
     elif args.vlm == "Gemini":
         my_vlm = Gemini(location=args.region)
@@ -291,7 +329,7 @@ if __name__ == "__main__":
             my_prompt = SetOfMarkPrompt(gpu=2)
         else:
             raise ValueError(f"SetOfMarkPrompt not supported for VLM: {args.vlm}")
-        
+
     elif args.prompt == "CoT":
         if use_batch:
             raise ValueError("CoT does not support batch processing.")
@@ -301,9 +339,9 @@ if __name__ == "__main__":
         if use_batch:
             my_prompt = ZeroShotPrompt_batch()
         else:
-            my_prompt = ZeroShotPrompt()
+            my_prompt = ZeroShotPrompt(using_cd=("CD" in args.vlm))
     else:
         raise ValueError(f"Unknown prompt: {args.prompt}")
-    
+
     acc = iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=use_batch)
     print(f"Accuracy: {acc}")

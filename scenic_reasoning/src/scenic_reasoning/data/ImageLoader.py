@@ -5,7 +5,7 @@ import logging
 import os
 import pickle
 import re
-from datetime import time
+from datetime import datetime, time
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
@@ -31,7 +31,6 @@ from torch import Tensor
 from torch.utils.data import Dataset
 from torchvision import transforms
 from tqdm import tqdm
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -763,7 +762,9 @@ class NuImagesDataset(ImageDataset):
                 print("creating idx... ", idx)
                 # if save_path.exists():
                 #     continue
-                if self.use_time_filtered and not self.is_time_in_working_hours(img_filename):
+                if self.use_time_filtered and not self.is_time_in_working_hours(
+                    img_filename
+                ):
                     print("invalid")
                     continue
 
@@ -1189,7 +1190,7 @@ class WaymoDataset(ImageDataset):
 
     def cls_to_category(self, cls: int) -> str:
         return self._CATEGORIES_R[cls]
-    
+
     def is_time_in_working_hours(self, timestamp_micro: str) -> bool:
         timestamp_sec = int(timestamp_micro) / 1e6
         dt = datetime.utcfromtimestamp(timestamp_sec)
@@ -1236,7 +1237,9 @@ class WaymoDataset(ImageDataset):
         if rebuild:
             save_path_parent = (
                 # project_root_dir() / "data" / f"waymo_{self.split}_interesting"
-                project_root_dir() / "data" / f"waymo_{self.split}_filtered" if self.use_time_filtered else f"waymo_{self.split}"
+                project_root_dir() / "data" / f"waymo_{self.split}_filtered"
+                if self.use_time_filtered
+                else f"waymo_{self.split}"
             )
             save_path_parent.mkdir(parents=True, exist_ok=True)
             try:
@@ -1300,7 +1303,9 @@ class WaymoDataset(ImageDataset):
                     img_bytes = image_data["[CameraImageComponent].image"]
                     frame_timestamp_micros = image_data["key.frame_timestamp_micros"]
 
-                    if self.use_time_filtered and not self.is_time_in_working_hours(frame_timestamp_micros):
+                    if self.use_time_filtered and not self.is_time_in_working_hours(
+                        frame_timestamp_micros
+                    ):
                         print("invalid")
                         continue
 
