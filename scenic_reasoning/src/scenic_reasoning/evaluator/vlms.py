@@ -246,7 +246,7 @@ class Llama:
 
 CocoLabelEnum = Enum(
     "CocoLabelEnum",
-    list(coco_labels.values()),
+    list(coco_labels.values()) + ["I don't know"],
     type=str,
 )
 
@@ -257,12 +257,12 @@ class Answer(BaseModel):
 
 class IsObjectCenteredAnswer(Answer):
     # question: str
-    answer: Literal["Left", "Centered", "Right"]
+    answer: Literal["Left", "Centered", "Right", "I don't know"]
 
 
 class WidthVsHeightAnswer(Answer):
     # question: str
-    answer: Literal["Yes", "No"]
+    answer: Literal["Yes", "No", "I don't know"]
 
 
 class QuadrantsAnswer(Answer):
@@ -287,12 +287,12 @@ class LeastAppearanceAnswer(Answer):
 
 class LeftOfAnswer(Answer):
     # question: str
-    answer: Literal["Yes", "No"]
+    answer: Literal["Yes", "No", "I don't know"]
 
 
 class RightOfAnswer(Answer):
     # question: str
-    answer: Literal["Yes", "No"]
+    answer: Literal["Yes", "No", "I don't know"]
 
 
 class LeftMostAnswer(Answer):
@@ -312,7 +312,7 @@ class HowManyAnswer(Answer):
 
 class AreMoreAnswer(Answer):
     # question: str
-    answer: Literal["Yes", "No"]
+    answer: Literal["Yes", "No", "I don't know"]
 
 
 class WhichMoreAnswer(Answer):
@@ -322,17 +322,17 @@ class WhichMoreAnswer(Answer):
 
 class LeftMostWidthVsHeightAnswer(Answer):
     # question: str
-    answer: Literal["Yes", "No"]
+    answer: Literal["Yes", "No", "I don't know"]
 
 
 class RightMostWidthVsHeightAnswer(Answer):
     # question: str
-    answer: Literal["Yes", "No"]
+    answer: Literal["Yes", "No", "I don't know"]
 
 
 class ObjectsInRowAnswer(Answer):
     # question: str
-    answer: Literal["Yes", "No"]
+    answer: Literal["Yes", "No", "I don't know"]
 
 
 class ObjectsInLineAnswer(Answer):
