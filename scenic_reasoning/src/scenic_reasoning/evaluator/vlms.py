@@ -628,7 +628,7 @@ class Gemini_CoT_CD(Gemini):
         reasoning_response: Reasoning = cast(Reasoning, response.parsed)
         final_answer = reasoning_response.final_answer
 
-        return final_answer, prompt
+        return reasoning_response.model_dump_json(), prompt
 
     def __str__(self):
         return "Gemini_CoT_CD"
