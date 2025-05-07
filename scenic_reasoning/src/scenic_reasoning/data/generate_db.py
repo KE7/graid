@@ -1,5 +1,6 @@
 import argparse
 
+import torch
 from scenic_reasoning.data.Datasets import ObjDectDatasetBuilder
 from scenic_reasoning.models.Detectron import Detectron_obj
 from scenic_reasoning.models.MMDetection import MMdetection_obj
@@ -12,7 +13,6 @@ from scenic_reasoning.utilities.common import (
     yolo_nuscene_transform,
     yolo_waymo_transform,
 )
-import torch
 
 bdd_transform = lambda i, l: yolo_bdd_transform(i, l, new_shape=(768, 1280))
 nuimage_transform = lambda i, l: yolo_nuscene_transform(i, l, new_shape=(896, 1600))

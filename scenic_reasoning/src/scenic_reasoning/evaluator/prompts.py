@@ -21,7 +21,11 @@ class ZeroShotPrompt(PromptingStrategy):
 
     def __init__(self, using_cd=False):
         self.using_cd = using_cd
-        self.ans_format_str = " Make sure to wrap the answer in triple backticks. '```'" if not self.using_cd else ""
+        self.ans_format_str = (
+            " Make sure to wrap the answer in triple backticks. '```'"
+            if not self.using_cd
+            else ""
+        )
 
     def generate_prompt(self, image, question):
         prompt = f"""\

@@ -124,9 +124,7 @@ class Gemini:
 
 
 class Llama:
-    def __init__(
-        self, model_name="unsloth/Llama-3.2-90B-Vision-Instruct"
-    ):
+    def __init__(self, model_name="unsloth/Llama-3.2-90B-Vision-Instruct"):
         PROJECT_ID = "graid-451620"
         REGION = "us-central1"
         ENDPOINT = f"http://127.0.0.1:9099/v1/"
@@ -436,9 +434,7 @@ class GPT_CD(GPT):
 
 
 class Llama_CD(Llama):
-    def __init__(
-        self, model_name="unsloth/Llama-3.2-90B-Vision-Instruct"
-    ):
+    def __init__(self, model_name="unsloth/Llama-3.2-90B-Vision-Instruct"):
         super().__init__(model_name)
 
     def generate_answer(self, image, questions: str, prompting_style):
@@ -450,7 +446,7 @@ class Llama_CD(Llama):
         answer_cls = get_answer_class_from_question(questions)
         # There doesn't seem to be a good way of dynamically setting the final answer type
         # to be the answer_cls so we will include it in the prompt
-        
+
         response = self.client.beta.chat.completions.parse(
             model=self.model,
             messages=[
@@ -503,7 +499,7 @@ class Gemini_CD(Gemini):
             },
         )
 
-        answers : Answer = cast(Answer, response.parsed)
+        answers: Answer = cast(Answer, response.parsed)
         final_answer = answers.answer
 
         return final_answer, prompt
@@ -559,9 +555,7 @@ class GPT_CoT_CD(GPT):
 
 
 class Llama_CoT_CD(Llama):
-    def __init__(
-        self, model_name="unsloth/Llama-3.2-90B-Vision-Instruct"
-    ):
+    def __init__(self, model_name="unsloth/Llama-3.2-90B-Vision-Instruct"):
         super().__init__(model_name)
 
     def generate_answer(self, image, questions: str, prompting_style):
@@ -631,7 +625,7 @@ class Gemini_CoT_CD(Gemini):
             },
         )
 
-        reasoning_response : Reasoning = cast(Reasoning, response.parsed)
+        reasoning_response: Reasoning = cast(Reasoning, response.parsed)
         # final_answer = reasoning_response.final_answer
 
         return reasoning_response, prompt

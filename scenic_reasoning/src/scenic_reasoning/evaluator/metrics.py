@@ -115,18 +115,19 @@ class ExactMatch(EvaluationMetric):
 #     def __str__(self):
 #         return "LLMJudge"
 
+
 class LLMJudge(EvaluationMetric):
     """LLM-as-a-judge evaluation metric."""
 
     def __init__(self, location="us-central1"):
-        from openai import OpenAI
         from google import genai
+
         PROJECT_ID = "graid-451620"
         MAAS_ENDPOINT = "https://us-central1-aiplatform.googleapis.com"
-        
+
         self.client = genai.Client(
             vertexai=True,
-            project="graid-451620",
+            project=PROJECT_ID,
             location="us-central1",
         )
         self.model = "meta/llama-3.2-90b-vision-instruct-maas"
@@ -181,7 +182,7 @@ class LLMJudge(EvaluationMetric):
                 if matches is None or len(matches) == 0:
                     score = 0
                     break
-                
+
                 value = matches[0].strip("\n")
                 value = ast.literal_eval(value)
                 if isinstance(value, list):
