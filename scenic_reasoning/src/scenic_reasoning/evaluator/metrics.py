@@ -49,7 +49,7 @@ class ExactMatch(EvaluationMetric):
         except:
             return 0.0
 
-        return 1.0 if pred.lower() == gt.strip().lower() else 0.0
+        return 1.0 if str(pred).lower() == gt.strip().lower() else 0.0
 
     def __str__(self):
         return "ExactMatch"

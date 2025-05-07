@@ -79,7 +79,7 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
     conn.close()
 
     sampled_dataframes = {}
-    sample_size = 100  # this is per table not across all tables
+    sample_size = 50  # this is per table not across all tables
     print("Filtering rows...")
 
     for table_name, df in dataframes.items():
@@ -123,7 +123,8 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
                 if match:
                     score = match.group(1)
                     score = ast.literal_eval(score)
-                    correctness.append(score)
+                    print(type(score))
+                    correctness.extend(score)
                 else:
                     print(f"No correctness score found in {output_path}, skipping...")
             print(f"Skipping {output_path}")
