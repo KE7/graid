@@ -47,10 +47,12 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
     l = db_path.split("/")
     db_path = "_".join([l[-2], l[-1]])
 
-    output_dir = DB_PATH / f"{db_path}_{my_vlm}_{my_metric}_{my_prompt}"
+    output_dir = db_path.split(".py")[0]
+    output_dir = Path(output_dir)
+    output_dir = output_dir / f"{my_vlm}_{my_prompt}_{my_metric}"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    vlm_cache_loc = output_dir / f"{my_vlm}_cache.db"
+    vlm_cache_loc = output_dir / f"{my_vlm}_{my_prompt}_{my_metric}_cache.db"
     vlm_cache = SqliteDict(
         str(vlm_cache_loc),
         tablename="vlm_cache",
@@ -103,7 +105,6 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
         sampled_dataframes[table_name] = sampled_df
 
     correctness = []
-    idx = 0
 
     for table_idx, table in enumerate(sampled_dataframes):
         output_path = output_dir / f"{table_idx}.txt"
@@ -218,6 +219,9 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
             log_file.write(f"Correctness: \n{correctness}\n")
             log_file.write("\n")
 
+    vlm_cache.close()
+    conn.close()
+
     return sum(correctness) / len(correctness)
 
 
@@ -259,7 +263,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    use_batch = False # args.db_name = "bdd_val_0.2_/co_dino_5scale_swin_l_lsj_16xb1_3x_coco.py.sqlite"; args.vlm="Gemini_CD"; args.metric="ExactMatch"; args.prompt="ZeroShotPrompt"
+    use_batch = False # args.db_name = "bdd_val_0.2_/co_dino_5scale_swin_l_lsj_16xb1_3x_coco.py.sqlite"; args.vlm="Llama_CD"; args.metric="ExactMatch"; args.prompt="ZeroShotPrompt"
 
     db_path = str(DB_PATH / args.db_name)
     if args.vlm == "GPT":
@@ -270,12 +274,12 @@ if __name__ == "__main__":
     elif args.vlm == "GPT_CoT_CD":
         my_vlm = GPT_CoT_CD()
     elif args.vlm == "Llama":
-        my_vlm = Llama(region=args.region)
+        my_vlm = Llama()
         # use_batch = False
     elif args.vlm == "Llama_CD":
-        my_vlm = Llama_CD(region=args.region)
+        my_vlm = Llama_CD()
     elif args.vlm == "Llama_CoT_CD":
-        my_vlm = Llama_CoT_CD(region=args.region)
+        my_vlm = Llama_CoT_CD()
         # use_batch = False
     elif args.vlm == "Gemini":
         my_vlm = Gemini(location=args.region)

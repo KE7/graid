@@ -2,6 +2,7 @@ import ast
 import json
 import os
 import re
+from textwrap import dedent
 from typing import List
 
 import outlines
@@ -15,7 +16,11 @@ from pydantic import BaseModel
 class EvaluationMetric:
     """Base class for different evaluation metrics."""
 
-    def evaluate(self, pred, gt):
+    def evaluate(self, pred, gt) -> float:
+        """Abstract method to be implemented by subclasses."""
+        raise NotImplementedError("Each subclass must implement this method.")
+
+    def evaluate_batch(self, preds, gts) -> List[float]:
         """Abstract method to be implemented by subclasses."""
         raise NotImplementedError("Each subclass must implement this method.")
 
@@ -24,17 +29,25 @@ class ExactMatch(EvaluationMetric):
     def __init__(self):
         pass
 
-    def evaluate(self, pred, gt):
-        if hasattr(pred, "answer"):
-            pred = pred.answer
-        elif hasattr(pred, "final_answer"):
-            pred = pred.final_answer
-        else:
-            match = re.search(r"```(.*?)```", pred, re.DOTALL)
-            if match:
-                pred = match.group(1).strip()
+    def evaluate(self, pred, gt) -> float:
+        pred_as_json = None
+        try:
+            pred_as_json = json.loads(pred)
+        except:
+            pass
+        try:
+            if pred_as_json and "answer" in pred_as_json:
+                pred = pred_as_json["answer"]
+            elif pred_as_json and "final_answer" in pred_as_json:
+                pred = pred_as_json["final_answer"]
             else:
-                pred = pred.strip()
+                match = re.search(r"```(.*?)```", pred, re.DOTALL)
+                if match:
+                    pred = match.group(1).strip()
+                else:
+                    pred = pred.strip()
+        except:
+            return 0.0
 
         return 1.0 if pred.lower() == gt.strip().lower() else 0.0
 
@@ -102,23 +115,27 @@ class ExactMatch(EvaluationMetric):
 #     def __str__(self):
 #         return "LLMJudge"
 
-
 class LLMJudge(EvaluationMetric):
     """LLM-as-a-judge evaluation metric."""
 
-    def __init__(self, llm_model="gpt-4"):
+    def __init__(self, location="us-central1"):
         from openai import OpenAI
+        from google import genai
+        PROJECT_ID = "graid-451620"
+        MAAS_ENDPOINT = "https://us-central1-aiplatform.googleapis.com"
+        
+        self.client = genai.Client(
+            vertexai=True,
+            project="graid-451620",
+            location="us-central1",
+        )
+        self.model = "meta/llama-3.2-90b-vision-instruct-maas"
 
-        OPENAI_API_KEY = "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"
-        self.client = OpenAI(api_key=OPENAI_API_KEY)
+    def evaluate(self, pred, gt) -> float:
 
-    def evaluate(self, preds, gts):
-
-        prompt = f"""
+        prompt = f"""\
         Determine if the prediction matches the solution:
-        Solution: {gts}
-        Prediction: {preds}
-        Score each prediction with either 0 (incorrect) or 1 (correct). Give the score for all predictions in a list wrapped by "```" format like this: ```[0, 1]```.
+        Score each prediction with either False (incorrect) or True (correct). Give the score for all predictions in a list wrapped by "```" format like this: ```[False, True]```.
         Don't include any other numbers in your response besides the score.
 
         Here're some examples for you to follow:
@@ -126,55 +143,57 @@ class LLMJudge(EvaluationMetric):
         Example 1:
         Solution: right, left
         Prediction: Off to the right, there's a car on the right
-        Score: 1, 0
-        Return: ```[1, 0]```
+        Score: True, False
+        Return: ```[True, False]```
 
         Example 2:
         Solution: left, centered
         Prediction: centered, No car is detected in the image
-        Score: 0, 0
-        Return: ```[0, 0]```
+        Score: False, False
+        Return: ```[False, False]```
         
-
         Example 3:
         Solution: centered, right
         Prediction: looks like it's centered, it's on the right of the image
-        Score: 1, 1
-        Return: ```[1, 1]```
+        Score: True, True
+        Return: ```[True, True]```
 
         Example 4:
         Solution: left
         Prediction: I don't know the answer
-        Score: 0
-        Return: ```[0]```
+        Score: False
+        Return: ```[False]```
+
+        Here's the actual task:
+        Solution: {gt}
+        Prediction: {pred}
         """
 
+        score = 0
         for attempt in range(3):
             try:
-                completion = self.client.chat.completions.create(
-                    model="gpt-4o",
-                    messages=[
-                        {
-                            "role": "developer",
-                            "content": "You are a helpful assistant.",
-                        },
-                        {"role": "user", "content": prompt},
-                    ],
+                completion = self.client.models.generate_content(
+                    model=self.model,
+                    contents=[dedent(prompt)],
                 )
-
-                response = completion.choices[0].message.content
-                matches = re.findall(r"```(.*?)```", response, re.DOTALL)
-                scores = matches[0].strip("\n")
-                scores = ast.literal_eval(scores)
-                # response_clean = response.strip("```").strip("json\n")
-
-                # parsed_json = json.loads(response_clean)
-                # scores = parsed_json["score"]
+                response = completion.text or ""
+                matches = re.findall(r"```(.*?)```", response, flags=re.DOTALL)
+                if matches is None or len(matches) == 0:
+                    score = 0
+                    break
+                
+                value = matches[0].strip("\n")
+                value = ast.literal_eval(value)
+                if isinstance(value, list):
+                    score = float(value[0])
+                else:
+                    score = float(value)
                 break
             except Exception as e:
                 print(f"Attempt {attempt+1}: JSON parsing failed - {e}")
+                score = 0
 
-        return scores
+        return score
 
     def __str__(self):
         return "LLMJudge"

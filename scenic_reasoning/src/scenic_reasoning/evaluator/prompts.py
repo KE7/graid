@@ -56,43 +56,41 @@ class CoT(PromptingStrategy):
 
     def generate_prompt(self, image, question):
         prompt = f"""\
-        Look at the image carefully and think through each question. Use the process below to guide your reasoning and arrive at the correct answer. Here is an example of how to answer the question:
+        Look at the image carefully and think through each question step by step. Use the process below to guide your reasoning and arrive at the correct answer. Here are some examples of how to answer the question:
 
         Question: Are there any motorcyclists to the right of any pedestrians? 
 
-        Reasoning:
+        Steps:
         1. I see three pedestrians walking on the left sidewalk, roughly in the left third of the image.
         2. I also see a single motorcyclist riding away from the camera, positioned nearer the center of the road and center of the camera frame but clearly to the right of those pedestrians.
         3. Comparing their horizontal positions, the motorcyclist’s x‑coordinate is larger (further to the right) than either pedestrian’s.
 
+        Conclusion: The motorcyclist is to the right of the pedestrians.
         Final_Answer: Yes.
 
 
         Question: What group of objects are most clustered together?
 
-        Reasoning:
-        Scanning for COCO categories only, I identify:
-        1. Person:
+        Steps:
+        1. Scanning for COCO categories only, I identify the following objects
+        2. Person:
             I spot three pedestrians on the left sidewalk: one nearest the foreground, one a few meters behind, and a third just past the white box truck.
             They are spaced roughly 2–3 m apart along the sidewalk.
 
-
-        2. Motorcycle
+        3. Motorcycle
             A single motorcyclist is riding down the center of the road, about midway up the frame.
             Only one instance, so no clustering.
 
-
-        3. Truck
+        4. Truck
             A single white box truck is parked on the left curb beyond the first two pedestrians.
             Again only one, so no cluster.
 
-
-        4. Car
+        5. Car
             At least six cars parked behind the french on the right and at least four cars in the distance near the center of the image
             Both clusters of cars, especially the parked ones behind the fence occupy a small contiguous area, tightly packed together.
 
 
-        Comparing densities:
+        Conclusion: We can compare the densities of the groups we found.
             The three people, while grouped, are separated by a few meters each.    
             The six-plus cars are parked immediately adjacent in a compact line.
 
@@ -101,21 +99,20 @@ class CoT(PromptingStrategy):
 
         Question: Does the leftmost object in the image appear to be wider than it is tall?
 
-        Reasoning:
-        Among the COCO categories present, the object farthest to the left is the bench under the bus‐stop canopy.
-        That bench’s bounding area is much broader horizontally than it is tall vertically.
+        Steps:
+        1. Among the COCO categories present, the object farthest to the left is the bench under the bus‐stop canopy.
+        2. That bench’s bounding area is much broader horizontally than it is tall vertically.
 
+        Conclusion: The bench is wider than it is tall.
         Final_Answer: Yes.
 
         Question: {question}
-        
-        Reasoning:
 
         """
         return image, dedent(prompt)
 
     def __str__(self):
-        return "CoT_batch"
+        return "CoT"
 
 
 class FewShotPrompt(PromptingStrategy):
