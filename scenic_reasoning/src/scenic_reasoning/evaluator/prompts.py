@@ -110,6 +110,7 @@ class CoT(PromptingStrategy):
         Conclusion: The bench is wider than it is tall.
         Final_Answer: Yes.
 
+        Now that you have seen the examples, answer only the following question in the same step-by-step reasoning format as the examples:
         Question: {question}
 
         """
