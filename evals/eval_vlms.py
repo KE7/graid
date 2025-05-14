@@ -123,6 +123,11 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
         correctness = []
         output_path = results_dir / f"{table_idx}.txt"
         os.makedirs(os.path.dirname(str(output_path)), exist_ok=True)
+        
+        # Variable to track if we need to sample more questions
+        need_more_samples = False
+        existing_scores = []
+        
         if os.path.exists(output_path):
             with open(output_path, "r") as f:
                 text = f.read()
@@ -131,13 +136,37 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
                     score = match.group(1)
                     score = ast.literal_eval(score)
                     if type(score) == list:
-                        all_correctness.extend(score)
+                        existing_scores = score
+                        # Check if we have the right number of scores
+                        if len(existing_scores) > sample_size:
+                            # Only take up to sample_size
+                            print(f"Found {len(existing_scores)} scores, using first {sample_size}")
+                            existing_scores = existing_scores[:sample_size]
+                            all_correctness.extend(existing_scores)
+                        elif len(existing_scores) < sample_size:
+                            # We need to sample more questions
+                            print(f"Found only {len(existing_scores)} scores, need {sample_size - len(existing_scores)} more")
+                            all_correctness.extend(existing_scores)
+                            need_more_samples = True
+                        else:
+                            # We have exactly the right number
+                            all_correctness.extend(existing_scores)
                     else:
+                        # Single score case
+                        existing_scores = [score]
                         all_correctness.append(score)
+                        if sample_size > 1:
+                            need_more_samples = True
                 else:
                     print(f"No correctness score found in {output_path}, skipping...")
-            print(f"Skipping {output_path}")
-            continue
+                    need_more_samples = True
+            
+            # If we don't need more samples, continue to the next table
+            if not need_more_samples:
+                print(f"Using existing scores from {output_path}")
+                continue
+            else:
+                print(f"Need more samples for {output_path}, will sample {sample_size - len(existing_scores)} more")
 
         questions = []
         answers = []
@@ -145,10 +174,26 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
             None,
             None,
         )  # Initialize image_path to avoid 'possibly unbound' errors
-        for img_idx, row in tqdm(
-            sampled_dataframes[table].iterrows(), total=len(sampled_dataframes[table])
+        
+        # If we already have some scores, only sample what we need more
+        additional_samples_needed = max(0, sample_size - len(existing_scores))
+        if additional_samples_needed > 0 and need_more_samples:
+            print(f"Sampling {additional_samples_needed} more questions for {table}")
+            # If we need fewer samples than available, select randomly
+            if len(sampled_dataframes[table]) > additional_samples_needed:
+                # Only get the additional samples we need
+                sample_indices = random.sample(range(len(sampled_dataframes[table])), additional_samples_needed)
+                rows_to_process = [sampled_dataframes[table].iloc[idx] for idx in sample_indices]
+            else:
+                # Use all available samples if we need more than we have
+                rows_to_process = [sampled_dataframes[table].iloc[idx] for idx in range(len(sampled_dataframes[table]))]
+        else:
+            # Process all rows if we haven't cached any scores yet
+            rows_to_process = [sampled_dataframes[table].iloc[idx] for idx in range(len(sampled_dataframes[table]))]
+        
+        for idx, row in tqdm(
+            enumerate(rows_to_process), total=len(rows_to_process)
         ):
-            row = sampled_dataframes[table].iloc[img_idx]
 
             d = row.to_dict()
             pkl_path, v = d["key"], json.loads(d["value"])
@@ -190,7 +235,7 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
                 answers.append(qa_list[1])
 
             if len(questions) == 0:
-                print(f"No questions found for image index {img_idx}, skipping...")
+                print(f"No questions found for image index {idx}, skipping...")
                 continue
 
         preds = []
@@ -238,18 +283,39 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
                 preds.append(pred)
                 correctness.append(correct)
 
-        all_correctness.append(correctness)
-        
-        with open(str(output_path), "w") as log_file:
-            log_file.write(
-                f"Image Path: \n{image_path if image_path is not None else 'None'}\n"
-            )
-            log_file.write(f"Questions: \n{questions}\n")
-            log_file.write(f"Answers: \n{answers}\n")
-            log_file.write(f"Prompt: \n{prompt}\n")
-            log_file.write(f"Preds: \n{preds}\n")
-            log_file.write(f"Correctness: \n{correctness}\n")
-            log_file.write("\n")
+        # Combine existing scores with new scores, if we loaded some from cache
+        if need_more_samples and len(existing_scores) > 0:
+            combined_correctness = existing_scores + correctness
+            # Ensure we don't exceed sample_size
+            if len(combined_correctness) > sample_size:
+                combined_correctness = combined_correctness[:sample_size]
+            all_correctness.append(combined_correctness)
+            
+            # Update the cached file with the combined scores
+            with open(str(output_path), "w") as log_file:
+                log_file.write(
+                    f"Image Path: \n{image_path if image_path is not None else 'None'}\n"
+                )
+                log_file.write(f"Questions: \n{questions}\n")
+                log_file.write(f"Answers: \n{answers}\n")
+                log_file.write(f"Prompt: \n{prompt}\n")
+                log_file.write(f"Preds: \n{preds}\n")
+                log_file.write(f"Correctness: \n{combined_correctness}\n")
+                log_file.write("\n")
+        else:
+            # Normal case without cached scores
+            all_correctness.append(correctness)
+            
+            with open(str(output_path), "w") as log_file:
+                log_file.write(
+                    f"Image Path: \n{image_path if image_path is not None else 'None'}\n"
+                )
+                log_file.write(f"Questions: \n{questions}\n")
+                log_file.write(f"Answers: \n{answers}\n")
+                log_file.write(f"Prompt: \n{prompt}\n")
+                log_file.write(f"Preds: \n{preds}\n")
+                log_file.write(f"Correctness: \n{correctness}\n")
+                log_file.write("\n")
 
     vlm_cache.close()
     conn.close()
