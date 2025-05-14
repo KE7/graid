@@ -21,6 +21,7 @@ from scenic_reasoning.utilities.common import (
     yolo_waymo_transform,
 )
 from torch.utils.data import DataLoader
+import torchvision
 from tqdm import tqdm
 import os
 
@@ -228,6 +229,11 @@ first_pred = True
 
 total = min(2000, len(data_loader))  # Limit to 1000 batches for performance reasons
 
+def save_image(tensor_im):
+    # convert from BGR to RGB tensor_im = tensor_im[[2, 1, 0], :, :]
+    image = torchvision.transforms.ToPILImage()(tensor_im)
+    image.save("image.jpg")
+
 for i, batch in tqdm(enumerate(data_loader), total=total, desc="Processing batches"):
     if i >= total:
         break
@@ -352,5 +358,3 @@ if os.path.exists(coco_gt_path):
     os.remove(str(coco_gt_path))
 if os.path.exists(coco_dt_path):
     os.remove(str(coco_dt_path))
-if os.path.exists(pred_file):
-    os.remove(str(pred_file))

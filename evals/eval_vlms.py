@@ -34,6 +34,8 @@ from sqlitedict import SqliteDict
 from torchvision import transforms
 from tqdm import tqdm
 
+random.seed(42)
+
 DB_PATH = project_root_dir() / "data/databases_ablations"
 
 bdd_path = project_root_dir() / "data/bdd_val_filtered"
@@ -79,9 +81,9 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
     conn.close()
 
     sampled_dataframes = {}
-    sample_size = 50  # this is per table not across all tables
-    if str(my_metric) != "LLMJudge" and "Llama" in str(my_vlm):
-        sample_size = 100
+    sample_size = 100  # this is per table not across all tables
+    # if str(my_metric) != "LLMJudge" and "Llama" in str(my_vlm):
+    #     sample_size = 100
     print("Filtering rows...")
 
     for table_name, df in dataframes.items():
@@ -114,10 +116,13 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
 
         sampled_dataframes[table_name] = sampled_df
 
-    correctness = []
+    all_correctness = []
 
     for table_idx, table in enumerate(sampled_dataframes):
+        # Reset correctness list for each table
+        correctness = []
         output_path = results_dir / f"{table_idx}.txt"
+        os.makedirs(os.path.dirname(str(output_path)), exist_ok=True)
         if os.path.exists(output_path):
             with open(output_path, "r") as f:
                 text = f.read()
@@ -126,9 +131,9 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
                     score = match.group(1)
                     score = ast.literal_eval(score)
                     if type(score) == list:
-                        correctness.extend(score)
+                        all_correctness.extend(score)
                     else:
-                        correctness.append(score)
+                        all_correctness.append(score)
                 else:
                     print(f"No correctness score found in {output_path}, skipping...")
             print(f"Skipping {output_path}")
@@ -175,9 +180,11 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
                 image = transforms.ToTensor()(Image.open(io.BytesIO(image_path)))
 
             if isinstance(qa_list[0], list):
-                # questions.append(random.choice([item[0] for item in qa_list]))
-                questions += [item[0] for item in qa_list]
-                answers += [item[1] for item in qa_list]
+                random_qa = random.choice(qa_list)
+                questions.append(random_qa[0])
+                answers.append(random_qa[1])
+                # questions += [item[0] for item in qa_list]
+                # answers += [item[1] for item in qa_list]
             else:
                 questions.append(qa_list[0])
                 answers.append(qa_list[1])
@@ -207,7 +214,8 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
             else:
                 print("Warning: image_path is None, skipping batch processing")
                 preds = []
-            correctness.append(my_metric.evaluate(preds, answers))
+            correct = my_metric.evaluate(preds, answers)
+            correctness.append(correct)
             preds = preds
         else:
             for q, a in tqdm(zip(questions, answers), total=len(questions)):
@@ -230,6 +238,8 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
                 preds.append(pred)
                 correctness.append(correct)
 
+        all_correctness.append(correctness)
+        
         with open(str(output_path), "w") as log_file:
             log_file.write(
                 f"Image Path: \n{image_path if image_path is not None else 'None'}\n"
@@ -243,8 +253,9 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
 
     vlm_cache.close()
     conn.close()
-
-    return sum(correctness) / len(correctness)
+    # flatten the list from a list of lists of floats to a list of floats
+    all_correctness = [item if isinstance(item, (int, float)) else item for sublist in all_correctness for item in (sublist if isinstance(sublist, list) else [sublist])]
+    return sum(all_correctness) / len(all_correctness)
 
 
 if __name__ == "__main__":
