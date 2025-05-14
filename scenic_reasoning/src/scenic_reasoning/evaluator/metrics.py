@@ -176,6 +176,10 @@ class LLMJudge(EvaluationMetric):
                 completion = self.client.models.generate_content(
                     model=self.model,
                     contents=[dedent(prompt)],
+                    config={
+                        "temperature": 0.0,
+                        "topK": 1,
+                    },
                 )
                 response = completion.text or ""
                 matches = re.findall(r"```(.*?)```", response, flags=re.DOTALL)

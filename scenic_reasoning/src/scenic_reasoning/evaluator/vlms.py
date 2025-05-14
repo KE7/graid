@@ -1,5 +1,6 @@
 import base64
 import io
+import os
 import re
 import time
 from enum import Enum
@@ -16,13 +17,16 @@ from PIL import Image
 from pydantic import BaseModel, Field
 from scenic_reasoning.utilities.coco import coco_labels
 from scenic_reasoning.utilities.common import project_root_dir
+from tenacity import retry, stop_after_attempt, wait_exponential
 from torchvision import transforms
 
 
 class GPT:
     def __init__(self, model_name="gpt-4o", port=None):
         load_dotenv()
-        OPENAI_API_KEY = ""
+        OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+        if OPENAI_API_KEY == "":
+            print("No OpenAI API key found")
         self.client = OpenAI(api_key=OPENAI_API_KEY)
         self.model_name = model_name
 
@@ -41,6 +45,10 @@ class GPT:
             success, buffer = cv2.imencode(".jpg", image)
             return base64.b64encode(buffer).decode("utf-8")
 
+    @retry(
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        stop=stop_after_attempt(5),
+    )
     def generate_answer(self, image, questions: str, prompting_style):
         # reference: https://platform.openai.com/docs/guides/vision
 
@@ -76,17 +84,17 @@ class GPT:
         return responses, prompt
 
     def __str__(self):
-        return "GPT"
+        return self.model_name
 
 
 class Gemini:
-    def __init__(self, location="us-central1"):
+    def __init__(self, model_name="gemini-1.5-pro", location="us-central1"):
         self.client = genai.Client(
             vertexai=True,
             project="graid-451620",
-            location="us-central1",
+            location=location,
         )
-        self.model = "gemini-1.5-pro"
+        self.model = model_name
 
     def encode_image(self, image):
         if isinstance(image, str):
@@ -99,6 +107,10 @@ class Gemini:
             pil_image = transform(image)
             return pil_image
 
+    @retry(
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        stop=stop_after_attempt(5),
+    )
     def generate_answer(self, image, questions: str, prompting_style):
         image, prompt = prompting_style.generate_prompt(image, questions)
         image = self.encode_image(image)
@@ -120,30 +132,65 @@ class Gemini:
         return response.text, prompt
 
     def __str__(self) -> str:
-        return "Gemini"
+        return self.model
 
 
 class Llama:
-    def __init__(self, model_name="unsloth/Llama-3.2-90B-Vision-Instruct"):
+    def __init__(self, model_name="meta-llama/Llama-3.2-90B-Vision-Instruct", use_vllm=False):
         PROJECT_ID = "graid-451620"
         REGION = "us-central1"
         ENDPOINT = f"http://127.0.0.1:9099/v1/"
+        MAAS_ENDPOINT = "us-central1-aiplatform.googleapis.com"
         self.model = model_name
 
-        # self.url = f"https://{ENDPOINT}/v1beta1/projects/{PROJECT_ID}/locations/{REGION}/endpoints/openapi/chat/completions"
-        self.url = ENDPOINT
+        if use_vllm:
+            print("Using private vLLM hosted Llama")
+            self.client = OpenAI(
+                base_url=ENDPOINT,
+                api_key="vLLM",
+                # base_url=f"https://{ENDPOINT}/v1beta1/projects/{PROJECT_ID}/locations/{REGION}/endpoints/openapi",
+                # api_key=self.token,
+            )
+        else:
+            # import os
+            # os.environ["GOOGLE_APPLICATION_CREDENTIALS"]="token.txt"
+            
+            # with open("token.txt", "r") as token_file:
+            #     self.token = token_file.read().strip()
+            
+            # # google_url = f"https://{MAAS_ENDPOINT}/v1beta1/projects/{PROJECT_ID}/locations/{REGION}/endpoints/openapi"
+            
+            # print("Using Google Vertex hosted Llama")
+            # self.client = genai.Client(
+            #     vertexai=True,
+            #     project=PROJECT_ID,
+            #     location=REGION,
+            # )
+            # self.model = "meta/llama-3.2-90b-vision-instruct-maas"
 
-        with open("token.txt", "r") as token_file:
-            self.token = token_file.read().strip()
+            # from google.auth import default, transport
 
-        import openai
+            # # Get credentials
+            # credentials, _ = default()
+            # auth_request = transport.requests.Request()
+            # credentials.refresh(auth_request)
+            from google.auth import default
+            from google.auth.transport.requests import Request
 
-        self.client = openai.OpenAI(
-            base_url=self.url,
-            api_key="vLLM",
-            # base_url=f"https://{ENDPOINT}/v1beta1/projects/{PROJECT_ID}/locations/{REGION}/endpoints/openapi",
-            # api_key=self.token,
-        )
+            credentials, _ = default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+            credentials.refresh(Request())
+            
+            # with open("token.txt", "r") as token_file:
+            #     self.token = token_file.read().strip()
+            
+            google_url = f"https://{MAAS_ENDPOINT}/v1beta1/projects/{PROJECT_ID}/locations/{REGION}/endpoints/openapi"
+            
+            print("Using Google Vertex hosted Llama")
+            self.client = OpenAI(
+                base_url=google_url,
+                api_key=credentials.token,
+            )
+            self.model = "meta/llama-3.2-90b-vision-instruct-maas"
 
     def encode_image(self, image):
         if isinstance(image, torch.Tensor):
@@ -160,6 +207,10 @@ class Llama:
             with open(image, "rb") as image_file:
                 return base64.b64encode(image_file.read()).decode("utf-8")
 
+    @retry(
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        # stop=stop_after_attempt(5),
+    )
     def generate_answer(self, image, questions: str, prompting_style):
         image, prompt = prompting_style.generate_prompt(image, questions)
         base64_image = self.encode_image(image)
@@ -179,6 +230,7 @@ class Llama:
             ],
             temperature=0.0,
         )
+        print(response)
         return response.choices[0].message.content, prompt
 
     def __str__(self) -> str:
@@ -432,10 +484,13 @@ class GPT_CD(GPT):
 
         return final_answer, prompt
 
+    def __str__(self):
+        return self.model_name + "_CD"
+
 
 class Llama_CD(Llama):
-    def __init__(self, model_name="unsloth/Llama-3.2-90B-Vision-Instruct"):
-        super().__init__(model_name)
+    def __init__(self, model_name="meta-llama/Llama-3.2-90B-Vision-Instruct"):
+        super().__init__(model_name, use_vllm=False)
 
     def generate_answer(self, image, questions: str, prompting_style):
         image, prompt = prompting_style.generate_prompt(image, questions)
@@ -475,8 +530,8 @@ class Llama_CD(Llama):
 
 
 class Gemini_CD(Gemini):
-    def __init__(self, location="us-central1"):
-        super().__init__(location)
+    def __init__(self, model_name="gemini-1.5-pro", location="us-central1"):
+        super().__init__(model_name, location)
 
     def generate_answer(self, image, questions: str, prompting_style):
         image, prompt = prompting_style.generate_prompt(image, questions)
@@ -505,13 +560,17 @@ class Gemini_CD(Gemini):
         return final_answer, prompt
 
     def __str__(self):
-        return "Gemini_CD"
+        return self.model + "_CD"
 
 
 class GPT_CoT_CD(GPT):
     def __init__(self, model_name="gpt-4o", port=None):
         super().__init__(model_name)
 
+    @retry(
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        stop=stop_after_attempt(5),
+    )
     def generate_answer(self, image, questions: str, prompting_style):
         image, prompt = prompting_style.generate_prompt(image, questions)
         base64_image = self.encode_image(image)
@@ -553,10 +612,13 @@ class GPT_CoT_CD(GPT):
 
         return output, prompt
 
+    def __str__(self):
+        return self.model_name + "_CoT_CD"
+
 
 class Llama_CoT_CD(Llama):
-    def __init__(self, model_name="unsloth/Llama-3.2-90B-Vision-Instruct"):
-        super().__init__(model_name)
+    def __init__(self, model_name="meta-llama/Llama-3.2-90B-Vision-Instruct"):
+        super().__init__(model_name, use_vllm=False)
 
     def generate_answer(self, image, questions: str, prompting_style):
         image, prompt = prompting_style.generate_prompt(image, questions)
@@ -601,8 +663,8 @@ class Llama_CoT_CD(Llama):
 
 
 class Gemini_CoT_CD(Gemini):
-    def __init__(self, location="us-central1"):
-        super().__init__(location)
+    def __init__(self, model_name="gemini-1.5-pro", location="us-central1"):
+        super().__init__(model_name, location)
 
     def generate_answer(self, image, questions: str, prompting_style):
         image, prompt = prompting_style.generate_prompt(image, questions)
@@ -626,15 +688,166 @@ class Gemini_CoT_CD(Gemini):
         )
 
         reasoning_response: Reasoning = cast(Reasoning, response.parsed)
-        final_answer = reasoning_response.final_answer
 
         return reasoning_response.model_dump_json(), prompt
 
     def __str__(self):
-        return "Gemini_CoT_CD"
+        return self.model + "_CoT_CD"
+
+
+class Claude:
+    def __init__(self, model_name="claude-3-7-sonnet-20250219"):
+        import anthropic
+        self.client = anthropic.Anthropic(
+            api_key=os.getenv("ANTHROPIC_API_KEY")
+        )
+        self.model = model_name
+
+    def encode_image(self, image):
+        if isinstance(image, torch.Tensor):
+            np_img = image.mul(255).byte().numpy().transpose(1, 2, 0)
+            img_pil = Image.fromarray(np_img)
+            buffer = io.BytesIO()
+            img_pil.save(buffer, format="JPEG")
+            return base64.b64encode(buffer.getvalue()).decode("utf-8")
+        elif isinstance(image, str):
+            with open(image, "rb") as image_file:
+                return base64.b64encode(image_file.read()).decode("utf-8")
+        elif isinstance(image, np.ndarray):
+            success, buffer = cv2.imencode(".jpg", image)
+            return base64.b64encode(buffer).decode("utf-8")
+
+    def generate_answer(self, image, questions: str, prompting_style):
+        image, prompt = prompting_style.generate_prompt(image, questions)
+        base64_image = self.encode_image(image)
+
+        response = self.client.messages.create(
+            model=self.model,
+            max_tokens=1024,
+            temperature=0.0,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/jpeg",
+                                "data": base64_image,
+                            },
+                        },
+                        {
+                            "type": "text",
+                            "text": prompt
+                        }
+                    ],
+                }
+            ],
+        )
+
+        return response.content[0].text, prompt
+
+    def __str__(self) -> str:
+        return self.model
+
+
+class Claude_CD(Claude):
+    def __init__(self, model_name="claude-3-7-sonnet-20250219"):
+        super().__init__(model_name)
+
+    def generate_answer(self, image, questions: str, prompting_style):
+        import anthropic
+        from pydantic import create_model
+        
+        # Get the answer class based on the question
+        answer_class = get_answer_class_from_question(questions)
+        if answer_class is None:
+            return super().generate_answer(image, questions, prompting_style)
+
+        image, prompt = prompting_style.generate_prompt(image, questions)
+        base64_image = self.encode_image(image)
+
+        # Use anthropic.messages.create with response_model parameter for constrained decoding
+        response = self.client.messages.create(
+            model=self.model,
+            temperature=0.0,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/jpeg",
+                                "data": base64_image,
+                            },
+                        },
+                        {
+                            "type": "text",
+                            "text": prompt
+                        }
+                    ],
+                }
+            ],
+            response_model=answer_class,
+        )
+
+        return response.answer, prompt
+
+    def __str__(self):
+        return self.model + "_CD"
+
+
+class Claude_CoT_CD(Claude):
+    def __init__(self, model_name="claude-3-7-sonnet-20250219"):
+        super().__init__(model_name)
+
+    def generate_answer(self, image, questions: str, prompting_style):
+        # Get the answer class based on the question
+        answer_class = get_answer_class_from_question(questions)
+
+        image, prompt = prompting_style.generate_prompt(image, questions)
+        base64_image = self.encode_image(image)
+
+        # Use anthropic.messages.create with response_model parameter for constrained decoding
+        response = self.client.messages.create(
+            model=self.model,
+            temperature=0.0,
+            messages=[
+                {
+                    "role": "system",
+                    "content": f"The final_answer should be of type: {answer_class.model_json_schema()}"
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/jpeg",
+                                "data": base64_image,
+                            },
+                        },
+                        {
+                            "type": "text",
+                            "text": prompt
+                        }
+                    ],
+                }
+            ],
+            response_model=Reasoning,
+        )
+
+        return response.model_dump_json(), prompt
+
+    def __str__(self):
+        return self.model + "_CoT_CD"
 
 
 # from prompts import ZeroShotPrompt
-# model = Gemini()
+# model = Claude()
 # model.generate_answer("../demo/demo.jpg", "Tell me about this image", prompting_style=ZeroShotPrompt())
 # print()

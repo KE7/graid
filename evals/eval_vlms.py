@@ -55,10 +55,10 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
 
     output_dir = db_path.split(".py")[0]
     output_dir = Path(output_dir)
-    output_dir = output_dir / f"{my_vlm}_{my_prompt}_{my_metric}"
+    results_dir = output_dir / f"{my_vlm}_{my_prompt}_{my_metric}"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    vlm_cache_loc = output_dir / f"{my_vlm}_{my_prompt}_{my_metric}_cache.db"
+    vlm_cache_loc = output_dir / f"{my_vlm}_cache.db"
     vlm_cache = SqliteDict(
         str(vlm_cache_loc),
         tablename="vlm_cache",
@@ -80,6 +80,8 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
 
     sampled_dataframes = {}
     sample_size = 50  # this is per table not across all tables
+    if str(my_metric) != "LLMJudge" and "Llama" in str(my_vlm):
+        sample_size = 100
     print("Filtering rows...")
 
     for table_name, df in dataframes.items():
@@ -115,7 +117,7 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
     correctness = []
 
     for table_idx, table in enumerate(sampled_dataframes):
-        output_path = output_dir / f"{table_idx}.txt"
+        output_path = results_dir / f"{table_idx}.txt"
         if os.path.exists(output_path):
             with open(output_path, "r") as f:
                 text = f.read()
@@ -123,8 +125,10 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
                 if match:
                     score = match.group(1)
                     score = ast.literal_eval(score)
-                    print(type(score))
-                    correctness.extend(score)
+                    if type(score) == list:
+                        correctness.extend(score)
+                    else:
+                        correctness.append(score)
                 else:
                     print(f"No correctness score found in {output_path}, skipping...")
             print(f"Skipping {output_path}")
@@ -171,6 +175,7 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
                 image = transforms.ToTensor()(Image.open(io.BytesIO(image_path)))
 
             if isinstance(qa_list[0], list):
+                # questions.append(random.choice([item[0] for item in qa_list]))
                 questions += [item[0] for item in qa_list]
                 answers += [item[1] for item in qa_list]
             else:
@@ -187,14 +192,16 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
         if use_batch and image_path is not None:
             questions = ", ".join([item for i, item in enumerate(questions)])
             answers = ", ".join([item for i, item in enumerate(answers)])
-            _, prompt = my_prompt.generate_prompt(image_path, questions)
+            image_for_prompt, prompt = my_prompt.generate_prompt(image_path, questions)
             if image_path is not None:
-                cache_key = f"{image_path}_{prompt}"
+                cache_key = f"{my_vlm}_{my_prompt}_{image_path}_{prompt}" + (
+                    "_SoM" if "SetOfMarkPrompt" == str(my_prompt) else ""
+                ) + "_batch"
                 if cache_key in vlm_cache:
                     preds = vlm_cache[cache_key]
                 else:
                     preds, prompt = my_vlm.generate_answer(
-                        image_path, questions, my_prompt
+                        image_for_prompt, questions, my_prompt
                     )
                     vlm_cache[cache_key] = preds
             else:
@@ -208,13 +215,16 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
                     raise ValueError(f"Question too short: {q}")
 
                 # the cache key should be image_path + prompt
-                _, prompt = my_prompt.generate_prompt(image, q)
-                cache_key = f"{image_path}_{prompt}"
+                image_for_prompt, prompt = my_prompt.generate_prompt(image, q)
+                cache_key = f"{my_vlm}_{my_prompt}_{image_path}_{prompt}" + (
+                    "_SoM" if "SetOfMarkPrompt" == str(my_prompt) else ""
+                )
                 if cache_key in vlm_cache:
                     pred = vlm_cache[cache_key]
                 else:
-                    pred, prompt = my_vlm.generate_answer(image, q, my_prompt)
+                    pred, prompt = my_vlm.generate_answer(image_for_prompt, q, my_prompt)
                     vlm_cache[cache_key] = pred
+                    vlm_cache.commit()
                 correct = my_metric.evaluate(pred, a)
 
                 preds.append(pred)
@@ -282,19 +292,36 @@ if __name__ == "__main__":
         type=str,
         default="us-central1",
     )
+    parser.add_argument(
+        "--gpu_id",
+        type=int,
+        default=7,
+    )
 
     args = parser.parse_args()
 
     use_batch = False  # args.db_name = "bdd_val_0.2_/co_dino_5scale_swin_l_lsj_16xb1_3x_coco.py.sqlite"; args.vlm="Llama_CD"; args.metric="ExactMatch"; args.prompt="ZeroShotPrompt"
 
     db_path = str(DB_PATH / args.db_name)
-    if args.vlm == "GPT":
-        my_vlm = GPT()
+    if args.vlm == "GPT": # python evals/eval_vlms.py --db_name "bdd_val_0.2_/co_dino_5scale_swin_l_lsj_16xb1_3x_coco.py.sqlite"  --vlm GPT_CoT_CD --metric ExactMatch --prompt CoT
+        import pick
+        choice_list = ["gpt-4.1-2025-04-14", "o4-mini-2025-04-16", "gpt-4o"]
+        title = "Please select a GPT model:"
+        option, index = pick.pick(choice_list, title)
+        my_vlm = GPT(model_name=str(option))
         # use_batch = True
     elif args.vlm == "GPT_CD":
-        my_vlm = GPT_CD()
+        import pick
+        choice_list = ["gpt-4.1-2025-04-14", "o4-mini-2025-04-16", "gpt-4o"]
+        title = "Please select a GPT model:"
+        option, index = pick.pick(choice_list, title)   
+        my_vlm = GPT_CD(model_name=str(option))
     elif args.vlm == "GPT_CoT_CD":
-        my_vlm = GPT_CoT_CD()
+        import pick
+        choice_list = ["gpt-4.1-2025-04-14", "o4-mini-2025-04-16", "gpt-4o"]
+        title = "Please select a GPT model:"
+        option, index = pick.pick(choice_list, title)   
+        my_vlm = GPT_CoT_CD(model_name=str(option))
     elif args.vlm == "Llama":
         my_vlm = Llama()
         # use_batch = False
@@ -304,12 +331,27 @@ if __name__ == "__main__":
         my_vlm = Llama_CoT_CD()
         # use_batch = False
     elif args.vlm == "Gemini":
-        my_vlm = Gemini(location=args.region)
+        import pick
+        choice_list = ["gemini-1.5-pro", "gemini-2.5-pro"]
+        title = "Please select a Gemini model:"
+        option, index = pick.pick(choice_list, title)
+        
+        my_vlm = Gemini(model_name=str(option), location=args.region)
         # use_batch = True
     elif args.vlm == "Gemini_CD":
-        my_vlm = Gemini_CD(location=args.region)
+        import pick
+        choice_list = ["gemini-1.5-pro", "gemini-2.5-pro"]
+        title = "Please select a Gemini model:"
+        option, index = pick.pick(choice_list, title)
+        
+        my_vlm = Gemini_CD(model_name=str(option), location=args.region)
     elif args.vlm == "Gemini_CoT_CD":
-        my_vlm = Gemini_CoT_CD(location=args.region)
+        import pick
+        choice_list = ["gemini-1.5-pro", "gemini-2.5-pro"]
+        title = "Please select a Gemini model:"
+        option, index = pick.pick(choice_list, title)
+        
+        my_vlm = Gemini_CoT_CD(model_name=str(option), location=args.region)
         # use_batch = False
     else:
         raise ValueError(f"Unknown VLM: {args.vlm}")
@@ -322,12 +364,12 @@ if __name__ == "__main__":
         raise ValueError(f"Unknown metric: {args.metric}")
 
     if args.prompt == "SetOfMarkPrompt":
-        if args.vlm == "GPT":
-            my_prompt = SetOfMarkPrompt(gpu=1)
-        elif args.vlm == "Llama":
-            my_prompt = SetOfMarkPrompt(gpu=5)
-        elif args.vlm == "Gemini":
-            my_prompt = SetOfMarkPrompt(gpu=2)
+        if "GPT" in args.vlm:
+            my_prompt = SetOfMarkPrompt(gpu=args.gpu_id)
+        elif "Llama" in args.vlm:
+            my_prompt = SetOfMarkPrompt(gpu=args.gpu_id)
+        elif "Gemini" in args.vlm:
+            my_prompt = SetOfMarkPrompt(gpu=args.gpu_id)
         else:
             raise ValueError(f"SetOfMarkPrompt not supported for VLM: {args.vlm}")
 
