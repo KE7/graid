@@ -244,7 +244,7 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
         if use_batch and image_path is not None:
             questions = ", ".join([item for i, item in enumerate(questions)])
             answers = ", ".join([item for i, item in enumerate(answers)])
-            image_for_prompt, prompt = my_prompt.generate_prompt(image_path, questions)
+            _, prompt = my_prompt.generate_prompt(image_path, questions)
             if image_path is not None:
                 cache_key = f"{my_vlm}_{my_prompt}_{image_path}_{prompt}" + (
                     "_SoM" if "SetOfMarkPrompt" == str(my_prompt) else ""
@@ -253,7 +253,7 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
                     preds = vlm_cache[cache_key]
                 else:
                     preds, prompt = my_vlm.generate_answer(
-                        image_for_prompt, questions, my_prompt
+                        image_path, questions, my_prompt
                     )
                     vlm_cache[cache_key] = preds
             else:
@@ -268,14 +268,14 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
                     raise ValueError(f"Question too short: {q}")
 
                 # the cache key should be image_path + prompt
-                image_for_prompt, prompt = my_prompt.generate_prompt(image, q)
+                _, prompt = my_prompt.generate_prompt(image, q)
                 cache_key = f"{my_vlm}_{my_prompt}_{image_path}_{prompt}" + (
                     "_SoM" if "SetOfMarkPrompt" == str(my_prompt) else ""
                 )
                 if cache_key in vlm_cache:
                     pred = vlm_cache[cache_key]
                 else:
-                    pred, prompt = my_vlm.generate_answer(image_for_prompt, q, my_prompt)
+                    pred, prompt = my_vlm.generate_answer(image_path, q, my_prompt)
                     vlm_cache[cache_key] = pred
                     vlm_cache.commit()
                 correct = my_metric.evaluate(pred, a)
