@@ -9,6 +9,7 @@ import re
 import sqlite3
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from PIL import Image
 from scenic_reasoning.evaluator.metrics import ConstrainedDecoding, ExactMatch, LLMJudge
@@ -43,7 +44,7 @@ nu_path = project_root_dir() / "data/nuimages_val_filtered"
 waymo_path = project_root_dir() / "data/waymo_validation_interesting"
 
 
-def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
+def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False, sample_size=50):
     if "bdd" in db_path:
         db_base_path = bdd_path
     elif "nuimage" in db_path:
@@ -81,9 +82,6 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
     conn.close()
 
     sampled_dataframes = {}
-    sample_size = 100  # this is per table not across all tables
-    # if str(my_metric) != "LLMJudge" and "Llama" in str(my_vlm):
-    #     sample_size = 100
     print("Filtering rows...")
 
     for table_name, df in dataframes.items():
@@ -104,29 +102,52 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
             filtered_rows.append(row)
 
         filtered_df = pd.DataFrame(filtered_rows).reset_index(drop=True)
-        if len(filtered_df) >= sample_size:
+        
+        # Keep track of the available sample size for each table
+        available_samples = len(filtered_df)
+        
+        if available_samples >= sample_size:
             sampled_df = filtered_df.sample(n=sample_size, random_state=42).reset_index(
                 drop=True
             )
         else:
             print(
-                f"Table '{table_name}' has only {len(filtered_df)} valid rows. Returning all."
+                f"Table '{table_name}' has only {available_samples} valid rows. Returning all."
             )
             sampled_df = filtered_df.copy()
 
-        sampled_dataframes[table_name] = sampled_df
+        sampled_dataframes[table_name] = (sampled_df, available_samples)
 
+    # Determine the minimum available sample size across all tables
+    # This ensures we use the same number of samples for each table to avoid bias
+    min_available_samples = sample_size  # Start with the requested sample size
+    
+    for table_name, (_, available_samples) in sampled_dataframes.items():
+        min_available_samples = min(min_available_samples, available_samples)
+    
+    # Ensure we have at least 1 sample
+    min_available_samples = max(1, min_available_samples)
+    print(f"\nUsing a consistent sample size of {min_available_samples} across all tables for fair comparison\n")
+    
     all_correctness = []
 
-    for table_idx, table in enumerate(sampled_dataframes):
+    # Use a clean table_idx counter to avoid gaps in file numbering
+    table_idx = 0
+    num_valid_tables = 0
+    for table_name, (sampled_df, _) in sorted(sampled_dataframes.items()):
+        num_valid_tables += 1
+        # We'll only increment table_idx for tables we actually process and save
+            
         # Reset correctness list for each table
         correctness = []
-        output_path = results_dir / f"{table_idx}.txt"
-        os.makedirs(os.path.dirname(str(output_path)), exist_ok=True)
         
         # Variable to track if we need to sample more questions
         need_more_samples = False
         existing_scores = []
+        
+        # Compute the output path based on the number of valid tables processed so far
+        output_path = results_dir / f"{num_valid_tables}.txt"
+        os.makedirs(os.path.dirname(str(output_path)), exist_ok=True)
         
         if os.path.exists(output_path):
             with open(output_path, "r") as f:
@@ -135,27 +156,27 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
                 if match:
                     score = match.group(1)
                     score = ast.literal_eval(score)
-                    if type(score) == list:
+                    if isinstance(score, list):
                         existing_scores = score
                         # Check if we have the right number of scores
-                        if len(existing_scores) > sample_size:
-                            # Only take up to sample_size
-                            print(f"Found {len(existing_scores)} scores, using first {sample_size}")
-                            existing_scores = existing_scores[:sample_size]
+                        if len(existing_scores) > min_available_samples:
+                            # Only take up to min_available_samples
+                            print(f"Found {len(existing_scores)} scores, using first {min_available_samples}")
+                            existing_scores = existing_scores[:min_available_samples]
                             all_correctness.extend(existing_scores)
-                        elif len(existing_scores) < sample_size:
+                        elif len(existing_scores) < min_available_samples:
                             # We need to sample more questions
-                            print(f"Found only {len(existing_scores)} scores, need {sample_size - len(existing_scores)} more")
+                            print(f"Found only {len(existing_scores)} scores, need {min_available_samples - len(existing_scores)} more")
                             all_correctness.extend(existing_scores)
                             need_more_samples = True
                         else:
                             # We have exactly the right number
                             all_correctness.extend(existing_scores)
                     else:
-                        # Single score case
-                        existing_scores = [score]
-                        all_correctness.append(score)
-                        if sample_size > 1:
+                        # Single score case - convert to list for consistency
+                        existing_scores = [float(score)]
+                        all_correctness.extend(existing_scores)  # Use extend consistently
+                        if min_available_samples > 1:
                             need_more_samples = True
                 else:
                     print(f"No correctness score found in {output_path}, skipping...")
@@ -166,7 +187,7 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
                 print(f"Using existing scores from {output_path}")
                 continue
             else:
-                print(f"Need more samples for {output_path}, will sample {sample_size - len(existing_scores)} more")
+                print(f"Need more samples for {output_path}, will sample {min_available_samples - len(existing_scores)} more")
 
         questions = []
         answers = []
@@ -176,20 +197,23 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
         )  # Initialize image_path to avoid 'possibly unbound' errors
         
         # If we already have some scores, only sample what we need more
-        additional_samples_needed = max(0, sample_size - len(existing_scores))
+        additional_samples_needed = max(0, min_available_samples - len(existing_scores))
         if additional_samples_needed > 0 and need_more_samples:
-            print(f"Sampling {additional_samples_needed} more questions for {table}")
+            print(f"Sampling {additional_samples_needed} more questions for {table_name}")
             # If we need fewer samples than available, select randomly
-            if len(sampled_dataframes[table]) > additional_samples_needed:
+            if len(sampled_df) > additional_samples_needed:
                 # Only get the additional samples we need
-                sample_indices = random.sample(range(len(sampled_dataframes[table])), additional_samples_needed)
-                rows_to_process = [sampled_dataframes[table].iloc[idx] for idx in sample_indices]
+                # We need to ensure deterministic sampling, so use a fixed seed
+                sample_indices = random.sample(range(len(sampled_df)), additional_samples_needed)
+                rows_to_process = [sampled_df.iloc[idx] for idx in sample_indices]
             else:
-                # Use all available samples if we need more than we have
-                rows_to_process = [sampled_dataframes[table].iloc[idx] for idx in range(len(sampled_dataframes[table]))]
+                # Use all available samples if we need more than we have, but limit to what we need
+                available_count = min(len(sampled_df), additional_samples_needed)
+                rows_to_process = [sampled_df.iloc[idx] for idx in range(available_count)]
         else:
-            # Process all rows if we haven't cached any scores yet
-            rows_to_process = [sampled_dataframes[table].iloc[idx] for idx in range(len(sampled_dataframes[table]))]
+            # If this is a fresh run (no existing scores), still respect min_available_samples
+            process_count = min(min_available_samples, len(sampled_df))
+            rows_to_process = [sampled_df.iloc[idx] for idx in range(process_count)]
         
         for idx, row in tqdm(
             enumerate(rows_to_process), total=len(rows_to_process)
@@ -285,26 +309,83 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
 
         # Combine existing scores with new scores, if we loaded some from cache
         if need_more_samples and len(existing_scores) > 0:
-            combined_correctness = existing_scores + correctness
-            # Ensure we don't exceed sample_size
-            if len(combined_correctness) > sample_size:
-                combined_correctness = combined_correctness[:sample_size]
-            all_correctness.append(combined_correctness)
+            # Read existing questions, answers, and predictions from the cache file
+            existing_questions = []
+            existing_answers = []
+            existing_preds = []
             
-            # Update the cached file with the combined scores
+            try:
+                with open(output_path, "r") as f:
+                    content = f.read()
+                    q_match = re.search(r"Questions:\s*\n(.+?)\n", content, re.DOTALL)
+                    a_match = re.search(r"Answers:\s*\n(.+?)\n", content, re.DOTALL)
+                    p_match = re.search(r"Preds:\s*\n(.+?)\n", content, re.DOTALL)
+                    
+                    if q_match:
+                        existing_questions = ast.literal_eval(q_match.group(1))
+                    if a_match:
+                        existing_answers = ast.literal_eval(a_match.group(1))
+                    if p_match:
+                        existing_preds = ast.literal_eval(p_match.group(1))
+            except Exception as e:
+                print(f"Error reading existing cache data: {e}")
+            
+            # Combine existing data with new data
+            # Ensure proper list handling for consistency
+            if not isinstance(existing_questions, list):
+                existing_questions = [existing_questions]
+            if not isinstance(existing_answers, list):
+                existing_answers = [existing_answers]
+            if not isinstance(existing_preds, list):
+                existing_preds = [existing_preds]
+            if not isinstance(existing_scores, list):
+                existing_scores = [existing_scores]
+            if not isinstance(questions, list):
+                questions = [questions]
+            if not isinstance(answers, list):
+                answers = [answers]
+            if not isinstance(preds, list):
+                preds = [preds]
+            if not isinstance(correctness, list):
+                correctness = [correctness]
+            
+            combined_questions = existing_questions + questions
+            combined_answers = existing_answers + answers
+            combined_preds = existing_preds + preds
+            combined_correctness = existing_scores + correctness
+            
+            # Ensure all combined lists have the same length
+            min_length = min(len(combined_questions), len(combined_answers), len(combined_preds), len(combined_correctness))
+            combined_questions = combined_questions[:min_length]
+            combined_answers = combined_answers[:min_length]
+            combined_preds = combined_preds[:min_length]
+            combined_correctness = combined_correctness[:min_length]
+            
+            # Ensure we don't exceed min_available_samples
+            if len(combined_correctness) > min_available_samples:
+                combined_questions = combined_questions[:min_available_samples]
+                combined_answers = combined_answers[:min_available_samples]
+                combined_preds = combined_preds[:min_available_samples]
+                combined_correctness = combined_correctness[:min_available_samples]
+            
+            # Make sure we're consistently extending all_correctness with flat lists
+            all_correctness.extend(combined_correctness)
+            
+            # Update the cached file with the combined data
             with open(str(output_path), "w") as log_file:
                 log_file.write(
                     f"Image Path: \n{image_path if image_path is not None else 'None'}\n"
                 )
-                log_file.write(f"Questions: \n{questions}\n")
-                log_file.write(f"Answers: \n{answers}\n")
+                log_file.write(f"Questions: \n{combined_questions}\n")
+                log_file.write(f"Answers: \n{combined_answers}\n")
                 log_file.write(f"Prompt: \n{prompt}\n")
-                log_file.write(f"Preds: \n{preds}\n")
+                log_file.write(f"Preds: \n{combined_preds}\n")
                 log_file.write(f"Correctness: \n{combined_correctness}\n")
                 log_file.write("\n")
         else:
             # Normal case without cached scores
-            all_correctness.append(correctness)
+            # Make sure we're consistently extending all_correctness with flat lists
+            all_correctness.extend(correctness)
             
             with open(str(output_path), "w") as log_file:
                 log_file.write(
@@ -319,9 +400,30 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False):
 
     vlm_cache.close()
     conn.close()
-    # flatten the list from a list of lists of floats to a list of floats
-    all_correctness = [item if isinstance(item, (int, float)) else item for sublist in all_correctness for item in (sublist if isinstance(sublist, list) else [sublist])]
-    return sum(all_correctness) / len(all_correctness)
+    
+    # Ensure all_correctness is properly flattened (no nested lists)
+    # First ensure all elements are either numbers or simple lists of numbers
+    flat_correctness = []
+    for item in all_correctness:
+        if isinstance(item, (int, float)):
+            flat_correctness.append(item)
+        elif isinstance(item, list):
+            # For any list items, add each element individually
+            for subitem in item:
+                if isinstance(subitem, (int, float)):
+                    flat_correctness.append(subitem)
+                elif isinstance(subitem, list):
+                    # Handle doubly-nested lists
+                    flat_correctness.extend([x for x in subitem if isinstance(x, (int, float))])
+    
+    # Replace all_correctness with the properly flattened list
+    all_correctness = flat_correctness
+    
+    print(f"Total scores collected: {len(all_correctness)}")
+    if len(all_correctness) == 0:
+        print("Warning: No correctness scores found!")
+        return 0.0
+    return np.mean(all_correctness)
 
 
 if __name__ == "__main__":
@@ -373,6 +475,13 @@ if __name__ == "__main__":
         "--gpu_id",
         type=int,
         default=7,
+    )
+    parser.add_argument(
+        "--sample_size",
+        "-n",
+        type=int,
+        default=100,
+        help="Number of unique image-question pairs to use for evaluation.",
     )
 
     args = parser.parse_args()
@@ -463,5 +572,5 @@ if __name__ == "__main__":
     else:
         raise ValueError(f"Unknown prompt: {args.prompt}")
 
-    acc = iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=use_batch)
+    acc = iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=use_batch, sample_size=args.sample_size)
     print(f"Accuracy: {acc}")
