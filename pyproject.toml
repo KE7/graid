@@ -27,6 +27,9 @@ outlines = "0.1.11"
 dotenv = "^0.9.9"
 guidance = "0.2.0"
 timm = "^1.0.15"
+tenacity = "^9.1.2"
+anthropic = "^0.51.0"
+pick = "^2.4.0"
 
 
 [tool.poetry.scripts]

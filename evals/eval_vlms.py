@@ -519,7 +519,7 @@ if __name__ == "__main__":
         # use_batch = False
     elif args.vlm == "Gemini":
         import pick
-        choice_list = ["gemini-1.5-pro", "gemini-2.5-pro"]
+        choice_list = ["gemini-1.5-pro", "gemini-2.5-pro-preview-03-25"]
         title = "Please select a Gemini model:"
         option, index = pick.pick(choice_list, title)
         
@@ -527,14 +527,14 @@ if __name__ == "__main__":
         # use_batch = True
     elif args.vlm == "Gemini_CD":
         import pick
-        choice_list = ["gemini-1.5-pro", "gemini-2.5-pro"]
+        choice_list = ["gemini-1.5-pro", "gemini-2.5-pro-preview-03-25"]
         title = "Please select a Gemini model:"
         option, index = pick.pick(choice_list, title)
         
         my_vlm = Gemini_CD(model_name=str(option), location=args.region)
     elif args.vlm == "Gemini_CoT_CD":
         import pick
-        choice_list = ["gemini-1.5-pro", "gemini-2.5-pro"]
+        choice_list = ["gemini-1.5-pro", "gemini-2.5-pro-preview-03-25"]
         title = "Please select a Gemini model:"
         option, index = pick.pick(choice_list, title)
         
