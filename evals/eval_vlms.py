@@ -247,6 +247,7 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False, sa
             else:
                 image_path = image_data["image"]
                 image = transforms.ToTensor()(Image.open(io.BytesIO(image_path)))
+                image_path = image
 
             if isinstance(qa_list[0], list):
                 random_qa = random.choice(qa_list)
