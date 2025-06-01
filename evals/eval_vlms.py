@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from PIL import Image
-from scenic_reasoning.evaluator.metrics import ConstrainedDecoding, ExactMatch, LLMJudge
+from scenic_reasoning.evaluator.metrics import Contains, ExactMatch, LLMJudge
 from scenic_reasoning.evaluator.prompts import (
     CoT,
     SetOfMarkPrompt,
@@ -457,7 +457,7 @@ if __name__ == "__main__":
         "--metric",
         type=str,
         default="LLMJudge",
-        choices=["ExactMatch", "LLMJudge"],
+        choices=["ExactMatch", "Contains", "LLMJudge"],
         help="Metric to use for evaluating answers.",
     )
     parser.add_argument(
@@ -547,6 +547,8 @@ if __name__ == "__main__":
         my_metric = LLMJudge()
     elif args.metric == "ExactMatch":
         my_metric = ExactMatch()
+    elif args.metric == "Contains":
+        my_metric = Contains()
     else:
         raise ValueError(f"Unknown metric: {args.metric}")
 
