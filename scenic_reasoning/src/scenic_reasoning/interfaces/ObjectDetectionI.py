@@ -1,7 +1,5 @@
-import random
 from abc import ABC, abstractmethod
 from enum import Enum
-from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 
 import cv2
@@ -291,31 +289,22 @@ class ObjectDetectionUtils:
     def compute_metrics_for_single_img(
         ground_truth: List[ObjectDetectionResultI],
         predictions: List[ObjectDetectionResultI],
+        metric: MeanAveragePrecision = None,
         class_metrics: bool = False,
         extended_summary: bool = False,
         debug: bool = False,
         image: Optional[torch.Tensor] = None,
-    ) -> Dict[str, float]:
-
-        gt_classes_set = set([truth.cls for truth in ground_truth])
-        pred_classes_set = set([pred.cls for pred in predictions])
-        intersection_classes = gt_classes_set.intersection(pred_classes_set)
+        penalize_for_extra_predicitions: bool = False,
+    ) -> Dict[Any, Any]:
 
         pred_boxes = []
         pred_scores = []
         pred_classes = []
-        remove_indices_pred = []
 
         for i, pred in enumerate(predictions):
-            if pred.cls not in intersection_classes:
-                remove_indices_pred.append(i)
-                continue
             pred_boxes.append(pred.as_xyxy())
-            pred_scores.append(pred.score)  # score is a float or tensor
+            pred_scores.append(pred.score)
             pred_classes.append(pred.cls)
-
-        for i in sorted(remove_indices_pred, reverse=True):
-            predictions.pop(i)
 
         pred_boxes = torch.cat(pred_boxes) if pred_boxes else torch.Tensor([])
         pred_scores = (
@@ -344,44 +333,40 @@ class ObjectDetectionUtils:
         boxes = []
         scores = []
         classes = []
-        remove_indices_gt = []
-        for i, truth in enumerate(ground_truth):
-            if truth.cls not in intersection_classes:
-                remove_indices_gt.append(i)
-                continue
+        for truth in ground_truth:
             boxes.append(truth.as_xyxy())
             scores.append(truth.score)
             classes.append(truth.cls)
 
-        for i in sorted(remove_indices_gt, reverse=True):
-            ground_truth.pop(i)
+        if penalize_for_extra_predicitions:
+            # if there are more predictions than ground truth, add fake boxes
+            # so that we will end up lowering the mAP
+            num_ghost_boxes = max(0, len(pred_boxes) - len(boxes))
+            image_size = (image.shape[1], image.shape[0])
+            ghost_bbox_size = 20
+            for i in range(num_ghost_boxes):
+                x1 = i * ghost_bbox_size
+                y1 = ghost_bbox_size
+                x2 = x1 + ghost_bbox_size
+                y2 = y1 + ghost_bbox_size
 
-        num_fake_boxes = max(0, len(pred_boxes) - len(boxes))
-        image_size = (image.shape[1], image.shape[0])
-        fake_bbox_size = 20
-        for i in range(num_fake_boxes):
-            x1 = i * fake_bbox_size
-            y1 = fake_bbox_size
-            x2 = x1 + fake_bbox_size
-            y2 = y1 + fake_bbox_size
+                ghost_bbox = [x1, y1, x2, y2]
+                fake_score = 1.0
+                nonsignificant_class = -1
+                nonexistent_label = "fake"
 
-            fake_bbox = [x1, y1, x2, y2]
-            fake_score = 1.0
-            fake_class = -1
-            fake_label = "fake"
+                fake_detection = ObjectDetectionResultI(
+                    score=fake_score,
+                    cls=nonsignificant_class,
+                    label=nonexistent_label,
+                    bbox=ghost_bbox,
+                    image_hw=image_size,
+                )
+                ground_truth.append(fake_detection)
 
-            fake_detection = ObjectDetectionResultI(
-                score=fake_score,
-                cls=fake_class,
-                label=fake_label,
-                bbox=fake_bbox,
-                image_hw=image_size,
-            )
-            ground_truth.append(fake_detection)
-
-            boxes.append(fake_detection.as_xyxy())
-            scores.append(fake_detection.score)
-            classes.append(fake_detection.cls)
+                boxes.append(fake_detection.as_xyxy())
+                scores.append(fake_detection.score)
+                classes.append(fake_detection.cls)
 
         boxes = torch.cat(boxes) if boxes else torch.Tensor([])  # shape: (num_boxes, 4)
         scores = (
@@ -407,20 +392,53 @@ class ObjectDetectionUtils:
             dict(boxes=boxes, labels=classes, scores=scores)
         ]
 
-        metric = MeanAveragePrecision(
-            class_metrics=class_metrics,
-            extended_summary=extended_summary,
-            box_format="xyxy",
-            iou_thresholds=[0.25],
-            iou_type="bbox",
-            backend="faster_coco_eval",
-            max_detection_thresholds=[10, 20, 100],
-        )
+        # TODO: This should be pulled out and the caller should pass it in
+        # so that we can avoid the memory leak issue:
+        # https://github.com/Lightning-AI/torchmetrics/issues/1949
+        need_to_delete_metric = False
+        if metric is None:
+            metric = MeanAveragePrecision(
+                class_metrics=class_metrics,
+                extended_summary=extended_summary,
+                box_format="xyxy",
+                iou_type="bbox",
+            )
+            need_to_delete_metric = True
 
+        # We only need to call update
         metric.update(target=targets, preds=preds)
 
-        return metric.compute()
+        # once we are at the end is when we call compute
+        # if need_to_delete_metric:
+        score = metric.compute()
+        score["TN"] = 0
+        for p, t in zip(preds, targets):
+            if p["boxes"].shape == torch.Size([0]) and t["boxes"].shape == torch.Size(
+                [0]
+            ):
+                score["TN"] += 1
 
+        # ret = max(0, score['map'].item())
+        ret = score["map"].item()
+        print("!!!!!!!!!!!!!!!!!!", ret)
+
+        metric.reset()
+        del metric
+        del score
+
+        # print(score['map'], "!!!!!!!!!!!!!!!!")
+        return ret
+
+        # else:
+        #     tn = 0
+        #     for p, t in zip(preds, targets):
+        #         if p["boxes"].shape == torch.Size([0]) and t[
+        #             "boxes"
+        #         ].shape == torch.Size([0]):
+        #             tn += 1
+        #     return {"TN": tn}
+
+    @staticmethod
     def show_image_with_detections(
         image: Image.Image, detections: List[ObjectDetectionResultI]
     ) -> None:
@@ -507,6 +525,7 @@ class ObjectDetectionUtils:
 
         cv2.destroyAllWindows()
 
+    @staticmethod
     def show_image_with_detections_and_gt(
         image: Image.Image,
         detections: List[ObjectDetectionResultI],
@@ -681,6 +700,8 @@ class ObjectDetectionUtils:
 
         cv2.destroyAllWindows()
 
+        return img_to_show
+
 
 class ObjectDetectionModelI(ABC):
     @abstractmethod
@@ -690,28 +711,27 @@ class ObjectDetectionModelI(ABC):
     @abstractmethod
     def identify_for_image(
         self,
-        image: Union[
-            str, Path, int, Image.Image, list, tuple, np.ndarray, torch.Tensor
-        ],
+        image: Union[np.ndarray, torch.Tensor],
         debug: bool = False,
-    ) -> List[List[Optional[ObjectDetectionResultI]]]:
+    ) -> List[List[ObjectDetectionResultI]]:
         pass
 
     @abstractmethod
-    def identify_for_image_as_tensor(
+    def identify_for_image_batch(
         self,
-        image: Union[
-            str, Path, int, Image.Image, list, tuple, np.ndarray, torch.Tensor
-        ],
+        image: Union[np.ndarray, torch.Tensor],
         debug: bool = False,
         **kwargs,
-    ) -> List[Optional[ObjectDetectionResultI]]:
+    ) -> List[List[ObjectDetectionResultI]]:
         pass
 
     @abstractmethod
     def identify_for_video(
         self,
-        video: Union[Iterator[Image.Image], List[Image.Image]],
+        video: Union[
+            Iterator[Union[np.ndarray, torch.Tensor]],
+            List[Union[np.ndarray, torch.Tensor]],
+        ],
         batch_size: int = 1,
     ) -> Iterator[List[Optional[ObjectDetectionResultI]]]:
         pass

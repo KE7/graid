@@ -12,15 +12,15 @@ from detectron2.engine import DefaultPredictor
 from detectron2.structures import BitMasks, pairwise_iou
 from detectron2.utils.visualizer import Visualizer
 from interfaces import InstanceSegmentationI
-
-# from InstanceSegmentationI import InstanceSegmentationResultI, Mask_Format
-from models import Detectron
 from models.Detectron import Detectron2InstanceSegmentation
 from scenic_reasoning.data.ImageLoader import Bdd10kDataset, NuImagesDataset
 from torch.utils.data import DataLoader
 from ultralytics import YOLO  # For YOLOv8 model inference
 
 from data import ImageLoader
+
+# from InstanceSegmentationI import InstanceSegmentationResultI, Mask_Format
+from models import Detectron
 
 # Detectron.py and UltralyticsYolo.py need to have InstanceSegmentationI interface integrated
 # def run_segmentation_pipeline(dataset: Bdd100kDataset, detectron: Detectron, yolo: UltralyticsYolo):

@@ -1,6 +1,9 @@
 import json
 import os
-from pathlib import Path
+import queue
+import threading
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
 import numpy as np
@@ -12,14 +15,17 @@ from scenic_reasoning.data.ImageLoader import (
     WaymoDataset,
 )
 from scenic_reasoning.interfaces.ObjectDetectionI import ObjectDetectionModelI
-from scenic_reasoning.questions.ObjectDetectionQ import ALL_QUESTIONS, Quadrants
+from scenic_reasoning.questions.ObjectDetectionQ import ALL_QUESTIONS
+from scenic_reasoning.utilities.common import project_root_dir
 from sqlitedict import SqliteDict
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
+lock = threading.Lock()
+
 
 class ObjDectDatasetBuilder(Dataset):
-    DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent.parent / "databases"
+    DEFAULT_DB_PATH = project_root_dir() / "data" / "databases_ablations"
 
     def __init__(
         self,
@@ -30,22 +36,21 @@ class ObjDectDatasetBuilder(Dataset):
     ):
         self.split = split
         self.questions = ALL_QUESTIONS
-        self.questions.append(Quadrants(2, 2))
-        self.questions.append(Quadrants(2, 3))
-        self.questions.append(Quadrants(3, 2))
-        self.questions.append(Quadrants(3, 3))
+
+        self.writer_queue = queue.Queue()
 
         self.dataset = {}
         db_path = self.DEFAULT_DB_PATH / f"{db_name}.sqlite"
         print("DB path: ", db_path)
         if not os.path.exists(db_path):
             os.makedirs(os.path.dirname(db_path), exist_ok=True)
+            os.chmod(os.path.dirname(db_path), 0o777)
         for question in self.questions:
             table_name = str(question)
             self.dataset[table_name] = SqliteDict(
                 str(db_path),
                 tablename=table_name,
-                autocommit=True,
+                autocommit=False,
                 encode=json.dumps,
                 decode=json.loads,
             )
@@ -55,9 +60,9 @@ class ObjDectDatasetBuilder(Dataset):
         if dataset == "bdd":
             self.bdd = Bdd100kDataset(split=self.split, transform=transform)
             self.all_sets.append(self.bdd)
-        elif dataset == "nuimages":
+        elif dataset == "nuimage":
             self.nu_images = NuImagesDataset(
-                split=self.split, size="full", transform=transform
+                split=self.split, size="all", transform=transform
             )
             self.all_sets.append(self.nu_images)
         elif dataset == "waymo":
@@ -76,6 +81,9 @@ class ObjDectDatasetBuilder(Dataset):
             self.has_been_built = True
 
         self.has_been_built = False
+
+    def is_built(self):
+        return self.has_been_built
 
     def __len__(self):
         if not self.has_been_built:
@@ -96,57 +104,148 @@ class ObjDectDatasetBuilder(Dataset):
             idx -= len(self.dataset[d])
         raise IndexError("Index out of range")
 
-    def build(self, model: Optional[ObjectDetectionModelI] = None, batch_size: int = 1):
+    def build(
+        self,
+        model: Optional[ObjectDetectionModelI] = None,
+        batch_size: int = 1,
+        conf: float = 0.5,
+        device: Optional[torch.device] = None,
+    ):
+
+        def buffered_writer():
+            buffer = defaultdict(dict)
+            count = 0
+            while True:
+                items = self.writer_queue.get()
+                if items is None:
+                    break
+                for question in self.questions:
+                    table_name = str(question)
+                    buffer[table_name].update(items[table_name])
+                    buffer[table_name].update(items)
+
+                count += len(items)
+                if count >= 1000 or self.writer_queue.qsize() == 0:
+                    print(f"Writing {count} items to the database...")
+                    for question in self.questions:
+                        table_name = str(question)
+                        self.dataset[table_name].update(buffer[table_name])
+                        self.dataset[table_name].commit()
+                        buffer[table_name].clear()
+                    count = 0
+
+            for table_name in self.dataset:
+                if buffer[table_name]:
+                    self.dataset[table_name].update(buffer[table_name])
+                    buffer[table_name].clear()
+                    self.dataset[table_name].commit()
+
+            self.writer_queue.task_done()
+            print("Writer thread exiting...")
+
+        def writer():
+            while True:
+                items = self.writer_queue.get()
+                if items is None:
+                    break
+                print("Writing items to the database...")
+                for question in self.questions:
+                    table_name = str(question)
+                    self.dataset[table_name].update(items[table_name])
+                    self.dataset[table_name].commit()
+                self.writer_queue.task_done()
+            print("Writer thread exiting...")
+
+        def process_batch(base_idx, batch):
+            batch_images = torch.stack([sample["image"] for sample in batch])
+
+            if model is not None:
+                batch_images = batch_images.to(device)
+                with lock:
+                    labels = model.identify_for_image_batch(batch_images)
+                if labels == [None]:
+                    return
+            else:
+                labels = [sample["labels"] for sample in batch]
+
+            items = defaultdict(dict)
+            for j, lbl in enumerate(labels):
+                image = batch_images[j].permute(1, 2, 0).cpu().numpy()
+                image = Image.fromarray(image.astype(np.uint8))
+                # image.show()  # for debugging
+                name = f"{int(base_idx + j)}.pkl"
+                # print(f"Processing {name}...")
+                for question in self.questions:
+                    table_name = str(question)
+                    lbl = list(filter(lambda l: l.score >= conf, lbl))
+                    if len(lbl) > 0 and question.is_applicable(image, lbl):
+                        qa_list = question.apply(image, lbl)
+                    else:
+                        qa_list = []
+
+                    entry = {
+                        "qa_list": qa_list,
+                        "split": self.split,
+                        "num of labels": len(lbl),
+                    }
+
+                    items[table_name][name] = entry
+
+            self.writer_queue.put(items)
+            print("Batch done!!!")
+
         if self.has_been_built:
             print("Dataset has already been built.")
             return
 
         for dataset in self.all_sets:
-            print("Generating dataset...")
             data_loader = DataLoader(
-                dataset, batch_size=batch_size, shuffle=False, collate_fn=lambda x: x
+                dataset,
+                batch_size=batch_size,
+                shuffle=False,
+                collate_fn=lambda x: x,
+                num_workers=5,
             )
-            for batch in tqdm(data_loader):
-                batch_images = torch.stack([sample["image"] for sample in batch])
-                batch_names = [sample["name"] for sample in batch]
 
-                if model is not None:
-                    # labels = model.identify_for_image_as_tensor(batch_images)
-                    labels = model.identify_for_image(batch_images)
-                    if labels == [None]:
-                        continue
-                else:
-                    labels = [sample["labels"] for sample in batch]
+            max_workers = 10
+            inflight_futures = []
 
-                for j, lbl in enumerate(labels):
-                    image = batch_images[j].permute(1, 2, 0).numpy()
-                    image = Image.fromarray(image.astype(np.uint8))
-                    name = batch_names[j]
-                    for question in self.questions:
-                        table_name = str(question)
+            writer_thread = threading.Thread(target=writer, daemon=True)
+            writer_thread.start()
 
-                        if question.is_applicable(image, lbl):
-                            qa_list = question.apply(image, lbl)
-                            # because of Python semantics, sqlitedict cannot
-                            # know when a mutable SqliteDict-backed entry
-                            # was modified in RAM. You'll need to explicitly
-                            # assign the mutated object back to SqliteDict:
-                            # https://github.com/piskvorky/sqlitedict
-                            self.dataset[table_name][name] = {
-                                "qa_list": qa_list,
-                                "split": self.split,
-                                "num of labels": len(lbl),
-                            }
-                        else:
-                            self.dataset[table_name][name] = {
-                                "qa_list": "Question not applicable",
-                                "split": self.split,
-                                "num of labels": len(lbl),
-                            }
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                data_iter = iter(tqdm(enumerate(data_loader)))
+
+                for _ in range(max_workers):
+                    try:
+                        base_idx, batch = next(data_iter)
+                        inflight_futures.append(
+                            executor.submit(process_batch, base_idx * batch_size, batch)
+                        )
+                    except StopIteration:
+                        break
+
+                while inflight_futures:
+                    for future in as_completed(inflight_futures):
+                        inflight_futures.remove(future)
+                        future.result()
+                        try:
+                            base_idx, batch = next(data_iter)
+                            inflight_futures.append(
+                                executor.submit(
+                                    process_batch, base_idx * batch_size, batch
+                                )
+                            )
+                        except StopIteration:
+                            continue
+
+            self.writer_queue.put(None)
+            writer_thread.join()
 
         for table_name in self.dataset:
             if not self.dataset[table_name]:
                 continue
+            self.dataset[table_name].commit()
             self.dataset[table_name].close()
 
         self.has_been_built = True

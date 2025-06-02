@@ -3,6 +3,9 @@ import io
 import json
 import logging
 import os
+import pickle
+import re
+from datetime import datetime, time
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
@@ -65,7 +68,7 @@ class ImageDataset(Dataset):
     def __len__(self) -> int:
         return len(self.img_labels)
 
-    def __getitem__(self):
+    def __getitem__(self, idx: int):
         raise NotImplementedError("Subclasses must implement __getitem__")
 
 
@@ -292,20 +295,35 @@ class Bdd100kDataset(ImageDataset):
     def category_to_coco_cls(self, category: str) -> int:
         return self._CATEGORIES_TO_COCO[category]
 
-    def __len__(self) -> int:
-        return len(self.img_labels)
+    def __repr__(self):
+        return f"BDD100K Dataset {self.split} split with {self.__len__()} images"
 
     def __init__(
         self,
         split: Literal["train", "val", "test"] = "train",
         use_original_categories: bool = True,
         use_extended_annotations: bool = True,
+        use_time_filtered: bool = True,
+        rebuild: bool = False,
         **kwargs,
     ):
+        self.split = split
+        self.use_time_filtered = use_time_filtered
 
         root_dir = project_root_dir() / "data" / "bdd100k"
         img_dir = root_dir / "images" / "100k" / split
-        annotations_file = root_dir / "labels" / "det_20" / f"det_{split}.json"
+        annotations_file = (
+            root_dir
+            / "labels"
+            / "det_20"
+            / (
+                f"det_{split}_filtered.json"
+                if use_time_filtered
+                else f"det_{split}.json"
+            )
+        )
+
+        self.img_labels = self.load_annotations(annotations_file)
 
         def merge_transform(
             image: Tensor,
@@ -359,14 +377,6 @@ class Bdd100kDataset(ImageDataset):
 
             return image, results, timestamp
 
-        super().__init__(
-            annotations_file=str(annotations_file),
-            img_dir=str(img_dir),
-            merge_transform=merge_transform,
-            use_extended_annotations=use_extended_annotations,
-            **kwargs,
-        )
-
         # finally, filter out following labels
         #   'other person', 'other vehicle' and 'trail'
         # because they are uncertain objects: https://github.com/bdd100k/bdd100k/blob/master/bdd100k/common/typing.py#L4
@@ -377,17 +387,89 @@ class Bdd100kDataset(ImageDataset):
                 filter(
                     lambda l: l["category"]
                     in ["other person", "other vehicle", "trail", "trailer"],
-                    label["labels"],
+                    label.get("labels", []),
                 )
             )
+            and "labels" in label
         ]
 
+        # Save each element of the img_labels as its own pickle file
+        save_dir = (
+            project_root_dir()
+            / "data"
+            / (
+                f"bdd_{self.split}_filtered"
+                if use_time_filtered
+                else f"bdd_{self.split}"
+            )
+        )
+        save_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            os.chmod(save_dir, 0o777)
+        except Exception as e:
+            logger.warning(f"Failed to set permissions on {save_dir}: {e}")
+
+        if rebuild:
+            for idx, label in tqdm(
+                enumerate(self.img_labels),
+                total=len(self.img_labels),
+                desc="Indexing BDD100K dataset...",
+            ):
+                save_path = save_dir / f"{idx}.pkl"
+                print("creating idx... ", idx)
+                with open(save_path, "wb") as f:
+                    pickle.dump(
+                        {
+                            "name": label["name"],
+                            "labels": label["labels"],
+                            "timestamp": label["timestamp"],
+                        },
+                        f,
+                    )
+                    os.chmod(save_path, 0o777)
+
+        super().__init__(
+            annotations_file=str(annotations_file),
+            img_dir=str(img_dir),
+            merge_transform=merge_transform,
+            use_extended_annotations=use_extended_annotations,
+            **kwargs,
+        )
+
+    def __len__(self) -> int:
+        save_path = (
+            project_root_dir()
+            / "data"
+            / (
+                f"bdd_{self.split}_filtered"
+                if self.use_time_filtered
+                else f"bdd_{self.split}"
+            )
+        )
+        return len(os.listdir(save_path))
+
     def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
-        img_path = os.path.join(self.img_dir, self.img_labels[idx]["name"])
+        save_path = (
+            project_root_dir()
+            / "data"
+            / (
+                f"bdd_{self.split}_filtered"
+                if self.use_time_filtered
+                else f"bdd_{self.split}"
+            )
+            / f"{idx}.pkl"
+        )
+
+        if not save_path.exists():
+            raise FileNotFoundError(f"File not found: {save_path}")
+        with open(save_path, "rb") as f:
+            data = pickle.load(f)
+
+        img_path = os.path.join(self.img_dir, data["name"])
         image = read_image(img_path)
 
-        labels = self.img_labels[idx]["labels"]
-        timestamp = self.img_labels[idx]["timestamp"]
+        labels = data["labels"]
+        timestamp = data["timestamp"]
 
         if self.transform:
             image, labels = self.transform(image, labels)
@@ -542,13 +624,66 @@ class NuImagesDataset(ImageDataset):
                 filtered_list.append(item)
         return filtered_list
 
+    def __repr__(self):
+        return f"NuImages Dataset {self.split} split with {self.__len__()} images"
+
+    def _get_image_label(self, i: int):
+        sample = self.nuim.sample[i]
+        sample_token = sample["token"]
+        key_camera_token = sample["key_camera_token"]
+        object_tokens, surface_tokens = self.nuim.list_anns(
+            sample_token, verbose=False
+        )  # verbose off to avoid excessive print statement
+        if not object_tokens:
+            return None
+
+        object_data = []
+        for object_token in object_tokens:
+            obj = self.nuim.get("object_ann", object_token)
+            category_token = obj["category_token"]
+            attribute_tokens = obj["attribute_tokens"]
+            attributes = []
+            for attribute_token in attribute_tokens:
+                attribute = self.nuim.get("attribute", attribute_token)
+                attributes.append(attribute)
+
+            category = self.nuim.get("category", category_token)["name"]
+            obj["category"] = category
+            obj["attributes"] = attributes
+            object_data.append(obj)
+
+        sample_data = self.nuim.get("sample_data", key_camera_token)
+        img_filename = sample_data["filename"]
+        timestamp = sample_data["timestamp"]
+
+        return {
+            "object_data": object_data,
+            "img_filename": img_filename,
+            "timestamp": timestamp,
+        }
+
+    def is_time_in_working_hours(self, filename: str) -> bool:
+        match = re.search(r"\d{4}-\d{2}-\d{2}-(\d{2})-(\d{2})-", filename)
+        if not match:
+            raise ValueError("Time not found in filename.")
+
+        hour = int(match.group(1))
+        minute = int(match.group(2))
+        t = time(hour, minute)
+
+        return time(8, 0) <= t < time(18, 0)
+
     def __init__(
         self,
-        split: Union[Literal["train", "val", "test", "mini"]] = "val",
-        size: Union[Literal["mini", "all"]] = "all",
+        split: Literal["train", "val", "test", "mini"] = "val",
+        size: Literal["mini", "full"] = "full",
+        rebuild: bool = False,
+        use_time_filtered: bool = True,
         **kwargs,
     ):
-        from nuimages import NuImages
+        self.size = size
+        self.split = split
+        self.use_time_filtered = use_time_filtered
 
         root_dir = project_root_dir() / "data" / "nuimages" / size
         subdir = "v1.0-" + (size if size == "mini" else split)
@@ -563,60 +698,93 @@ class NuImagesDataset(ImageDataset):
         self.category_labels = json.load(open(categories_file))
         self.obj_annotations = json.load(open(obj_annotations_file))
 
-        self.nuim = NuImages(
-            dataroot=img_dir,
-            version=subdir,
-            verbose=False,
-            lazy=True,  # verbose off to avoid excessive print statement
-        )
+        if rebuild:
+            from nuimages import NuImages
 
-        empty_count = 0
-        img_labels = []
-        for i in tqdm(
-            range(len(self.nuim.sample)), desc="Processing NuImage dataset..."
-        ):
-            # see: https://www.nuscenes.org/tutorials/nuimages_tutorial.html
-            sample = self.nuim.sample[i]
-            sample_token = sample["token"]
-            key_camera_token = sample["key_camera_token"]
-            object_tokens, surface_tokens = self.nuim.list_anns(
-                sample_token, verbose=False
-            )  # verbose off to avoid excessive print statement
-            if object_tokens == []:
-                empty_count += 1
-                continue
-
-            object_data = []
-            for object_token in object_tokens:
-                obj = self.nuim.get("object_ann", object_token)
-                category_token = obj["category_token"]
-                attribute_tokens = obj["attribute_tokens"]
-                attributes = []
-                for attribute_token in attribute_tokens:
-                    attribute = self.nuim.get("attribute", attribute_token)
-                    attributes.append(attribute)
-
-                category = self.nuim.get("category", category_token)["name"]
-                obj["category"] = category
-                obj["attributes"] = attributes
-                object_data.append(obj)
-
-            sample_data = self.nuim.get("sample_data", key_camera_token)
-            img_filename = sample_data["filename"]
-            timestamp = sample_data["timestamp"]
-            img_labels.append(
-                {
-                    "filename": img_filename,
-                    "labels": object_data,
-                    "timestamp": timestamp,
-                }
+            self.nuim = NuImages(
+                dataroot=img_dir,
+                version=subdir,
+                verbose=False,
+                lazy=True,  # verbose off to avoid excessive print statement
             )
+            save_path_parent = (
+                project_root_dir()
+                / "data"
+                / (
+                    f"nuimages_{self.split}_filtered"
+                    if use_time_filtered
+                    else f"nuimages_{self.split}"
+                )
+            )
+            save_path_parent.mkdir(parents=True, exist_ok=True)
+            try:
+                os.chmod(save_path_parent, 0o777)
+            except Exception as e:
+                logger.warning(f"Failed to set permissions on {save_path_parent}: {e}")
 
-            # TODO: add error catching logic in case of empty token or token mismatch.
+            empty_count = 0
+            idx = 0
+            for i in tqdm(
+                range(len(self.nuim.sample)),
+                desc="Processing NuImage dataset...",  # len(self.nuim.sample)
+            ):
+                # see: https://www.nuscenes.org/tutorials/nuimages_tutorial.html
+                sample = self.nuim.sample[i]
+                sample_token = sample["token"]
+                key_camera_token = sample["key_camera_token"]
+                object_tokens, surface_tokens = self.nuim.list_anns(
+                    sample_token, verbose=False
+                )  # verbose off to avoid excessive print statement
+                if object_tokens == []:
+                    empty_count += 1
+                    continue
 
-        logger.debug(
-            f"{split} has {empty_count} out of {len(self.nuim.sample)} empty samples."
-        )
+                object_data = []
+                for object_token in object_tokens:
+                    obj = self.nuim.get("object_ann", object_token)
+                    category_token = obj["category_token"]
+                    attribute_tokens = obj["attribute_tokens"]
+                    attributes = []
+                    for attribute_token in attribute_tokens:
+                        attribute = self.nuim.get("attribute", attribute_token)
+                        attributes.append(attribute)
+
+                    category = self.nuim.get("category", category_token)["name"]
+                    obj["category"] = category
+                    obj["attributes"] = attributes
+                    object_data.append(obj)
+
+                sample_data = self.nuim.get("sample_data", key_camera_token)
+                img_filename = sample_data["filename"]
+                timestamp = sample_data["timestamp"]
+
+                save_path = save_path_parent / f"{idx}.pkl"
+                print("creating idx... ", idx)
+                # if save_path.exists():
+                #     continue
+                if self.use_time_filtered and not self.is_time_in_working_hours(
+                    img_filename
+                ):
+                    print("invalid")
+                    continue
+
+                with open(save_path, "wb") as f:
+                    pickle.dump(
+                        {
+                            "filename": img_filename,
+                            "labels": object_data,
+                            "timestamp": timestamp,
+                        },
+                        f,
+                    )
+                os.chmod(save_path, 0o777)
+                idx += 1
+
+                # TODO: add error catching logic in case of empty token or token mismatch.
+
+            print(
+                f"{split} has {empty_count} out of {len(self.nuim.sample)} empty samples."
+            )
 
         def merge_transform(
             image: Tensor, labels: List[Dict[str, Any]], timestamp: str
@@ -652,11 +820,22 @@ class NuImagesDataset(ImageDataset):
             return (image, results, attributes, timestamp)
 
         super().__init__(
-            img_labels=img_labels,
             img_dir=img_dir,
             merge_transform=merge_transform,
             **kwargs,
         )
+
+    def __len__(self) -> int:
+        save_path = (
+            project_root_dir()
+            / "data"
+            / (
+                f"nuimages_{self.split}_filtered"
+                if self.use_time_filtered
+                else f"nuimages_{self.split}"
+            )
+        )
+        return len(os.listdir(save_path))
 
     def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
         # if isinstance(idx, slice):
@@ -664,9 +843,24 @@ class NuImagesDataset(ImageDataset):
         #     labels = self.img_labels[idx][0]["labels"]
         #     timestamp = self.img_labels[idx][0]["timestamp"]
         # else:
-        img_filename = self.img_labels[idx]["filename"]
-        labels = self.img_labels[idx]["labels"]
-        timestamp = self.img_labels[idx]["timestamp"]
+        save_path = (
+            project_root_dir()
+            / "data"
+            / (
+                f"nuimages_{self.split}_filtered"
+                if self.use_time_filtered
+                else f"nuimages_{self.split}"
+            )
+            / f"{idx}.pkl"
+        )
+        if not save_path.exists():
+            raise FileNotFoundError(f"File not found: {save_path}")
+        with open(save_path, "rb") as f:
+            data = pickle.load(f)
+
+        img_filename = data["filename"]
+        labels = data["labels"]
+        timestamp = data["timestamp"]
 
         img_path = os.path.join(self.img_dir, img_filename)
         image = read_image(img_path)
@@ -800,8 +994,8 @@ class NuImagesDataset_seg(ImageDataset):
 
     def __init__(
         self,
-        split: Union[Literal["train", "val", "test", "mini"]] = "val",
-        size: Union[Literal["mini", "full"]] = "mini",
+        split: Literal["train", "val", "test", "mini"] = "val",
+        size: Literal["mini", "full"] = "mini",
         **kwargs,
     ):
 
@@ -970,36 +1164,51 @@ class WaymoDataset(ImageDataset):
         "TYPE_CYCLIST": 4,
     }
 
-    _CLS_TO_CATEGORIES = {
-        "0": "TYPE_UNKNOWN",
-        "1": "TYPE_VEHICLE",
-        "2": "TYPE_PEDESTRIAN",
-        "3": "TYPE_SIGN",
-        "4": "TYPE_CYCLIST",
-    }
+    _CATEGORIES_R = {v: k for k, v in _CATEGORIES.items()}
 
-    _CATEGORIES_TO_COCO = {
-        "TYPE_UNKNOWN": "unknown",  # ??
-        "TYPE_VEHICLE": "vehicle",  # ??
-        "TYPE_PEDESTRIAN": "pedestrain",
-        "TYPE_SIGN": "traffic sign",
+    _CLS_TO_COCO_CLS = {
+        "TYPE_UNKNOWN": "undefined",
+        "TYPE_VEHICLE": "car",
+        "TYPE_PEDESTRIAN": "person",
+        "TYPE_SIGN": "stop sign",
         "TYPE_CYCLIST": "person",
     }
 
-    def category_to_cls(self, category: str) -> int:
-        return self._CATEGORIES[category]
+    _CATEGORIES_TO_COCO = {
+        "TYPE_UNKNOWN": -1,
+        "TYPE_VEHICLE": 2,
+        "TYPE_PEDESTRIAN": 0,
+        "TYPE_SIGN": 11,
+        "TYPE_CYCLIST": 0,
+    }
 
-    def category_to_coco(self, category: str):
+    def category_to_cls(self, category: str) -> int:
         return self._CATEGORIES_TO_COCO[category]
 
+    def category_to_coco(self, category: str):
+        return self._CLS_TO_COCO_CLS[category]
+
     def cls_to_category(self, cls: int) -> str:
-        return self._CLS_TO_CATEGORIES[str(cls)]
+        return self._CATEGORIES_R[cls]
+
+    def is_time_in_working_hours(self, timestamp_micro: str) -> bool:
+        timestamp_sec = int(timestamp_micro) / 1e6
+        dt = datetime.utcfromtimestamp(timestamp_sec)
+        return time(8, 0) <= dt.time() < time(18, 0)
+
+    def __repr__(self):
+        return f"Waymo Dataset {self.split} split with {self.__len__()} images"
 
     def __init__(
         self,
-        split: Union[Literal["training", "validation", "testing"]] = "training",
+        split: Literal["training", "validation", "testing"] = "training",
+        rebuild: bool = False,
+        use_time_filtered: bool = True,
         **kwargs,
     ):
+        self.split = split
+        self.use_time_filtered = use_time_filtered
+
         root_dir = project_root_dir() / "data" / "waymo"
         self.camera_img_dir = root_dir / f"{split}" / "camera_image"
         self.camera_box_dir = root_dir / f"{split}" / "camera_box"
@@ -1012,123 +1221,140 @@ class WaymoDataset(ImageDataset):
                 f"Directories not found: {self.camera_img_dir}, {self.camera_box_dir}"
             )
 
-        # Initialize img_labels
         self.img_labels = []
 
-        # Get the camera image files in the directory
         camera_image_files = [
             f for f in os.listdir(self.camera_img_dir) if f.endswith(".parquet")
         ]
 
-        camera_image_files = camera_image_files[
-            :10
-        ]  # TODO: doing this because using the entire validation gives us memory issue. Need to change later.
-
-        # Check if image files are found
         if not camera_image_files:
             raise FileNotFoundError(
                 f"No parquet image files found in {self.camera_img_dir}"
             )
 
-        merged_dfs = []
-        for image_file in camera_image_files:
-            box_file = image_file.replace("camera_image", "camera_box")
-            image_path = self.camera_img_dir / image_file
-            box_path = self.camera_box_dir / box_file
+        idx = 0
 
-            # Check if the box file exists
-            if not os.path.exists(box_path):
-                logger.warning(f"Box file not found for {image_file}: {box_path}")
-                continue
-
-            # Load the dataframes
-            image_df = pd.read_parquet(image_path)
-            box_df = pd.read_parquet(box_path)
-
-            unique_images_df = box_df.groupby(
-                [
-                    "key.segment_context_name",
-                    "key.frame_timestamp_micros",
-                    "key.camera_name",
-                ]
+        if rebuild:
+            save_path_parent = (
+                # project_root_dir() / "data" / f"waymo_{self.split}_interesting"
+                project_root_dir() / "data" / f"waymo_{self.split}_filtered"
+                if self.use_time_filtered
+                else f"waymo_{self.split}"
             )
-            # Merge image and box data
-            merged_df = pd.merge(
-                image_df,
-                box_df,
-                on=[
-                    "key.segment_context_name",
-                    "key.frame_timestamp_micros",
-                    "key.camera_name",
-                ],
-                how="inner",
-            )
+            save_path_parent.mkdir(parents=True, exist_ok=True)
+            try:
+                os.chmod(save_path_parent, 0o777)
+            except Exception as e:
+                logger.warning(f"Failed to set permissions on {save_path_parent}: {e}")
 
-            if merged_df.empty:
-                logger.warning(f"No matches found for {image_file} and {box_file}.")
-            else:
-                logger.debug(f"Merged DataFrame for {image_file}: {merged_df.shape}\n")
-                merged_dfs.append(merged_df)
+            for image_file in tqdm(
+                camera_image_files, desc="Indexing Waymo dataset..."
+            ):
+                box_file = image_file.replace("camera_image", "camera_box")
+                image_path = self.camera_img_dir / image_file
+                box_path = self.camera_box_dir / box_file
 
-        # Group dataframes by unique identifiers and process them
-        for merged_df in merged_dfs:
-            grouped_df = merged_df.groupby(
-                [
-                    "key.segment_context_name",
-                    "key.frame_timestamp_micros",
-                    "key.camera_name",
-                ]
-            )
+                # Check if the box file exists
+                if not os.path.exists(box_path):
+                    logger.warning(f"Box file not found for {image_file}: {box_path}")
+                    continue
 
-            for group_name, group_data in grouped_df:
-                # Each group has one unique image frame, in which all the detected objects belong to
-                image_data = group_data.iloc[0]
-                img_bytes = image_data["[CameraImageComponent].image"]
-                frame_timestamp_micros = image_data["key.frame_timestamp_micros"]
+                # Load the dataframes
+                image_df = pd.read_parquet(image_path)
+                box_df = pd.read_parquet(box_path)
 
-                labels = []
-                for _, row in group_data.iterrows():
-                    labels.append(
-                        {
-                            "type": row["[CameraBoxComponent].type"],
-                            "bbox": convert_to_xyxy(
-                                row["[CameraBoxComponent].box.center.x"],
-                                row["[CameraBoxComponent].box.center.y"],
-                                row["[CameraBoxComponent].box.size.x"],
-                                row["[CameraBoxComponent].box.size.y"],
-                            ),
-                        }
-                    )
-
-                self.img_labels.append(
-                    {
-                        "name": group_name,
-                        "path": image_path,
-                        "image": img_bytes,
-                        "labels": labels,
-                        "attributes": {},  # empty for now, can adjust later to add more Waymo related attributes info
-                        "timestamp": str(frame_timestamp_micros),
-                    }
+                unique_images_df = box_df.groupby(
+                    [
+                        "key.segment_context_name",
+                        "key.frame_timestamp_micros",
+                        "key.camera_name",
+                    ]
+                )
+                # Merge image and box data
+                merged_df = pd.merge(
+                    image_df,
+                    box_df,
+                    on=[
+                        "key.segment_context_name",
+                        "key.frame_timestamp_micros",
+                        "key.camera_name",
+                    ],
+                    how="inner",
                 )
 
-        if not self.img_labels:
-            raise ValueError(
-                f"No valid data found in {self.camera_img_dir} and {self.camera_box_dir}"
-            )
+                if merged_df.empty:
+                    logger.warning(f"No matches found for {image_file} and {box_file}.")
+                    continue
+
+                logger.debug(f"Merged DataFrame for {image_file}: {merged_df.shape}\n")
+
+                # Group dataframes by unique identifiers and process them
+                grouped_df = merged_df.groupby(
+                    [
+                        "key.segment_context_name",
+                        "key.frame_timestamp_micros",
+                        "key.camera_name",
+                    ]
+                )
+
+                for group_name, group_data in grouped_df:
+                    # Each group has one unique image frame, in which all the detected objects belong to
+                    image_data = group_data.iloc[0]
+                    img_bytes = image_data["[CameraImageComponent].image"]
+                    frame_timestamp_micros = image_data["key.frame_timestamp_micros"]
+
+                    if self.use_time_filtered and not self.is_time_in_working_hours(
+                        frame_timestamp_micros
+                    ):
+                        print("invalid")
+                        continue
+
+                    labels = []
+                    for _, row in group_data.iterrows():
+                        labels.append(
+                            {
+                                "type": int(row["[CameraBoxComponent].type"]),
+                                "bbox": convert_to_xyxy(
+                                    row["[CameraBoxComponent].box.center.x"],
+                                    row["[CameraBoxComponent].box.center.y"],
+                                    row["[CameraBoxComponent].box.size.x"],
+                                    row["[CameraBoxComponent].box.size.y"],
+                                ),
+                            }
+                        )
+
+                    # Save the current img label according to the idx as a pickle file
+                    save_path = save_path_parent / f"{idx}.pkl"
+                    if not save_path.exists():
+                        with open(save_path, "wb") as f:
+                            os.chmod(save_path, 0o777)
+                            pickle.dump(
+                                {
+                                    "name": group_name[0],
+                                    "path": f"{image_path}_{group_name[1]}_{group_name[2]}",
+                                    "image": img_bytes,
+                                    "labels": labels,
+                                    "attributes": {},
+                                    "timestamp": str(frame_timestamp_micros),
+                                },
+                                f,
+                            )
+                    idx += 1
 
         def merge_transform(image, labels, attributes, timestamp):
             results = []
 
             for label in labels:
-
                 cls = label["type"]
                 bbox = label["bbox"]
                 class_label = self.cls_to_category(cls)
+                cls = self.category_to_cls(class_label)
+                label = self.category_to_coco(class_label)
 
                 result = ObjectDetectionResultI(
                     score=1.0,
                     cls=cls,
-                    label=self.category_to_coco(class_label),
+                    label=label,
                     bbox=list(bbox),
                     image_hw=image.shape,
                     attributes=[attributes],
@@ -1142,22 +1368,42 @@ class WaymoDataset(ImageDataset):
         super().__init__(
             annotations_file=None,
             img_dir=str(self.camera_img_dir),
-            img_labels=self.img_labels,
             merge_transform=merge_transform,
             **kwargs,
         )
 
     def __len__(self) -> int:
-        return len(self.img_labels)
+        save_path = (
+            project_root_dir()
+            / "data"
+            / (
+                f"waymo_{self.split}_interesting"
+                if self.use_time_filtered
+                else f"waymo_{self.split}"
+            )
+        )
+        return len(os.listdir(save_path))
 
     def __getitem__(self, idx: int) -> Dict:
         """Retrieve an image and its annotations."""
-        if idx >= len(self.img_labels):
+        if idx >= self.__len__():
             raise IndexError(
                 f"Index {idx} out of range for dataset with {len(self.img_labels)} samples."
             )
 
-        img_data = self.img_labels[idx]
+        save_path = (
+            project_root_dir()
+            / "data"
+            / (
+                f"waymo_{self.split}_interesting"
+                if self.use_time_filtered
+                else f"waymo_{self.split}"
+            )
+        )
+        file_path = os.path.join(save_path, f"{idx}.pkl")
+        with open(file_path, "rb") as f:
+            img_data = pickle.load(f)
+
         img_bytes = img_data["image"]
         labels = img_data["labels"]
         timestamp = img_data["timestamp"]
@@ -1238,7 +1484,7 @@ class WaymoDataset_seg(ImageDataset):
 
     def __init__(
         self,
-        split: Union[Literal["training", "validation", "testing"]] = "training",
+        split: Literal["training", "validation", "testing"] = "training",
         **kwargs,
     ):
         root_dir = project_root_dir() / "data" / "waymo"

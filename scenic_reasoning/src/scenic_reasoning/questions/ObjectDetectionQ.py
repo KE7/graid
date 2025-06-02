@@ -252,6 +252,12 @@ class ObjectDetectionPredicates:
 
 
     @staticmethod
+    def at_least_x_detections(
+        image: Image, detections: List[ObjectDetectionResultI], x: int
+    ) -> bool:
+        return len(detections) >= 3
+
+    @staticmethod
     def exists_non_overlapping_detections(
         image: Image, detections: List[ObjectDetectionResultI]
     ) -> bool:
@@ -269,8 +275,9 @@ class ObjectDetectionPredicates:
         return False
 
     @staticmethod
-    def has_clusters(image: Image, detections: List[ObjectDetectionResultI], threshold=50) -> bool:
-        
+    def has_clusters(
+        image: Image, detections: List[ObjectDetectionResultI], threshold=50
+    ) -> bool:
         import numpy as np
         from scipy.spatial.distance import pdist, squareform
 
@@ -307,7 +314,6 @@ class ObjectDetectionPredicates:
             return False
         else:
             return True
-        
 
 
 class IsObjectCentered(Question):
@@ -1024,7 +1030,7 @@ class RightMost(Question):
         # logic to check if the bbox is actually on the right side of the image
         if not (
             rightmost_detection[1][0] > image_width / 2
-            and rightmost_detection[1][2] > image_width / 2``
+            and rightmost_detection[1][2] > image_width / 2
         ):
             logger.debug(
                 "RightMost question not ask-able due to not being on the right side of the image"
@@ -1097,14 +1103,13 @@ class AreMore(Question):
         detection_counts = {}
         for detection in detections:
             class_name = detection.label
-            if type(class_name) is torch.Tensor: 
+            if type(class_name) is torch.Tensor:
                 for single_class_name in class_name:
                     detection_counts[single_class_name] = (
                         detection_counts.get(single_class_name, 0) + 1
                     )
             else:
                 detection_counts[class_name] = detection_counts.get(class_name, 0) + 1
-        
         question_answer_pairs = []
         detected_classes = list(detection_counts.keys())
 
@@ -1126,6 +1131,7 @@ class AreMore(Question):
 
         return question_answer_pairs
 
+      
 class WhichMore(Question):
     def __init__(self) -> None:
         super().__init__(
@@ -1147,14 +1153,13 @@ class WhichMore(Question):
         detection_counts = {}
         for detection in detections:
             class_name = detection.label
-            if type(class_name) is torch.Tensor: 
+            if type(class_name) is torch.Tensor:
                 for single_class_name in class_name:
                     detection_counts[single_class_name] = (
                         detection_counts.get(single_class_name, 0) + 1
                     )
             else:
                 detection_counts[class_name] = detection_counts.get(class_name, 0) + 1
-        
         question_answer_pairs = []
         detected_classes = list(detection_counts.keys())
 
@@ -1186,7 +1191,9 @@ class WhichMore(Question):
                         question_answer_pairs.append(
                             (
                                 self.question.format(
-                                    object_1=object_1, object_2=object_2, object_3=object_3
+                                    object_1=object_1,
+                                    object_2=object_2,
+                                    object_3=object_3,
                                 ),
                                 answer,
                             )
@@ -1415,13 +1422,14 @@ class ObjectsInRow(Question):
         image: Image.Image,
         detections: List[ObjectDetectionResultI],
     ) -> List[Tuple[str, str]]:
-        
         if len(detections) < 3:
             return [(self.question, "No")]
 
         bboxes = [detection.as_xyxy().squeeze(0) for detection in detections]
 
-        bboxes_sorted_by_x = sorted(bboxes, key=lambda bbox: bbox[0])  # Sorted by left boundary
+        bboxes_sorted_by_x = sorted(
+            bboxes, key=lambda bbox: bbox[0]
+        )  # Sorted by left boundary
 
         def y_overlap(min_y1, max_y1, min_y2, max_y2):
             inter = max(0, min(max_y1, max_y2) - max(min_y1, min_y2))
@@ -1432,14 +1440,19 @@ class ObjectsInRow(Question):
             # two objects are considered on the same line only if the y overlap is at least 50% of the smaller object.
             # TODO: add this as a threshold.
             return inter >= 0.5 * min_len
-        
+
         def check_row_alignment(bboxes_sorted):
             for i in range(len(bboxes_sorted) - 2):
-                box1, box2, box3 = bboxes_sorted[i], bboxes_sorted[i + 1], bboxes_sorted[i + 2]
+                box1, box2, box3 = (
+                    bboxes_sorted[i],
+                    bboxes_sorted[i + 1],
+                    bboxes_sorted[i + 2],
+                )
 
                 # Require >=50% y-overlap for each adjacent pair
-                if (y_overlap(box1[1], box1[3], box2[1], box2[3]) and
-                    y_overlap(box2[1], box2[3], box3[1], box3[3])):
+                if y_overlap(box1[1], box1[3], box2[1], box2[3]) and y_overlap(
+                    box2[1], box2[3], box3[1], box3[3]
+                ):
                     return True
 
             return False
@@ -1472,12 +1485,14 @@ class ObjectsInLine(Question):
         image: Image.Image,
         detections: List[ObjectDetectionResultI],
     ) -> List[Tuple[str, str]]:
-        
         bboxes = [detection.as_xyxy().squeeze(0) for detection in detections]
 
-        detections_sorted_by_x = sorted(detections, key=lambda detection: detection.as_xyxy().squeeze(0)[0])
-        bboxes_sorted_by_x = [detection.as_xyxy().squeeze(0) for detection in detections_sorted_by_x]
-        # bboxes_sorted_by_x = sorted(bboxes, key=lambda bbox: bbox[0])  # Sorted by left boundary
+        detections_sorted_by_x = sorted(
+            detections, key=lambda detection: detection.as_xyxy().squeeze(0)[0]
+        )
+        bboxes_sorted_by_x = [
+            detection.as_xyxy().squeeze(0) for detection in detections_sorted_by_x
+        ]
 
         def y_overlap(min_y1, max_y1, min_y2, max_y2):
             inter = max(0, min(max_y1, max_y2) - max(min_y1, min_y2))
@@ -1486,7 +1501,7 @@ class ObjectsInLine(Question):
             min_len = min(len1, len2)
 
             return inter >= 0.5 * min_len
-        
+
         def find_rows(bboxes_sorted) -> List[List[int]]:
             rows = []
             i = 0
@@ -1494,8 +1509,10 @@ class ObjectsInLine(Question):
                 current_row_indices = [i]
                 for j in range(i + 1, len(bboxes_sorted)):
                     if y_overlap(
-                        bboxes_sorted[j - 1][1], bboxes_sorted[j - 1][3],
-                        bboxes_sorted[j][1], bboxes_sorted[j][3]
+                        bboxes_sorted[j - 1][1],
+                        bboxes_sorted[j - 1][3],
+                        bboxes_sorted[j][1],
+                        bboxes_sorted[j][3],
                     ):
                         current_row_indices.append(j)
                     else:
@@ -1532,7 +1549,7 @@ class MostClusteredObjects(Question):
                 ),
                 lambda image, detections: ObjectDetectionPredicates.has_clusters(
                     image, detections, threshold=threshold
-                )
+                ),
             ],
         )
         self.threshold = threshold
@@ -1578,7 +1595,7 @@ class MostClusteredObjects(Question):
         def compactness(cluster_indices):
             cluster_centers = centers[cluster_indices]
             if len(cluster_centers) < 2:
-                return float('inf')
+                return float("inf")
             return pdist(cluster_centers).mean()
 
         clusters.sort(key=lambda c: compactness(c))
@@ -1599,4 +1616,13 @@ ALL_QUESTIONS = [
     LeftMost(),
     RightMost(),
     HowMany(),
+    MostClusteredObjects(),
+    WhichMore(),
+    AreMore(),
+    Quadrants(2, 2),
+    Quadrants(2, 3),
+    Quadrants(3, 2),
+    Quadrants(3, 3),
+    LeftMostWidthVsHeight(),
+    RightMostWidthVsHeight(),
 ]

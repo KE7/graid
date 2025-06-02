@@ -16,24 +16,21 @@ from scenic_reasoning.interfaces.ObjectDetectionI import (
     ObjectDetectionResultI,
     ObjectDetectionUtils,
 )
-from scenic_reasoning.utilities.common import get_default_device
-from ultralytics import YOLO
-
-# TODO: Need class for InstanceSegmentation here
+from ultralytics import RTDETR, YOLO
 
 
 class Yolo(ObjectDetectionModelI):
-    def __init__(self, model: Union[str, Path], **kwargs) -> None:
-        self._model = YOLO(model, **kwargs)
+    def __init__(self, model: Union[str, Path]) -> None:
+        self.model_name = model
+        self._model = YOLO(model)
 
     def identify_for_image(
         self,
-        image: Union[
-            str, Path, int, Image.Image, list, tuple, np.ndarray, torch.Tensor
-        ],
+        image: Union[np.ndarray, torch.Tensor],
         debug: bool = False,
+        verbose: bool = False,
         **kwargs
-    ) -> List[List[Optional[ObjectDetectionResultI]]]:
+    ) -> List[List[ObjectDetectionResultI]]:
         """
         Run object detection on an image or a batch of images.
 
@@ -47,7 +44,29 @@ class Yolo(ObjectDetectionModelI):
             represents the batch of images, and the inner list represents the
             detections in a particular image.
         """
-        predictions = self._model.predict(image, device=get_default_device(), **kwargs)
+        if isinstance(image, np.ndarray):
+            # Convert numpy array to tensor
+            image = torch.from_numpy(image).float()
+
+        if len(image.shape) == 3:
+            # If image is a single image, add batch dimension
+            image = image.unsqueeze(0)
+        elif len(image.shape) == 4:
+            # If image is a batch of images, do nothing
+            pass
+        else:
+            raise ValueError(
+                "Image must be either a single image (3D tensor) or a batch of images (4D tensor)."
+            )
+        # Convert RGB to BGR because Ultralytics models expect BGR
+        # https://github.com/ultralytics/ultralytics/issues/9912
+        image = image[:, [2, 1, 0], ...]
+        image = image / 255.0
+        with torch.no_grad():
+            predictions = self._model.predict(image, verbose, **kwargs)
+        # undo the conversion
+        image = image[:, [2, 1, 0], ...]
+        image = image * 255.0
 
         if len(predictions) == 0:
             return []
@@ -77,6 +96,8 @@ class Yolo(ObjectDetectionModelI):
             formatted_results.append(result_for_image)
 
         if debug:
+            # I think we can delete this code
+
             # images are in BGR format and need to be converted to RGB
             # also need to be scaled to [0, 255]
             image = image[:, [2, 1, 0], ...]
@@ -91,27 +112,15 @@ class Yolo(ObjectDetectionModelI):
                     Image.fromarray(curr_img), formatted_results[i]
                 )
 
-            # image_list = [
-            #     image[i].permute(1, 2, 0).cpu().numpy() for i in range(len(image))
-            # ]
-            # for i in range(len(image_list)):
-            #     curr_img = image_list[i]
-            #     if curr_img.dtype == np.float32:
-            #         curr_img = curr_img.astype(np.uint8)
-            #     ObjectDetectionUtils.show_image_with_detections(
-            #         Image.fromarray(curr_img), formatted_results[i]
-            #     )
-
         return formatted_results
 
-    def identify_for_image_as_tensor(
+    def identify_for_image_batch(
         self,
-        image: Union[
-            str, Path, int, Image.Image, list, tuple, np.ndarray, torch.Tensor
-        ],
+        image: Union[np.ndarray, torch.Tensor],
         debug: bool = False,
+        verbose: bool = False,
         **kwargs
-    ) -> List[Optional[ObjectDetectionResultI]]:
+    ) -> List[List[ObjectDetectionResultI]]:
         """
         Run object detection on an image or a batch of images.
 
@@ -125,48 +134,9 @@ class Yolo(ObjectDetectionModelI):
             represents the batch of images, and the inner list represents the
             detections in a particular image.
         """
-        predictions = self._model.predict(image, **kwargs)
-
-        if len(predictions) == 0:
-            return []
-
-        result_per_image = []
-        for y_hat in predictions:
-            boxes = y_hat.boxes
-            names = y_hat.names
-
-            if debug:
-                y_hat.show()
-
-            bboxes = []
-            scores = []
-            classes = []
-
-            if boxes is None or len(boxes) == 0:
-                result_per_image.append([])
-                continue
-
-            for box in boxes:
-                bboxes.append(box.cpu())
-                scores.append(box.conf.item())
-                classes.append(int(box.cls.item()))
-
-            bboxes = torch.stack(bboxes)
-            scores = torch.tensor(scores)
-            classes = torch.tensor(classes)
-
-            odr = ObjectDetectionResultI(
-                score=scores,
-                cls=classes,
-                label=names[classes],  # shape: (# of boxes,)
-                bbox=bboxes,
-                image_hw=boxes[0].orig_shape,
-                bbox_format=BBox_Format.XYXY,
-            )
-
-            result_per_image.append(odr)
-
-        return result_per_image
+        return self.identify_for_image(
+            image=image, debug=debug, verbose=verbose, **kwargs
+        )
 
     def identify_for_video(
         self,
@@ -194,7 +164,7 @@ class Yolo(ObjectDetectionModelI):
             boxes_across_frames = []
 
             if len(batch_results) == 0:
-                boxes_across_frames = [None for _ in batch]
+                boxes_across_frames = [[] for _ in batch]
             else:
                 for frame_result in batch_results:
                     per_frame_results = []
@@ -219,13 +189,40 @@ class Yolo(ObjectDetectionModelI):
             yield boxes_across_frames
 
     def to(self, device: Union[str, torch.device]):
-        pass
+        self._model.to(device)
+
+    def set_threshold(self, threshold: float):
+        self.threshold = threshold
+
+    def __str__(self):
+        return self.model_name.split(".")[0]
+
+
+class RT_DETR(Yolo):
+    def __init__(self, model: Union[str, Path]) -> None:
+        self.model_name = model
+        self._model = RTDETR(model)
+
+    def identify_for_image(self, *args, **kwargs):
+        return super().identify_for_image(*args, **kwargs)
+
+    def identify_for_image_batch(self, *args, **kwargs):
+        return super().identify_for_image_batch(*args, **kwargs)
+
+    def identify_for_video(self, *args, **kwargs):
+        return super().identify_for_video(*args, **kwargs)
+
+    def to(self, *args, **kwargs):
+        return super().to(*args, **kwargs)
+
+    def __str__(self):
+        return self.model_name.split(".")[0]
 
 
 class Yolo_seg(InstanceSegmentationModelI):
-    def __init__(self, model: Union[str, Path], **kwargs) -> None:
+    def __init__(self, model: Union[str, Path]) -> None:
         super().__init__()
-        self._model = YOLO(model, **kwargs)
+        self._model = YOLO(model)
         self._instance_count = {}
 
     def identify_for_image(
@@ -249,7 +246,7 @@ class Yolo_seg(InstanceSegmentationModelI):
             represents the batch of images, and the inner list represents the
             detections in a particular image.
         """
-        results = self._model.predict(source=image)
+        results = self._model.predict(source=image, **kwargs)
 
         # results = self._model.track(source=image, persist=True)
 
@@ -292,7 +289,7 @@ class Yolo_seg(InstanceSegmentationModelI):
 
         return all_instances
 
-    def identify_for_image_as_tensor(
+    def identify_for_image_batch(
         self,
         image: Union[
             str, Path, int, Image.Image, list, tuple, np.ndarray, torch.Tensor
@@ -311,7 +308,7 @@ class Yolo_seg(InstanceSegmentationModelI):
         results = self._model.predict(image, **kwargs)
 
         if results.masks is None:
-            return [None] * (len(image) if isinstance(image, (list, tuple)) else 1)
+            return [] * (len(image) if isinstance(image, (list, tuple)) else 1)
 
         instances = []
 
@@ -417,5 +414,4 @@ class Yolo_seg(InstanceSegmentationModelI):
             yield results_per_frame
 
     def to(self, device: Union[str, torch.device]):
-        # self._model.to(device)
-        pass
+        self._model.to(device)

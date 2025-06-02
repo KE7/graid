@@ -123,10 +123,6 @@ def clean_detectron2() -> None:
 
 
 def install_mmdetection() -> None:
-    subprocess.run(["pip", "install", "--upgrade", "openmim"])
-    subprocess.run(["mim", "install", "mmengine"])
-    subprocess.run(["mim", "install", "mmcv==2.1.0"])
-
     root_dir = PROJECT_DIR
 
     os.chdir(root_dir)
@@ -150,6 +146,11 @@ def install_mmdetection() -> None:
     # Change back to the original directory
     os.chdir("..")
 
+    subprocess.run(["pip", "install", "--upgrade", "openmim"])
+    subprocess.run(["mim", "install", "mmengine"])
+    subprocess.run(["mim", "install", "mmcv==2.1.0"])
+    subprocess.run(["mim", "install", "mmdet"])
+
 
 def clean_mmdetection() -> None:
     root_dir = PROJECT_DIR
@@ -163,6 +164,50 @@ def clean_mmdetection() -> None:
     # Check if the repository already exists in the root
     if os.path.exists("mmdetection"):
         subprocess.run(["rm", "-rf", "mmdetection"])
+
+    # Change back to the original directory
+    os.chdir("..")
+
+
+def install_idea_dino() -> None:
+    root_dir = PROJECT_DIR
+
+    os.chdir(root_dir)
+    if not os.path.exists("install"):
+        os.makedirs("install")
+
+    os.chdir("install")
+
+    if not os.path.exists("DINO"):
+        subprocess.run(["git", "clone", "https://github.com/IDEA-Research/DINO.git"])
+
+    os.chdir("DINO")
+
+    os.chdir("models/dino/ops")
+    # Compile the CUDA extensions for DINO
+    subprocess.run(["python", "setup.py", "build", "install"])
+
+    os.chdir(root_dir)
+    if not os.path.exists("checkpoints"):
+        os.makedirs("checkpoints")
+
+    os.chdir("checkpoints")
+    if not os.path.exists("checkpoint0011_4scale_swin.pth"):
+        subprocess.run(["gdown", "1TgHeJlgAfhHxmHq3ND9o1P1L_wbrbyj8"])
+
+
+def clean_idea_dino() -> None:
+    root_dir = PROJECT_DIR
+
+    os.chdir(root_dir)
+    if not os.path.exists("install"):
+        return
+
+    os.chdir("install")
+
+    # Check if the repository already exists in the root
+    if os.path.exists("DINO"):
+        subprocess.run(["rm", "-rf", "DINO"])
 
     # Change back to the original directory
     os.chdir("..")

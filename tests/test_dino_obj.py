@@ -9,25 +9,24 @@ from scenic_reasoning.data.ImageLoader import (
 )
 from scenic_reasoning.interfaces.ObjectDetectionI import ObjectDetectionUtils
 from scenic_reasoning.measurements.ObjectDetection import ObjectDetectionMeasurements
-from scenic_reasoning.models.Ultralytics import Yolo
+from scenic_reasoning.models.DINO_idea import DINO_IDEA
 from scenic_reasoning.utilities.common import (
     get_default_device,
     yolo_bdd_transform,
     yolo_nuscene_transform,
     yolo_waymo_transform,
+    project_root_dir
 )
 import cv2
 
 NUM_EXAMPLES_TO_SHOW = 20
 BATCH_SIZE = 1
 
-# bdd = Bdd100kDataset(
-#     split="val",
-#     transform=lambda i, l: yolo_bdd_transform(i, l, new_shape=(768, 1280)),
-#     use_original_categories=False,
-#     use_extended_annotations=False,
-#     rebuild=True
-# )
+bdd = Bdd100kDataset(
+    split="val",
+    transform=lambda i, l: yolo_bdd_transform(i, l, new_shape=(768, 1280)),
+    use_original_categories=False,
+    use_extended_annotations=False,)
 
 # nu = NuImagesDataset(
 #     split="val",
@@ -40,11 +39,12 @@ waymo = WaymoDataset(
     split="validation", transform=lambda i, l: yolo_waymo_transform(i, l, (1280, 1920))
 )
 
-# https://docs.ultralytics.com/models/yolov5/#performance-metrics
-model = Yolo(model="yolo11n.pt")
-# model = Yolo(model="yolovv8n.pt")
 
-for d in [waymo]:  # , nu, waymo]:
+DINO_config = project_root_dir() / "install/DINO/config/DINO/DINO_4scale_swin.py"
+DINO_checkpoint = project_root_dir() / "checkpoints/checkpoint0011_4scale_swin.pth"
+model = DINO_IDEA(DINO_config, DINO_checkpoint)
+
+for d in [bdd]:  # , nu, waymo]:
     measurements = ObjectDetectionMeasurements(
         model, d, batch_size=BATCH_SIZE, collate_fn=lambda x: x
     )  # hacky way to avoid RuntimeError: each element in list of batch should be of equal size
@@ -68,24 +68,24 @@ for d in [waymo]:  # , nu, waymo]:
             print("gt classes:", [c._class for c in results[i]["labels"]])
             print("pred classes:", [c._class for c in results[i]["predictions"]])
 
-            print(f"{i}th image")
-            measurements = results[i]["measurements"]
-            print("global map", measurements["map"])
-            print("map 50", measurements["map_50"])
-            print("map 75", measurements["map_75"])
-            print("map_small", measurements["map_small"])
-            print("map_medium", measurements["map_medium"])
-            print("map_large", measurements["map_large"])
-            print("mar_small", measurements["mar_small"])
-            print("mar_medium", measurements["mar_medium"])
-            print("mar_large", measurements["mar_large"])
+            # print(f"{i}th image")
+            # measurements = results[i]["measurements"]
+            # print("global map", measurements["map"])
+            # print("map 50", measurements["map_50"])
+            # print("map 75", measurements["map_75"])
+            # print("map_small", measurements["map_small"])
+            # print("map_medium", measurements["map_medium"])
+            # print("map_large", measurements["map_large"])
+            # print("mar_small", measurements["mar_small"])
+            # print("mar_medium", measurements["mar_medium"])
+            # print("mar_large", measurements["mar_large"])
 
-            img_to_show = ObjectDetectionUtils.show_image_with_detections_and_gt(
-                Image.fromarray(
-                    results[i]["image"].permute(1, 2, 0).numpy().astype(np.uint8)
-                ),
-                detections=results[i]["predictions"],
-                ground_truth=results[i]["labels"],
-            )
+            # img_to_show = ObjectDetectionUtils.show_image_with_detections_and_gt(
+            #     Image.fromarray(
+            #         results[i]["image"].permute(1, 2, 0).numpy().astype(np.uint8)
+            #     ),
+            #     detections=results[i]["predictions"],
+            #     ground_truth=results[i]["labels"],
+            # )
 
             # cv2.imwrite("temp.jpg", img_to_show)

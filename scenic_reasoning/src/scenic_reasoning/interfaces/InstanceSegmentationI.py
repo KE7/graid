@@ -275,7 +275,7 @@ class InstanceSegmentationModelI(ABC):
         pass
 
     @abstractmethod
-    def identify_for_image_as_tensor(
+    def identify_for_image_batch(
         self,
         image: Union[
             str, Path, int, Image.Image, list, tuple, np.ndarray, torch.Tensor

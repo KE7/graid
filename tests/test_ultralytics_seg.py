@@ -9,7 +9,7 @@ from scenic_reasoning.data.ImageLoader import (
 from scenic_reasoning.measurements.InstanceSegmentation import (
     InstanceSegmentationMeasurements,
 )
-from scenic_reasoning.models.UltralyticsYolo import Yolo_seg
+from scenic_reasoning.models.Ultralytics import Yolo_seg
 from scenic_reasoning.utilities.common import (
     get_default_device,
     yolo_bdd_transform,
