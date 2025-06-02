@@ -55,6 +55,36 @@ class ExactMatch(EvaluationMetric):
         return "ExactMatch"
 
 
+class Contains(EvaluationMetric):
+    def __init__(self):
+        pass
+
+    def evaluate(self, pred, gt) -> float:
+        pred_as_json = None
+        try:
+            pred_as_json = json.loads(pred)
+        except:
+            pass
+        try:
+            if pred_as_json and "answer" in pred_as_json:
+                pred = pred_as_json["answer"]
+            elif pred_as_json and "final_answer" in pred_as_json:
+                pred = pred_as_json["final_answer"]
+            else:
+                match = re.search(r"```(.*?)```", pred, re.DOTALL)
+                if match:
+                    pred = match.group(1).strip()
+                else:
+                    pred = pred.strip()
+        except:
+            return 0.0
+
+        return 1.0 if gt.strip().lower() in pred.strip().lower() else 0.0
+
+    def __str__(self):
+        return "Contains"
+
+
 # class LLMJudge(EvaluationMetric):
 #     """LLM-as-a-judge evaluation metric."""
 

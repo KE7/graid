@@ -76,7 +76,7 @@ class GPT:
                     ],
                 }
             ],
-            temperature=0.0,
+            **({"temperature": 0.0} if "gpt" in self.model_name else {}),
         )
 
         responses = completion.choices[0].message.content
@@ -136,7 +136,9 @@ class Gemini:
 
 
 class Llama:
-    def __init__(self, model_name="meta-llama/Llama-3.2-90B-Vision-Instruct", use_vllm=False):
+    def __init__(
+        self, model_name="meta-llama/Llama-3.2-90B-Vision-Instruct", use_vllm=True
+    ):
         PROJECT_ID = "graid-451620"
         REGION = "us-central1"
         ENDPOINT = f"http://127.0.0.1:9099/v1/"
@@ -154,12 +156,12 @@ class Llama:
         else:
             # import os
             # os.environ["GOOGLE_APPLICATION_CREDENTIALS"]="token.txt"
-            
+
             # with open("token.txt", "r") as token_file:
             #     self.token = token_file.read().strip()
-            
+
             # # google_url = f"https://{MAAS_ENDPOINT}/v1beta1/projects/{PROJECT_ID}/locations/{REGION}/endpoints/openapi"
-            
+
             # print("Using Google Vertex hosted Llama")
             # self.client = genai.Client(
             #     vertexai=True,
@@ -177,14 +179,16 @@ class Llama:
             from google.auth import default
             from google.auth.transport.requests import Request
 
-            credentials, _ = default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+            credentials, _ = default(
+                scopes=["https://www.googleapis.com/auth/cloud-platform"]
+            )
             credentials.refresh(Request())
-            
+
             # with open("token.txt", "r") as token_file:
             #     self.token = token_file.read().strip()
-            
+
             google_url = f"https://{MAAS_ENDPOINT}/v1beta1/projects/{PROJECT_ID}/locations/{REGION}/endpoints/openapi"
-            
+
             print("Using Google Vertex hosted Llama")
             self.client = OpenAI(
                 base_url=google_url,
@@ -446,6 +450,10 @@ class GPT_CD(GPT):
     def __init__(self, model_name="gpt-4o", port=None):
         super().__init__(model_name)
 
+    @retry(
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        stop=stop_after_attempt(5),
+    )
     def generate_answer(self, image, questions: str, prompting_style):
         image, prompt = prompting_style.generate_prompt(image, questions)
         base64_image = self.encode_image(image)
@@ -473,7 +481,7 @@ class GPT_CD(GPT):
                 }
             ],
             response_format=answer_cls,
-            temperature=0.0,
+            **({"temperature": 0.0} if "gpt" in self.model_name else {}),
         )
 
         message = completion.choices[0].message
@@ -490,8 +498,12 @@ class GPT_CD(GPT):
 
 class Llama_CD(Llama):
     def __init__(self, model_name="meta-llama/Llama-3.2-90B-Vision-Instruct"):
-        super().__init__(model_name, use_vllm=False)
+        super().__init__(model_name, use_vllm=True)
 
+    @retry(
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        stop=stop_after_attempt(5),
+    )
     def generate_answer(self, image, questions: str, prompting_style):
         image, prompt = prompting_style.generate_prompt(image, questions)
         base64_image = self.encode_image(image)
@@ -533,6 +545,10 @@ class Gemini_CD(Gemini):
     def __init__(self, model_name="gemini-1.5-pro", location="us-central1"):
         super().__init__(model_name, location)
 
+    @retry(
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        stop=stop_after_attempt(5),
+    )
     def generate_answer(self, image, questions: str, prompting_style):
         image, prompt = prompting_style.generate_prompt(image, questions)
         image = self.encode_image(image)
@@ -600,7 +616,7 @@ class GPT_CoT_CD(GPT):
                 },
             ],
             response_format=Reasoning,
-            temperature=0.0,
+            **({"temperature": 0.0} if "gpt" in self.model_name else {}),
         )
 
         message = completion.choices[0].message
@@ -618,8 +634,12 @@ class GPT_CoT_CD(GPT):
 
 class Llama_CoT_CD(Llama):
     def __init__(self, model_name="meta-llama/Llama-3.2-90B-Vision-Instruct"):
-        super().__init__(model_name, use_vllm=False)
+        super().__init__(model_name, use_vllm=True)
 
+    @retry(
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        stop=stop_after_attempt(5),
+    )
     def generate_answer(self, image, questions: str, prompting_style):
         image, prompt = prompting_style.generate_prompt(image, questions)
         base64_image = self.encode_image(image)
@@ -666,6 +686,10 @@ class Gemini_CoT_CD(Gemini):
     def __init__(self, model_name="gemini-1.5-pro", location="us-central1"):
         super().__init__(model_name, location)
 
+    @retry(
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        stop=stop_after_attempt(5),
+    )
     def generate_answer(self, image, questions: str, prompting_style):
         image, prompt = prompting_style.generate_prompt(image, questions)
         image = self.encode_image(image)
@@ -698,9 +722,8 @@ class Gemini_CoT_CD(Gemini):
 class Claude:
     def __init__(self, model_name="claude-3-7-sonnet-20250219"):
         import anthropic
-        self.client = anthropic.Anthropic(
-            api_key=os.getenv("ANTHROPIC_API_KEY")
-        )
+
+        self.client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
         self.model = model_name
 
     def encode_image(self, image):
@@ -717,6 +740,10 @@ class Claude:
             success, buffer = cv2.imencode(".jpg", image)
             return base64.b64encode(buffer).decode("utf-8")
 
+    @retry(
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        stop=stop_after_attempt(5),
+    )
     def generate_answer(self, image, questions: str, prompting_style):
         image, prompt = prompting_style.generate_prompt(image, questions)
         base64_image = self.encode_image(image)
@@ -737,10 +764,7 @@ class Claude:
                                 "data": base64_image,
                             },
                         },
-                        {
-                            "type": "text",
-                            "text": prompt
-                        }
+                        {"type": "text", "text": prompt},
                     ],
                 }
             ],
@@ -756,10 +780,14 @@ class Claude_CD(Claude):
     def __init__(self, model_name="claude-3-7-sonnet-20250219"):
         super().__init__(model_name)
 
+    @retry(
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        stop=stop_after_attempt(5),
+    )
     def generate_answer(self, image, questions: str, prompting_style):
         import anthropic
         from pydantic import create_model
-        
+
         # Get the answer class based on the question
         answer_class = get_answer_class_from_question(questions)
         if answer_class is None:
@@ -784,10 +812,7 @@ class Claude_CD(Claude):
                                 "data": base64_image,
                             },
                         },
-                        {
-                            "type": "text",
-                            "text": prompt
-                        }
+                        {"type": "text", "text": prompt},
                     ],
                 }
             ],
@@ -804,6 +829,10 @@ class Claude_CoT_CD(Claude):
     def __init__(self, model_name="claude-3-7-sonnet-20250219"):
         super().__init__(model_name)
 
+    @retry(
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        stop=stop_after_attempt(5),
+    )
     def generate_answer(self, image, questions: str, prompting_style):
         # Get the answer class based on the question
         answer_class = get_answer_class_from_question(questions)
@@ -818,7 +847,7 @@ class Claude_CoT_CD(Claude):
             messages=[
                 {
                     "role": "system",
-                    "content": f"The final_answer should be of type: {answer_class.model_json_schema()}"
+                    "content": f"The final_answer should be of type: {answer_class.model_json_schema()}",
                 },
                 {
                     "role": "user",
@@ -831,12 +860,9 @@ class Claude_CoT_CD(Claude):
                                 "data": base64_image,
                             },
                         },
-                        {
-                            "type": "text",
-                            "text": prompt
-                        }
+                        {"type": "text", "text": prompt},
                     ],
-                }
+                },
             ],
             response_model=Reasoning,
         )

@@ -243,13 +243,12 @@ class ObjectDetectionPredicates:
                 counts[class_name] = counts.get(class_name, 0) + 1
 
         return len(counts) >= x
-    
+
     @staticmethod
     def at_least_x_detections(
         image: Image, detections: List[ObjectDetectionResultI], x: int
     ) -> bool:
         return len(detections) >= 3
-
 
     @staticmethod
     def at_least_x_detections(
@@ -1116,7 +1115,10 @@ class AreMore(Question):
         for i in range(len(detected_classes)):
             for j in range(i + 1, len(detected_classes)):
                 object_1, object_2 = detected_classes[i], detected_classes[j]
-                count_1, count_2 = detection_counts[object_1], detection_counts[object_2]
+                count_1, count_2 = (
+                    detection_counts[object_1],
+                    detection_counts[object_2],
+                )
 
                 if count_1 > count_2:
                     answer = "Yes"
@@ -1131,7 +1133,7 @@ class AreMore(Question):
 
         return question_answer_pairs
 
-      
+
 class WhichMore(Question):
     def __init__(self) -> None:
         super().__init__(
@@ -1476,7 +1478,8 @@ class ObjectsInLine(Question):
                 lambda image, detections: ObjectDetectionPredicates.at_least_x_many_class_detections(
                     image, detections, 1
                 ),
-                lambda image, detections: ObjectsInRow().apply(image, detections)[0][1] == "Yes"
+                lambda image, detections: ObjectsInRow().apply(image, detections)[0][1]
+                == "Yes",
             ],
         )
 

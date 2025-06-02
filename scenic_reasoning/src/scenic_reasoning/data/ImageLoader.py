@@ -393,40 +393,55 @@ class Bdd100kDataset(ImageDataset):
             and "labels" in label
         ]
 
-        # Save each element of the img_labels as its own pickle file
-        save_dir = (
-            project_root_dir()
-            / "data"
-            / (
-                f"bdd_{self.split}_filtered"
-                if use_time_filtered
-                else f"bdd_{self.split}"
-            )
+        # Define paths for original and filtered data
+        orig_dir = project_root_dir() / "data" / f"bdd_{self.split}"
+
+        filtered_dir = (
+            project_root_dir() / "data" / f"bdd_{self.split}_time_and_weather_filtered"
         )
-        save_dir.mkdir(parents=True, exist_ok=True)
+
+        filtered_dir.mkdir(parents=True, exist_ok=True)
         try:
-            os.chmod(save_dir, 0o777)
+            os.chmod(filtered_dir, 0o777)
         except Exception as e:
-            logger.warning(f"Failed to set permissions on {save_dir}: {e}")
+            logger.warning(f"Failed to set permissions on {filtered_dir}: {e}")
+
+        self.mapping_file = filtered_dir / "mapping.json"
 
         if rebuild:
+            # Create a mapping from filtered indices to original indices
+            filtered_to_orig_mapping = {}
+            filtered_idx = 0
+
+            print(f"Building mapping for filtered BDD100K dataset...")
             for idx, label in tqdm(
                 enumerate(self.img_labels),
                 total=len(self.img_labels),
-                desc="Indexing BDD100K dataset...",
+                desc="Filtering BDD100K dataset...",
             ):
-                save_path = save_dir / f"{idx}.pkl"
-                print("creating idx... ", idx)
-                with open(save_path, "wb") as f:
-                    pickle.dump(
-                        {
-                            "name": label["name"],
-                            "labels": label["labels"],
-                            "timestamp": label["timestamp"],
-                        },
-                        f,
-                    )
-                    os.chmod(save_path, 0o777)
+                # Check if image meets filtering criteria
+                if not self._meets_filtering_criteria(label):
+                    continue
+
+                # Store the mapping from filtered index to original index
+                filtered_to_orig_mapping[str(filtered_idx)] = idx
+                filtered_idx += 1
+
+            # Save the mapping as a JSON file
+            print(f"Saving mapping file with {len(filtered_to_orig_mapping)} entries")
+            with open(self.mapping_file, "w") as f:
+                json.dump(filtered_to_orig_mapping, f)
+            os.chmod(self.mapping_file, 0o777)
+
+            # Load the mapping for use in __getitem__ and __len__
+            self.filtered_to_orig_mapping = filtered_to_orig_mapping
+        elif os.path.exists(self.mapping_file):
+            # Load existing mapping if available
+            with open(self.mapping_file, "r") as f:
+                self.filtered_to_orig_mapping = json.load(f)
+        else:
+            # No mapping file and not rebuilding, so use empty mapping
+            self.filtered_to_orig_mapping = {}
 
         super().__init__(
             annotations_file=str(annotations_file),
@@ -437,52 +452,102 @@ class Bdd100kDataset(ImageDataset):
         )
 
     def __len__(self) -> int:
-        save_path = (
-            project_root_dir()
-            / "data"
-            / (
-                f"bdd_{self.split}_filtered"
-                if self.use_time_filtered
-                else f"bdd_{self.split}"
-            )
-        )
-        return len(os.listdir(save_path))
+        if hasattr(self, "filtered_to_orig_mapping") and self.filtered_to_orig_mapping:
+            return len(self.filtered_to_orig_mapping)
+        elif os.path.exists(self.mapping_file):
+            # Load mapping if not already loaded
+            with open(self.mapping_file, "r") as f:
+                self.filtered_to_orig_mapping = json.load(f)
+            return len(self.filtered_to_orig_mapping)
+        else:
+            # Fallback to original dataset size if no mapping exists
+            return len(self.img_labels)
+
+    def _meets_filtering_criteria(self, label: Dict[str, Any]) -> bool:
+        """
+        Check if an image meets the filtering criteria:
+        - timeofday must be 'daytime'
+        - weather must not be 'foggy', 'snowy', or 'rainy'
+
+        Args:
+            label: Image label dictionary containing attributes
+
+        Returns:
+            True if the image meets filtering criteria, False otherwise
+        """
+        if "attributes" not in label:
+            return False
+
+        attributes = label["attributes"]
+
+        # Check timeofday - keep only 'daytime'
+        if attributes.get("timeofday", "") != "daytime":
+            return False
+
+        # Check weather - exclude 'foggy', 'snowy', 'rainy'
+        if attributes.get("weather", "") in ["foggy", "snowy", "rainy"]:
+            return False
+
+        return True
 
     def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
-        save_path = (
-            project_root_dir()
-            / "data"
-            / (
-                f"bdd_{self.split}_filtered"
-                if self.use_time_filtered
-                else f"bdd_{self.split}"
-            )
-            / f"{idx}.pkl"
-        )
+        # If we're using filtered dataset and have a mapping
+        if self.use_time_filtered and hasattr(self, "filtered_to_orig_mapping"):
+            if not self.filtered_to_orig_mapping and os.path.exists(self.mapping_file):
+                # Load mapping if not already loaded
+                with open(self.mapping_file, "r") as f:
+                    self.filtered_to_orig_mapping = json.load(f)
 
-        if not save_path.exists():
-            raise FileNotFoundError(f"File not found: {save_path}")
-        with open(save_path, "rb") as f:
+            # Get the original index from our mapping
+            if str(idx) not in self.filtered_to_orig_mapping:
+                raise IndexError(f"Filtered index {idx} not found in mapping")
+
+            # Use the original index to access the original data
+            orig_idx = self.filtered_to_orig_mapping[str(idx)]
+
+            # Get original file path
+            orig_path = (
+                project_root_dir() / "data" / f"bdd_{self.split}" / f"{orig_idx}.pkl"
+            )
+        else:
+            # Use original dataset if not filtered
+            orig_path = project_root_dir() / "data" / f"bdd_{self.split}" / f"{idx}.pkl"
+
+        # Load the data from the original file
+        with open(orig_path, "rb") as f:
             data = pickle.load(f)
 
-        img_path = os.path.join(self.img_dir, data["name"])
-        image = read_image(img_path)
+        # get the image path
+        img_path = data["name"]
+        # join with the root dir
+        img_path = os.path.join(
+            project_root_dir(),
+            "data",
+            "bdd100k",
+            "images",
+            "100k",
+            self.split,
+            img_path,
+        )
 
+        # get the labels
         labels = data["labels"]
+
+        # get the timestamp
         timestamp = data["timestamp"]
 
-        if self.transform:
-            image, labels = self.transform(image, labels)
-        if self.merge_transform:
-            image, labels, timestamp = self.merge_transform(image, labels, timestamp)
+        # load the image
+        img = read_image(img_path)
 
-        return {
-            "name": self.img_labels[idx]["name"],
-            "path": img_path,
-            "image": image,
-            "labels": labels,
-            "timestamp": timestamp,
-        }
+        # apply transforms if they exist
+        if self.transform:
+            img = self.transform(img)
+
+        # load the labels
+        if self.merge_transform is not None:
+            return self.merge_transform(img, labels, timestamp)
+        else:
+            return img, labels, timestamp
 
 
 class NuImagesDataset(ImageDataset):
