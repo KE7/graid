@@ -541,7 +541,7 @@ class Bdd100kDataset(ImageDataset):
 
         # apply transforms if they exist
         if self.transform:
-            img = self.transform(img)
+            img, labels = self.transform(img, labels)
 
         # load the labels
         if self.merge_transform is not None:
