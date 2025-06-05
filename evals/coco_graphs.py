@@ -2,13 +2,13 @@ import os
 import re
 
 import matplotlib.pyplot as plt
-from scenic_reasoning.utilities.common import project_root_dir
+from graid.utilities.common import project_root_dir
 
 dataset_of_interest = "nuimage"
 display_name = "NuImages"
 
 # Define the data directory where the files are stored.
-data_dir = project_root_dir() /  "data" / "coco_filtered_2000" 
+data_dir = project_root_dir() / "data" / "coco_filtered_2000"
 data_dir = str(data_dir)
 
 # Holds model data in the form: { model_name: [(conf, map), ...] }
@@ -16,7 +16,9 @@ model_data = {}
 
 # Regex to extract model name and confidence from filenames
 # Example filename: output_bdd_faster_rcnn_R_50_FPN_3x_0.6_gpu4.txt
-pattern_filename = re.compile(rf"output_{dataset_of_interest}_train_(.*?)_([\d.]+)\.txt")
+pattern_filename = re.compile(
+    rf"output_{dataset_of_interest}_train_(.*?)_([\d.]+)\.txt"
+)
 
 # Regex to extract mAP and mAR values
 # Example: Average Precision (AP) @[ IoU=0.50:0.95 | area= all | maxDets=100 ] = 0.138
@@ -93,23 +95,25 @@ plt.legend(title="Model", loc="best")
 plt.tight_layout()
 
 # Save the figure in high resolution and display it.
-plt.savefig(f"model_performance_chart_with_recall_on_{dataset_of_interest}.png", dpi=300)
+plt.savefig(
+    f"model_performance_chart_with_recall_on_{dataset_of_interest}.png", dpi=300
+)
 plt.show()
 
 # Create second chart showing only mAP (Average Precision)
 plt.figure(figsize=(10, 6))
-color_iter = iter(plt.rcParams['axes.prop_cycle'].by_key()['color'])
+color_iter = iter(plt.rcParams["axes.prop_cycle"].by_key()["color"])
 for model, data_points in model_data.items():
     data_points.sort(key=lambda x: x[0])
     confs = [point[0] for point in data_points]
     maps = [point[1] for point in data_points]
     color = next(color_iter)
-    plt.plot(confs, maps, marker='o', color=color, label=f"{model} mAP")
+    plt.plot(confs, maps, marker="o", color=color, label=f"{model} mAP")
 
 plt.xlabel("Confidence Threshold")
 plt.ylabel("mAP (Average Precision)")
 plt.title(f"Model Performance Across Confidence Thresholds: mAP Only on {display_name}")
-plt.legend(title="Model", loc='best')
+plt.legend(title="Model", loc="best")
 plt.tight_layout()
 
 plt.savefig(f"model_performance_chart_{dataset_of_interest}.png", dpi=300)
