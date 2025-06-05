@@ -472,17 +472,13 @@ class Bdd100kDataset(ImageDataset):
         timestamp = data["timestamp"]
 
         if self.transform:
-            image, labels = self.transform(image, labels)
-        if self.merge_transform:
-            image, labels, timestamp = self.merge_transform(image, labels, timestamp)
+            img, labels = self.transform(img, labels)
 
-        return {
-            "name": self.img_labels[idx]["name"],
-            "path": img_path,
-            "image": image,
-            "labels": labels,
-            "timestamp": timestamp,
-        }
+        # load the labels
+        if self.merge_transform is not None:
+            return self.merge_transform(img, labels, timestamp)
+        else:
+            return img, labels, timestamp
 
 
 class NuImagesDataset(ImageDataset):
