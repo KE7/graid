@@ -1,18 +1,18 @@
 import json
-from scenic_reasoning.utilities.common import project_root_dir
+from graid.utilities.common import project_root_dir
 from itertools import islice
 from pathlib import Path
 import numpy as np
 from PIL import Image
-from scenic_reasoning.data.ImageLoader import (
+from graid.data.ImageLoader import (
     Bdd100kDataset,
     NuImagesDataset,
     WaymoDataset,
 )
-from scenic_reasoning.interfaces.ObjectDetectionI import ObjectDetectionUtils
-from scenic_reasoning.measurements.ObjectDetection import ObjectDetectionMeasurements
-from scenic_reasoning.models.Ultralytics import Yolo
-from scenic_reasoning.utilities.common import (
+from graid.interfaces.ObjectDetectionI import ObjectDetectionUtils
+from graid.measurements.ObjectDetection import ObjectDetectionMeasurements
+from graid.models.Ultralytics import Yolo
+from graid.utilities.common import (
     get_default_device,
     yolo_bdd_transform,
     yolo_nuscene_transform,

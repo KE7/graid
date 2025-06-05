@@ -1,12 +1,12 @@
 [tool.poetry]
-name = "scenic-reasoning"
+name = "graid"
 version = "0.1.0"
-description = "Can VLMs reason about the physical relationships of everyday scenes? We find out in the realm of robotics and autonomous driving"
+description = "GRAID: Generating Reasoning questions from Analysis of Images via Discriminative artificial intelligence - A framework for VLM scene understanding in robotics and autonomous driving"
 authors = ["Karim Elmaaroufi <elmaaroufi@berkeley.edu>", "Liheng Lai <liheng@berkeley.edu>"]
-keywords = ["vision-language-models", "VLM", "robotics", "autonomous-driving", "scene-understanding", "depth-estimation", "object-detection"]
+keywords = ["vision-language-models", "VLM", "robotics", "autonomous-driving", "scene-understanding", "depth-estimation", "object-detection", "graid"]
 license = "Apache 2.0"
 readme = "README.md"
-packages = [{include = "scenic_reasoning", from = "scenic_reasoning/src"}]
+packages = [{include = "graid", from = "graid/src"}]
 
 [tool.poetry.dependencies]
 python = ">=3.9"
@@ -30,22 +30,25 @@ timm = "^1.0.15"
 tenacity = "^9.1.2"
 anthropic = "^0.51.0"
 pick = "^2.4.0"
+typer = {extras = ["all"], version = "^0.16.0"}
+rich = "^13.0.0"
 
 
 [tool.poetry.scripts]
-install_depth_pro  = "scenic_reasoning.setup:install_depth_pro"
-install_detectron2 = "scenic_reasoning.setup:install_detectron2"
-install_mmdetection = "scenic_reasoning.setup:install_mmdetection"
-install_dino = "scenic_reasoning.setup:install_idea_dino"  
-install_all = "scenic_reasoning.setup:install_all"
-clean_all = "scenic_reasoning.setup:clean_all"
-clean_depth_pro = "scenic_reasoning.setup:clean_depth_pro"
-clean_detectron2 = "scenic_reasoning.setup:clean_detectron2"
-clean_mmdetection = "scenic_reasoning.setup:clean_mmdetection"
-clean_dino = "scenic_reasoning.setup:clean_idea_dino"
-download_nuscenes = "scenic_reasoning.setup:download_nuscenes"
-download_bdd = "scenic_reasoning.setup:download_bdd"
-download_nuimages = "scenic_reasoning.setup:download_nuimages"
+install_depth_pro  = "graid.setup:install_depth_pro"
+install_detectron2 = "graid.setup:install_detectron2"
+install_mmdetection = "graid.setup:install_mmdetection"
+install_dino = "graid.setup:install_idea_dino"  
+install_all = "graid.setup:install_all"
+clean_all = "graid.setup:clean_all"
+clean_depth_pro = "graid.setup:clean_depth_pro"
+clean_detectron2 = "graid.setup:clean_detectron2"
+clean_mmdetection = "graid.setup:clean_mmdetection"
+clean_dino = "graid.setup:clean_idea_dino"
+download_nuscenes = "graid.setup:download_nuscenes"
+download_bdd = "graid.setup:download_bdd"
+download_nuimages = "graid.setup:download_nuimages"
+graid = "graid.graid:app"
 
 
 [tool.poetry.group.dev.dependencies]
@@ -57,6 +60,7 @@ nbconvert = "^7.16.4"
 pyarrow = "^18.1.0"
 ipykernel = "^6.29.5"
 gdown = "^5.2.0"
+pytest = "^8.4.0"
 
 
 [tool.poetry.group.mmdetection.dependencies]

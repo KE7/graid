@@ -1,20 +1,21 @@
 import argparse
 import json
+import os
 import uuid
 
 import ijson
 import torch
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
-from scenic_reasoning.data.ImageLoader import (
+from graid.data.ImageLoader import (
     Bdd100kDataset,
     NuImagesDataset,
     WaymoDataset,
 )
-from scenic_reasoning.models.Detectron import Detectron_obj
-from scenic_reasoning.models.MMDetection import MMdetection_obj
-from scenic_reasoning.models.Ultralytics import RT_DETR, Yolo
-from scenic_reasoning.utilities.common import (
+from graid.models.Detectron import Detectron_obj
+from graid.models.MMDetection import MMdetection_obj
+from graid.models.Ultralytics import RT_DETR, Yolo
+from graid.utilities.common import (
     project_root_dir,
     yolo_bdd_transform,
     yolo_nuscene_transform,
@@ -22,7 +23,6 @@ from scenic_reasoning.utilities.common import (
 )
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-import os
 
 # Constants
 NUM_EXAMPLES_TO_SHOW = 20
@@ -92,7 +92,6 @@ elif dataset == "nuimage":
         split="train",
         size="all",
         transform=lambda i, l: yolo_nuscene_transform(i, l, new_shape=(896, 1600)),
-        
     )
 else:
     dataset = WaymoDataset(

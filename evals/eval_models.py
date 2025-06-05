@@ -10,21 +10,21 @@ import numpy as np
 import ray
 import torch
 from ray.util.queue import Queue
-from scenic_reasoning.data.ImageLoader import (
+from graid.data.ImageLoader import (
     Bdd100kDataset,
     ImageDataset,
     NuImagesDataset,
     WaymoDataset,
 )
-from scenic_reasoning.interfaces.ObjectDetectionI import (
+from graid.interfaces.ObjectDetectionI import (
     ObjectDetectionModelI,
     ObjectDetectionUtils,
 )
-from scenic_reasoning.models.Detectron import Detectron_obj
-from scenic_reasoning.models.DINO_idea import DINO_IDEA
-# from scenic_reasoning.models.MMDetection import MMdetection_obj
-from scenic_reasoning.models.Ultralytics import RT_DETR, Yolo
-from scenic_reasoning.utilities.common import (
+from graid.models.Detectron import Detectron_obj
+from graid.models.DINO_idea import DINO_IDEA
+# from graid.models.MMDetection import MMdetection_obj
+from graid.models.Ultralytics import RT_DETR, Yolo
+from graid.utilities.common import (
     project_root_dir,
     yolo_bdd_transform,
     yolo_nuscene_transform,
