@@ -3,7 +3,7 @@ import re
 from collections import defaultdict
 
 import matplotlib.pyplot as plt
-from scenic_reasoning.utilities.common import project_root_dir
+from graid.utilities.common import project_root_dir
 
 
 def extract_ap_lines_from_txts(directory: str):

@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 import supervision as sv
 import torch
-from scenic_reasoning.utilities.common import get_default_device
+from graid.utilities.common import get_default_device
 from segment_anything import SamAutomaticMaskGenerator, SamPredictor, sam_model_registry
 from supervision import Detections
 

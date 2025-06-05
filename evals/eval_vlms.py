@@ -12,14 +12,14 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from PIL import Image
-from scenic_reasoning.evaluator.metrics import Contains, ExactMatch, LLMJudge
-from scenic_reasoning.evaluator.prompts import (
+from graid.evaluator.metrics import Contains, ExactMatch, LLMJudge
+from graid.evaluator.prompts import (
     CoT,
     SetOfMarkPrompt,
     ZeroShotPrompt,
     ZeroShotPrompt_batch,
 )
-from scenic_reasoning.evaluator.vlms import (
+from graid.evaluator.vlms import (
     GPT,
     GPT_CD,
     GPT_CoT_CD,
@@ -30,7 +30,7 @@ from scenic_reasoning.evaluator.vlms import (
     Llama_CD,
     Llama_CoT_CD,
 )
-from scenic_reasoning.utilities.common import project_root_dir
+from graid.utilities.common import project_root_dir
 from sqlitedict import SqliteDict
 from torchvision import transforms
 from tqdm import tqdm
@@ -567,6 +567,9 @@ if __name__ == "__main__":
             raise ValueError("CoT does not support batch processing.")
         else:
             my_prompt = CoT()
+            if args.metric == "ExactMatch":
+                print("Warning: CoT cannot have an ExactMatch, using Contains instead.")
+                my_metric = Contains()
     elif args.prompt == "ZeroShotPrompt":
         if use_batch:
             my_prompt = ZeroShotPrompt_batch()
