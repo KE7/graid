@@ -21,6 +21,15 @@ from graid.data.generate_db import (
     MODEL_CONFIGS,
     DATASET_TRANSFORMS
 )
+from graid.evaluator.eval_vlms import (
+    evaluate_vlm,
+    list_available_vlms,
+    list_available_metrics,
+    list_available_prompts,
+    VLM_CONFIGS,
+    METRIC_CONFIGS,
+    PROMPT_CONFIGS
+)
 
 app = typer.Typer(
     name="graid",
@@ -34,10 +43,17 @@ def print_welcome():
     typer.secho("🤖 Welcome to GRAID!", fg=typer.colors.CYAN, bold=True)
     typer.echo("   Generating Reasoning questions from Analysis of Images via Discriminative artificial intelligence")
     typer.echo()
-    typer.echo("This tool helps you generate object detection databases using:")
+    typer.echo("GRAID provides two main capabilities:")
+    typer.echo()
+    typer.secho("📁 Database Generation (generate):", fg=typer.colors.BLUE, bold=True)
     typer.echo("• Multiple datasets: BDD100K, NuImages, Waymo")
     typer.echo("• Various model backends: Detectron, MMDetection, Ultralytics")
     typer.echo("• Ground truth data or custom model predictions")
+    typer.echo()
+    typer.secho("🧠 VLM Evaluation (eval-vlms):", fg=typer.colors.BLUE, bold=True)
+    typer.echo("• Evaluate Vision Language Models: GPT, Gemini, Llama")
+    typer.echo("• Multiple evaluation metrics: LLMJudge, ExactMatch, Contains")
+    typer.echo("• Various prompting strategies: ZeroShot, CoT, SetOfMark, Constrained Decoding")
     typer.echo()
 
 def get_dataset_choice() -> str:
@@ -328,6 +344,119 @@ def generate(
     except Exception as e:
         typer.echo()
         typer.secho(f"❌ Error during generation: {e}", fg=typer.colors.RED, bold=True)
+        raise typer.Exit(1)
+
+@app.command("eval-vlms")
+def eval_vlms(
+    db_path: Optional[str] = typer.Option(None, "--db-path", help="Path to SQLite database"),
+    vlm: str = typer.Option("Llama", help="VLM type to use"),
+    model: Optional[str] = typer.Option(None, help="Specific model name (required for some VLMs)"),
+    metric: str = typer.Option("LLMJudge", help="Evaluation metric"),
+    prompt: str = typer.Option("ZeroShotPrompt", help="Prompt type"),
+    sample_size: int = typer.Option(100, "--sample-size", "-n", help="Sample size per table"),
+    region: str = typer.Option("us-central1", help="Cloud region"),
+    gpu_id: int = typer.Option(7, "--gpu-id", help="GPU ID"),
+    batch: bool = typer.Option(False, help="Use batch processing"),
+    output_dir: Optional[str] = typer.Option(None, "--output-dir", help="Custom output directory"),
+    list_vlms: bool = typer.Option(False, "--list-vlms", help="List available VLM types"),
+    list_metrics: bool = typer.Option(False, "--list-metrics", help="List available metrics"),
+    list_prompts: bool = typer.Option(False, "--list-prompts", help="List available prompts"),
+    interactive: bool = typer.Option(True, help="Use interactive mode"),
+):
+    """
+    Evaluate Vision Language Models using SQLite databases.
+    
+    Run without arguments for interactive mode, or specify parameters for batch mode.
+    """
+    
+    # Handle information commands
+    if list_vlms:
+        typer.secho("🤖 Available VLM Types:", fg=typer.colors.BLUE, bold=True)
+        typer.echo()
+        for vlm_type, config in VLM_CONFIGS.items():
+            typer.secho(f"{vlm_type}:", fg=typer.colors.GREEN, bold=True)
+            typer.echo(f"  {config['description']}")
+            if config["requires_model_selection"]:
+                typer.echo(f"  Available models: {', '.join(config['models'])}")
+            typer.echo()
+        return
+    
+    if list_metrics:
+        typer.secho("📊 Available Metrics:", fg=typer.colors.BLUE, bold=True)
+        typer.echo()
+        for metric_type, config in METRIC_CONFIGS.items():
+            typer.secho(f"{metric_type}:", fg=typer.colors.GREEN, bold=True)
+            typer.echo(f"  {config['description']}")
+        typer.echo()
+        return
+    
+    if list_prompts:
+        typer.secho("💬 Available Prompts:", fg=typer.colors.BLUE, bold=True)
+        typer.echo()
+        for prompt_type, config in PROMPT_CONFIGS.items():
+            typer.secho(f"{prompt_type}:", fg=typer.colors.GREEN, bold=True)
+            typer.echo(f"  {config['description']}")
+        typer.echo()
+        return
+    
+    # Interactive mode for database selection
+    if interactive and not db_path:
+        typer.secho("🔍 VLM Evaluation", fg=typer.colors.CYAN, bold=True)
+        typer.echo()
+        typer.echo("This tool evaluates Vision Language Models using SQLite databases")
+        typer.echo("containing questions and answers about images.")
+        typer.echo()
+        
+        db_path = typer.prompt("Enter path to SQLite database")
+    
+    # Validate required arguments
+    if not db_path:
+        typer.secho("Error: --db-path is required", fg=typer.colors.RED)
+        raise typer.Exit(1)
+    
+    # Check if model name is required
+    vlm_config = VLM_CONFIGS.get(vlm)
+    if not vlm_config:
+        typer.secho(f"Error: Unknown VLM type '{vlm}'. Use --list-vlms to see available options.", fg=typer.colors.RED)
+        raise typer.Exit(1)
+    
+    if vlm_config["requires_model_selection"] and not model:
+        typer.secho(f"Error: Model selection required for {vlm}.", fg=typer.colors.RED)
+        typer.echo(f"Available models: {', '.join(vlm_config['models'])}")
+        typer.echo("Use --model to specify a model.")
+        raise typer.Exit(1)
+    
+    # Start evaluation
+    typer.secho("🚀 Starting VLM evaluation...", fg=typer.colors.BLUE, bold=True)
+    typer.echo()
+    typer.echo(f"Database: {db_path}")
+    typer.echo(f"VLM: {vlm}" + (f" ({model})" if model else ""))
+    typer.echo(f"Metric: {metric}")
+    typer.echo(f"Prompt: {prompt}")
+    typer.echo(f"Sample Size: {sample_size}")
+    typer.echo()
+    
+    try:
+        accuracy = evaluate_vlm(
+            db_path=db_path,
+            vlm_type=vlm,
+            model_name=model,
+            metric=metric,
+            prompt=prompt,
+            sample_size=sample_size,
+            region=region,
+            gpu_id=gpu_id,
+            use_batch=batch,
+            output_dir=output_dir
+        )
+        
+        typer.echo()
+        typer.secho("✅ VLM evaluation completed successfully!", fg=typer.colors.GREEN, bold=True)
+        typer.echo(f"Final accuracy: {accuracy:.4f}")
+        
+    except Exception as e:
+        typer.echo()
+        typer.secho(f"❌ Error during evaluation: {e}", fg=typer.colors.RED, bold=True)
         raise typer.Exit(1)
 
 @app.command()
