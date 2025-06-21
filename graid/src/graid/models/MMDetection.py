@@ -1,13 +1,13 @@
-#  hack_registry.py
+#  MMDetection.py
 import logging
 from pathlib import Path
-from typing import Iterator, List, Optional, Type, Union
+from typing import Iterator, List, Optional, Type, Union, Tuple
 
-import numpy as np
+import cv2
 import torch
-from mmengine.logging import print_log
-from mmengine.registry import Registry
+import numpy as np
 from PIL import Image
+
 from graid.interfaces.InstanceSegmentationI import (
     InstanceSegmentationModelI,
     InstanceSegmentationResultI,
@@ -21,6 +21,13 @@ from graid.interfaces.ObjectDetectionI import (
 )
 from graid.utilities.coco import coco_labels
 
+import mmdet
+from mmdet.apis import DetInferencer
+from mmengine.utils import get_git_hash
+from mmengine.utils.dl_utils import collect_env as collect_base_env
+
+from mmengine.logging import print_log
+from mmengine.registry import Registry
 
 # https://github.com/open-mmlab/mmdetection/issues/12008
 def _register_module(
@@ -60,289 +67,315 @@ def _register_module(
             )
         self._module_dict[name] = module
 
-
 Registry._register_module = _register_module
-
-# fmt: off
-import mmdet
-from mmdet.apis import inference_detector, init_detector
-from mmengine.utils import get_git_hash
-from mmengine.utils.dl_utils import collect_env as collect_base_env
-
-# fmt: on
 
 
 class MMdetection_obj(ObjectDetectionModelI):
-    def __init__(self, config_file: str, checkpoint_file, **kwargs) -> None:
-        if kwargs.get("device", None):
-            device = "cpu"  # Using mps will error, see: https://github.com/open-mmlab/mmdetection/issues/11794
-            if torch.cuda.is_available():
-                device = "cuda"
-        else:
-            device = kwargs["device"]
+    def __init__(
+        self,
+        config_file: str,
+        checkpoint_file: str,
+        **kwargs
+    ) -> None:
 
-        self._model = init_detector(config_file, checkpoint_file, device=device)
-        self.model_name = config_file
+        # Not MPS compatible!
 
-        # set class_agnostic to True to avoid overlaps: https://github.com/open-mmlab/mmdetection/issues/6254
-        # self._model.test_cfg.rcnn.nms.class_agnostic = True
+        self.model = config_file
+        self.weights = checkpoint_file
+        self.inferencer = DetInferencer(
+            model=self.model,
+            weights=self.weights,
+            device=kwargs.get('device', 'cuda' if torch.cuda.is_available() else 'cpu')
+        )
+
+        self.batch_size = kwargs.get('batch_size', 1)
 
     def collect_env(self):
-        """Collect the information of the running environments."""
         env_info = collect_base_env()
-        env_info["MMDetection"] = f"{mmdet.__version__}+{get_git_hash()[:7]}"
+        env_info['MMDetection'] = f'{mmdet.__version__}+{get_git_hash()[:7]}'
         return env_info
 
+    def out_to_obj(self, out: dict, image_hw: Tuple[int, int]):
+        obj = []
+        for label, score, bbox in zip(out['labels'], out['scores'], out['bboxes']):
+            obj += [
+                ObjectDetectionResultI(
+                    score=score,
+                    cls=label,
+                    label=coco_labels[label],
+                    bbox=bbox,
+                    image_hw=image_hw,
+                    bbox_format=BBox_Format.XYXY
+                )
+            ]
+
+        return obj
+
     def identify_for_image(
         self,
         image: Union[np.ndarray, torch.Tensor],
         debug: bool = False,
         **kwargs,
     ) -> List[List[ObjectDetectionResultI]]:
-        """
-        Run object detection on an image or a batch of images.
 
-        Args:
-            image: either a PIL image or a tensor of shape (B, C, H, W)
-                where B is the batch size, C is the channel size, H is the
-                height, and W is the width.
+        if isinstance(image, str):
+            image_hw = cv2.imread(image).shape[:2]
+        else:
+            if isinstance(image, torch.Tensor):
+                image = image.detach().cpu().numpy()
 
-        Returns:
-            A list of list of ObjectDetectionResultI, where the outer list
-            represents the batch of images, and the inner list represents the
-            detections in a particular image.
-        """
-        # if len(image.shape) == 3:
-        #     # single image, add batch dimension
-        #     image = image.unsqueeze(0) if isinstance(image, torch.Tensor) else np.expand_dims(image, 0)
-        # image_list = [
-        #     image[i].permute(1, 2, 0).cpu().numpy().astype(np.uint8)
-        #     for i in range(len(image))
-        # ]
-        # image_hw = image_list[0].shape[:-1]
-        image = (
-            image.permute(1, 2, 0).cpu().numpy()
-            if isinstance(image, torch.Tensor)
-            else image
-        )
-        image = image.astype(np.uint8)
+            image = image.astype(np.uint8)
+            image_hw = image.shape[:2]
 
-        predictions = inference_detector(self._model, image, **kwargs)
-
-        all_objects = []
-
-        for pred in predictions:
-            bboxes = pred.pred_instances.bboxes.tolist()
-            labels = pred.pred_instances.labels
-            scores = pred.pred_instances.scores
-            image_hw = pred.pad_shape  # TODO: should I use pad_shape or img_shape?
-            objects = []
-
-            for i in range(len(labels)):
-                cls_id = labels[i].item()
-                score = scores[i].item()
-                bbox = bboxes[i]
-
-                odr = ObjectDetectionResultI(
-                    score=score,
-                    cls=cls_id,
-                    label=coco_labels[cls_id],
-                    bbox=bbox,
-                    image_hw=image_hw,
-                    bbox_format=BBox_Format.XYXY,
-                )
-                objects.append(odr)
-            all_objects.append(objects)
+        pred = self.inferencer(
+            inputs=image,
+            out_dir=kwargs.get('out_dir', ''),
+            batch_size=1
+        )['predictions'][0]
+        out = self.out_to_obj(pred, image_hw)
 
         if debug:
-            if image.dtype == np.float32:
-                curr_img = curr_img.astype(np.uint8)
             ObjectDetectionUtils.show_image_with_detections(
-                Image.fromarray(curr_img), all_objects[i]
+                Image.fromarray(image), out
             )
 
-        return all_objects
+        return [out]
 
     def identify_for_image_batch(
+        self,
+        image: Union[Union[np.ndarray, torch.Tensor], str],
+        debug: bool = False,
+        **kwargs,
+    ) -> List[List[ObjectDetectionResultI]]:
+        
+        image_hws = []
+        input_data = image
+
+        if isinstance(image, str):
+            image_dir = Path(image)
+            
+            image_paths = sorted([
+                p for p in image_dir.iterdir() 
+                if p.suffix.lower() in ['.jpg', '.jpeg', '.png', '.bmp', '.tif', '.tiff']
+            ])
+            if not image_paths:
+                return []
+            
+            for path in image_paths:
+                image_hws.append(cv2.imread(str(path)).shape[:2])
+            
+            input_data = [str(p) for p in image_paths]
+
+        elif isinstance(image, list):
+            if not image:
+                return []
+            
+            processed_list = []
+            for img_item in image:
+                if isinstance(img_item, str):
+                    image_hw = cv2.imread(img_item).shape[:2]
+                    processed_list.append(img_item)
+                elif isinstance(img_item, torch.Tensor):
+                    img_np = img_item.detach().cpu().numpy().astype(np.uint8)
+                    image_hw = img_np.shape[:2]
+                    processed_list.append(img_np)
+                elif isinstance(img_item, np.ndarray):
+                    img_np = img_item.astype(np.uint8)
+                    image_hw = img_np.shape[:2]
+                    processed_list.append(img_np)
+                else:
+                    raise TypeError(f"Unsupported image type in list: {type(img_item)}")
+                image_hws.append(image_hw)
+            input_data = processed_list
+        else:
+            raise TypeError("Input must be a list of images or a path to a directory.")
+
+        predictions = self.inferencer(
+            inputs=input_data,
+            out_dir=kwargs.get('out_dir', ''),
+            batch_size=kwargs.get('batch_size', self.batch_size)
+        )['predictions']
+        out = [self.out_to_obj(pred, hw) for pred, hw in zip(predictions, image_hws)]
+
+        if debug:
+            for i in range(len(input_data)):
+                ObjectDetectionUtils.show_image_with_detections(
+                    Image.fromarray(input_data[i]), out[i]
+                )
+
+        return out
+    
+    def identify_for_video(
+        self,
+        video: Union[
+            Iterator[Union[np.ndarray, torch.Tensor]],
+            List[Union[np.ndarray, torch.Tensor]],
+        ],
+        batch_size: int = 1,
+    ) -> Iterator[List[Optional[ObjectDetectionResultI]]]:
+        raise NotImplementedError
+
+    def to(self, device: Union[str, torch.device]):
+        self.inferencer = DetInferencer(
+            model=self.model,
+            weights=self.weights,
+            device=device
+        )
+
+    def set_threshold(self, threshold: float):
+        raise NotImplementedError
+
+    def __str__(self):
+        return self.model
+
+
+class MMdetection_sef(InstanceSegmentationModelI):
+    def __init__(
+        self,
+        config_file: str,
+        checkpoint_file: str,
+        **kwargs
+    ) -> None:
+
+        # Not MPS compatible!
+
+        self.model = config_file
+        self.weights = checkpoint_file
+
+        # TODO: Modify configuration before initalization?
+        # self.model.test_cfg.rcnn.nms.class_agnostic = True
+
+        self.inferencer = DetInferencer(
+            model=self.model,
+            weights=self.weights,
+            device=kwargs.get('device', 'cuda' if torch.cuda.is_available() else 'cpu')
+        )
+
+    def out_to_seg(self, out: dict, image_hw: Tuple[int, int]):
+        seg = []
+        i = 0
+        for label, score, mask in zip(out['labels'], out['scores'], out['masks']):
+            seg += [
+                InstanceSegmentationResultI(
+                    score=score,
+                    cls=label,
+                    label=coco_labels[label],
+                    instance_id=i,
+                    bbox=mask.unsqueeze(0),
+                    image_hw=image_hw,
+                    bbox_format=Mask_Format.BITMASK
+                )
+            ]
+            i += 1
+
+        return seg
+
+    def identify_for_image(
         self,
         image: Union[np.ndarray, torch.Tensor],
         debug: bool = False,
         **kwargs,
-    ) -> List[List[ObjectDetectionResultI]]:
-        """
-        Run object detection on an image or a batch of images.
+    ) -> List[List[InstanceSegmentationResultI]]:
 
-        Args:
-            image: either a PIL image or a tensor of shape (B, C, H, W)
-                where B is the batch size, C is the channel size, H is the
-                height, and W is the width.
+        if isinstance(image, str):
+            image_hw = cv2.imread(image).shape[:2]
+        else:
+            if isinstance(image, torch.Tensor):
+                image = image.detach().cpu().numpy()
 
-        Returns:
-            A list of list of ObjectDetectionResultI, where the outer list
-            represents the batch of images, and the inner list represents the
-            detections in a particular image.
-        """
-        image_list = [
-            image[i].permute(1, 2, 0).cpu().numpy().astype(np.uint8)
-            for i in range(len(image))
-        ]
-        image_hw = image_list[0].shape[:-1]
-        predictions = inference_detector(self._model, image_list)
+            image = image.astype(np.uint8)
+            image_hw = image.shape[:2]
 
-        all_objects = []
+        pred = self.inferencer(
+            inputs=image,
+            out_dir=kwargs.get('out_dir', ''),
+            batch_size=1
+        )['predictions'][0]
+        out = self.out_to_seg(pred, image_hw)
 
-        for pred in predictions:
-            bboxes = pred.pred_instances.bboxes.tolist()
-            labels = pred.pred_instances.labels
-            scores = pred.pred_instances.scores
-            image_hw = pred.pad_shape  # TODO: should I use pad_shape or img_shape?
-            objects = []
+        # TODO: Visualization
 
-            for i in range(len(labels)):
-                cls_id = labels[i].item()
-                score = scores[i].item()
-                bbox = bboxes[i]
-
-                odr = ObjectDetectionResultI(
-                    score=score,
-                    cls=cls_id,
-                    label=coco_labels[cls_id],
-                    bbox=bbox,
-                    image_hw=image_hw,
-                    bbox_format=BBox_Format.XYXY,
-                )
-                objects.append(odr)
-            all_objects.append(objects)
-
-        if debug:
-            for i in range(len(image_list)):
-                curr_img = image_list[i]
-                if image_list[i].dtype == np.float32:
-                    curr_img = curr_img.astype(np.uint8)
-                ObjectDetectionUtils.show_image_with_detections(
-                    Image.fromarray(curr_img), all_objects[i]
-                )
-
-        return all_objects
-
-    def identify_for_video(
-        self,
-        video: Union[Iterator[Image.Image], List[Image.Image]],
-        batch_size: int = 1,
-    ) -> List[List[ObjectDetectionResultI]]:
-        pass
-
-    def to(self, device: Union[str, torch.device]):
-        self._model.to(device)
-
-    def set_threshold(self, threshold: float):
-        pass
-
-    def __str__(self):
-        return self.model_name
-
-
-class MMdetection_seg(InstanceSegmentationModelI):
-    def __init__(self, config_file: str, checkpoint_file, **kwargs) -> None:
-        device = "cpu"  # Using mps will error, see: https://github.com/open-mmlab/mmdetection/issues/11794
-        if torch.cuda.is_available():
-            device = "cuda"
-        self._model = init_detector(config_file, checkpoint_file, device=device)
-
-        # set class_agnostic to True to avoid overlaps: https://github.com/open-mmlab/mmdetection/issues/6254
-        self._model.test_cfg.rcnn.nms.class_agnostic = True
-
-    def identify_for_image(
-        self,
-        image: Union[
-            str, Path, int, Image.Image, list, tuple, np.ndarray, torch.Tensor
-        ],
-        debug: bool = False,
-        **kwargs,
-    ) -> List[List[Optional[InstanceSegmentationResultI]]]:
-        """
-        Run instance segmentation on an image or a batch of images.
-
-        Args:
-            image: either a PIL image or a tensor of shape (B, C, H, W)
-                where B is the batch size, C is the channel size, H is the
-                height, and W is the width.
-
-        Returns:
-            A list of list of InstanceSegmentationResultI, where the outer list
-            represents the batch of images, and the inner list represents the
-            detections in a particular image.
-        """
-        image_list = [
-            image[i].permute(1, 2, 0).cpu().numpy() for i in range(len(image))
-        ]
-        predictions = inference_detector(self._model, image_list)
-
-        # if debug:
-        #     # TODO: design a new visualizer
-        #     visualizer = VISUALIZERS.build(self._model.cfg.visualizer)
-        #     visualizer.dataset_meta = self._model.dataset_meta
-        #     for i in range(len(image_list)):
-        #         visualizer.add_datasample(
-        #             'result',
-        #             image_list[i],
-        #             data_sample=predictions[i],
-        #             draw_gt = None,
-        #             wait_time=0
-        #         )
-        #         visualizer.show()
-
-        all_instances = []
-        for pred in predictions:
-            masks = pred.pred_instances.masks
-            labels = pred.pred_instances.labels
-            scores = pred.pred_instances.scores
-            image_hw = pred.pad_shape  # TODO: should I use pad_shape or img_shape?
-            instances = []
-            for i in range(len(labels)):
-                cls_id = labels[i].item()
-                mask = masks[i]
-                score = scores[i].item()
-                instance = InstanceSegmentationResultI(
-                    score=score,
-                    cls=cls_id,
-                    label=coco_labels[cls_id],
-                    instance_id=i,
-                    mask=mask.unsqueeze(0),
-                    image_hw=image_hw,
-                    mask_format=Mask_Format.BITMASK,
-                )
-
-                instances.append(instance)
-            all_instances.append(instances)
-
-        return all_instances
+        return [out]
 
     def identify_for_image_batch(
         self,
-        image: Union[
-            str, Path, int, Image.Image, list, tuple, np.ndarray, torch.Tensor
-        ],
+        image: Union[Union[np.ndarray, torch.Tensor], str],
         debug: bool = False,
         **kwargs,
-    ) -> List[Optional[InstanceSegmentationResultI]]:
-        """Run instance segmentation on an image or a batch of images.
-        Args:
-            image: either a PIL image or a tensor of shape (B, C, H, W) where B is the batch size,
-                C is the channel size, H is the height, and W is the width.
-            debug: If True, displays the image with segmentations.
-        Returns:
-            A list of InstanceSegmentationResultI for each image in the batch.
-        """
-        pass
+    ) -> List[List[ObjectDetectionResultI]]:
+        
+        image_hws = []
+        input_data = image
+
+        if isinstance(image, str):
+            image_dir = Path(image)
+            
+            image_paths = sorted([
+                p for p in image_dir.iterdir() 
+                if p.suffix.lower() in ['.jpg', '.jpeg', '.png', '.bmp', '.tif', '.tiff']
+            ])
+            if not image_paths:
+                return []
+            
+            for path in image_paths:
+                image_hws.append(cv2.imread(str(path)).shape[:2])
+            
+            input_data = [str(p) for p in image_paths]
+
+        elif isinstance(image, list):
+            if not image:
+                return []
+            
+            processed_list = []
+            for img_item in image:
+                if isinstance(img_item, str):
+                    image_hw = cv2.imread(img_item).shape[:2]
+                    processed_list.append(img_item)
+                elif isinstance(img_item, torch.Tensor):
+                    img_np = img_item.detach().cpu().numpy().astype(np.uint8)
+                    image_hw = img_np.shape[:2]
+                    processed_list.append(img_np)
+                elif isinstance(img_item, np.ndarray):
+                    img_np = img_item.astype(np.uint8)
+                    image_hw = img_np.shape[:2]
+                    processed_list.append(img_np)
+                else:
+                    raise TypeError(f"Unsupported image type in list: {type(img_item)}")
+                image_hws.append(image_hw)
+            input_data = processed_list
+        else:
+            raise TypeError("Input must be a list of images or a path to a directory.")
+
+        predictions = self.inferencer(
+            inputs=input_data,
+            out_dir=kwargs.get('out_dir', ''),
+            batch_size=kwargs.get('batch_size', self.batch_size)
+        )['predictions']
+        out = [self.out_to_seg(pred, hw) for pred, hw in zip(predictions, image_hws)]
+
+        # TODO: Visualization
+
+        return out
 
     def identify_for_video(
         self,
-        video: Union[Iterator[Image.Image], List[Image.Image]],
+        video: Union[
+            Iterator[Union[np.ndarray, torch.Tensor]],
+            List[Union[np.ndarray, torch.Tensor]],
+        ],
         batch_size: int = 1,
-    ) -> Iterator[List[InstanceSegmentationResultI]]:
-        pass
+    ) -> Iterator[List[Optional[ObjectDetectionResultI]]]:
+        raise NotImplementedError
 
     def to(self, device: Union[str, torch.device]):
-        # self._model.to(device)
-        pass
+        self.inferencer = DetInferencer(
+            model=self.model,
+            weights=self.weights,
+            device=device
+        )
+
+    def set_threshold(self, threshold: float):
+        raise NotImplementedError
+
+    def __str__(self):
+        return self.model
