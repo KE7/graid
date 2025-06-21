@@ -5,7 +5,11 @@ import torch
 import numpy as np
 import cv2
 
-from scenic_reasoning.interfaces.ObjectDetectionI import
+from scenic_reasoning.interfaces.ObjectDetectionI import (
+    ObjectDetectionModelI,
+    ObjectDetectionResultI,
+    BBox_Format
+)
 from scenic_reasoning.utilities.coco import coco_labels
 from mmdet.apis import DetInferencer
 
