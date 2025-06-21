@@ -1,4 +1,5 @@
 #  MMDetection.py
+
 import logging
 from pathlib import Path
 from typing import Iterator, List, Optional, Type, Union, Tuple
@@ -229,7 +230,7 @@ class MMdetection_obj(ObjectDetectionModelI):
         return self.model
 
 
-class MMdetection_sef(InstanceSegmentationModelI):
+class MMdetection_seg(InstanceSegmentationModelI):
     def __init__(
         self,
         config_file: str,
