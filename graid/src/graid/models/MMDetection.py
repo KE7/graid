@@ -8,6 +8,7 @@ import cv2
 import torch
 import numpy as np
 from PIL import Image
+import pycocotools.mask as mask_util
 
 from graid.interfaces.InstanceSegmentationI import (
     InstanceSegmentationModelI,
@@ -256,15 +257,27 @@ class MMdetection_seg(InstanceSegmentationModelI):
         seg = []
         i = 0
         for label, score, mask in zip(out['labels'], out['scores'], out['masks']):
+            if isinstance(mask, dict):
+                decoded = mask_util.decode(mask)
+            elif isinstance(mask, (list, tuple)):
+                decoded = mask_util.decode(
+                    mask_util.frPyObjects(mask, *image_hw))
+            elif isinstance(mask, torch.Tensor):
+                decoded = mask.cpu().numpy()
+            else:
+                raise TypeError(f'Unknown mask type: {type(mask)}')
+
+            mask_tensor = torch.from_numpy(decoded.astype(bool)).unsqueeze(0)
+
             seg += [
                 InstanceSegmentationResultI(
-                    score=score,
-                    cls=label,
-                    label=coco_labels[label],
+                    score=float(score),
+                    cls=float(label),
+                    label=coco_labels[int(label)],
                     instance_id=i,
-                    bbox=mask.unsqueeze(0),
                     image_hw=image_hw,
-                    bbox_format=Mask_Format.BITMASK
+                    mask=mask_tensor,
+                    mask_format=Mask_Format.BITMASK
                 )
             ]
             i += 1
