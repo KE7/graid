@@ -88,7 +88,10 @@ class InstanceSegmentationResultI:
         return self._bitmask
 
     def get_area(self) -> float:
-        return self._bitmask.area().item()
+        bm = self._bitmask
+        if hasattr(bm, 'area'):
+            return float(bm.area())
+        return float(bm.tensor.sum())
 
     def as_tensor(self) -> torch.Tensor:
         return self._bitmask.tensor
