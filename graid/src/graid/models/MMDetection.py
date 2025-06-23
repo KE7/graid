@@ -253,6 +253,8 @@ class MMdetection_seg(InstanceSegmentationModelI):
             device=kwargs.get('device', 'cuda' if torch.cuda.is_available() else 'cpu')
         )
 
+        self.batch_size = kwargs.get('batch_size', 1)
+
     def out_to_seg(self, out: dict, image_hw: Tuple[int, int]):
         seg = []
         i = 0
