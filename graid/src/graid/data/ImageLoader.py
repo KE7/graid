@@ -8,6 +8,7 @@ import re
 from datetime import datetime, time
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
+import cv2
 import numpy as np
 import pandas as pd
 import torch
@@ -137,7 +138,7 @@ class Bdd10kDataset(ImageDataset):
         return self._CATEGORIES[category]
 
     def category_to_coco_cls(self, category: str) -> int:
-        return self._CATEGORIES_TO_COCO[category]
+        return self._CATEGORIES_TO_COCO.get(category, -1)
 
     def __init__(
         self,
@@ -178,12 +179,17 @@ class Bdd10kDataset(ImageDataset):
             **kwargs,
         )
 
+    def __len__(self):
+        return len(self.img_labels["frames"])
+
     def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
         data = self.img_labels["frames"][idx]
         img_path = os.path.join(self.img_dir, data["name"])
         labels = data["labels"]
         timestamp = data["timestamp"]
-        image = read_image(img_path)
+        
+        image = cv2.imread(img_path)
+        image = torch.from_numpy(image).permute(2, 0, 1)
 
         if self.transform:
             image = self.transform(image)
