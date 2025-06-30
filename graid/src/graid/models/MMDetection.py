@@ -23,8 +23,13 @@ from graid.interfaces.ObjectDetectionI import (
 )
 from graid.utilities.coco import coco_labels
 
+try:
+    from mmdet.apis import DetInferencer
+    _MMDET3 = True
+except ImportError:
+    from mmdet.apis import init_detector, inference_detector
+    _MMDET3 = False
 import mmdet
-from mmdet.apis import DetInferencer
 from mmengine.utils import get_git_hash
 from mmengine.utils.dl_utils import collect_env as collect_base_env
 
@@ -72,6 +77,59 @@ def _register_module(
 Registry._register_module = _register_module
 
 
+class MMDetRunner:
+    def __init__(self, model: str, weights: str, device: torch.device = 'cpu'):
+        if _MMDET3:
+            self.backend = DetInferencer(model=model, weights=weights, device=device)
+            self._v3 = True
+        else:
+            self.backend = init_detector(model, weights, device=device)
+            self._v3 = False
+
+    def __call__(self, inputs, *, out_dir='', batch_size=1):
+        """
+        Returns list[dict] — one dict per image, no wrapper keys.
+        Keys present:  bboxes, scores, labels   (+ masks for seg models)
+        Shapes match DetInferencer.
+        """
+        if self._v3:
+            res = self.backend(
+                    inputs=inputs,
+                    out_dir=out_dir,
+                    batch_size=batch_size)
+            return res['predictions']
+
+        if isinstance(inputs, (list, tuple)):
+            imgs = inputs
+        else:
+            imgs = [inputs]
+
+        outs = []
+        for im in imgs:
+            raw = inference_detector(self.backend, im)
+            if isinstance(raw, tuple):
+                bbox, segm = raw
+            else:
+                bbox, segm = raw, None
+
+            if bbox:
+                b = np.vstack(bbox)
+                l = np.concatenate([[i]*len(x) for i, x in enumerate(bbox)])
+            else:
+                b, l = np.empty((0,5)), np.empty(0)
+
+            pred = {
+                'bboxes': b[:, :4].astype(float),
+                'scores': b[:, 4].astype(float),
+                'labels': l.astype(int),
+            }
+            if segm is not None:
+                pred['masks'] = [np.array(mask) for cls in segm[0] for mask in cls]
+
+            outs.append(pred)
+        return outs
+
+
 class MMdetection_obj(ObjectDetectionModelI):
     def __init__(
         self,
@@ -84,7 +142,7 @@ class MMdetection_obj(ObjectDetectionModelI):
 
         self.model = config_file
         self.weights = checkpoint_file
-        self.inferencer = DetInferencer(
+        self.inferencer = MMDetRunner(
             model=self.model,
             weights=self.weights,
             device=kwargs.get('device', 'cuda' if torch.cuda.is_available() else 'cpu')
@@ -133,7 +191,7 @@ class MMdetection_obj(ObjectDetectionModelI):
             inputs=image,
             out_dir=kwargs.get('out_dir', ''),
             batch_size=1
-        )['predictions'][0]
+        )[0]
         out = self.out_to_obj(pred, image_hw)
 
         if debug:
@@ -196,7 +254,7 @@ class MMdetection_obj(ObjectDetectionModelI):
             inputs=input_data,
             out_dir=kwargs.get('out_dir', ''),
             batch_size=kwargs.get('batch_size', self.batch_size)
-        )['predictions']
+        )
         out = [self.out_to_obj(pred, hw) for pred, hw in zip(predictions, image_hws)]
 
         if debug:
@@ -218,7 +276,7 @@ class MMdetection_obj(ObjectDetectionModelI):
         raise NotImplementedError
 
     def to(self, device: Union[str, torch.device]):
-        self.inferencer = DetInferencer(
+        self.inferencer = MMDetRunner(
             model=self.model,
             weights=self.weights,
             device=device
@@ -247,7 +305,7 @@ class MMdetection_seg(InstanceSegmentationModelI):
         # TODO: Modify configuration before initalization?
         # self.model.test_cfg.rcnn.nms.class_agnostic = True
 
-        self.inferencer = DetInferencer(
+        self.inferencer = MMDetRunner(
             model=self.model,
             weights=self.weights,
             device=kwargs.get('device', 'cuda' if torch.cuda.is_available() else 'cpu')
@@ -266,6 +324,8 @@ class MMdetection_seg(InstanceSegmentationModelI):
                     mask_util.frPyObjects(mask, *image_hw))
             elif isinstance(mask, torch.Tensor):
                 decoded = mask.cpu().numpy()
+            elif isinstance(mask, np.ndarray):
+                decoded = mask
             else:
                 raise TypeError(f'Unknown mask type: {type(mask)}')
 
@@ -306,7 +366,7 @@ class MMdetection_seg(InstanceSegmentationModelI):
             inputs=image,
             out_dir=kwargs.get('out_dir', ''),
             batch_size=1
-        )['predictions'][0]
+        )[0]
         out = self.out_to_seg(pred, image_hw)
 
         # TODO: Visualization
@@ -366,7 +426,7 @@ class MMdetection_seg(InstanceSegmentationModelI):
             inputs=input_data,
             out_dir=kwargs.get('out_dir', ''),
             batch_size=kwargs.get('batch_size', self.batch_size)
-        )['predictions']
+        )
         out = [self.out_to_seg(pred, hw) for pred, hw in zip(predictions, image_hws)]
 
         # TODO: Visualization
@@ -384,7 +444,7 @@ class MMdetection_seg(InstanceSegmentationModelI):
         raise NotImplementedError
 
     def to(self, device: Union[str, torch.device]):
-        self.inferencer = DetInferencer(
+        self.inferencer = MMDetRunner(
             model=self.model,
             weights=self.weights,
             device=device

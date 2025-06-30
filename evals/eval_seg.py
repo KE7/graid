@@ -53,7 +53,7 @@ def parse_args():
                     choices=['bdd'],
                     default='bdd')
     ap.add_argument("-m","--model",
-                    choices=['mask2former', 'rtmdet'],
+                    choices=['mask2former', 'rtmdet', 'co-detr'],
                     default='mask2former')
     ap.add_argument("-c","--checkpoint", type=str)
     ap.add_argument("-s","--split", type=str, default='val')
@@ -111,6 +111,10 @@ def main():
             'rtmdet',
             'rtmdet-ins_x_8xb16-300e_coco.py'
         )
+        ckpt_file = args.checkpoint
+        model = MMdetection_seg(str(cfg_file), str(ckpt_file), device=device)
+    elif args.model == 'co-detr':
+        cfg_file = './externals/Co-DETR/projects/configs/co_dino_vit/co_dino_5scale_vit_large_coco_instance.py'
         ckpt_file = args.checkpoint
         model = MMdetection_seg(str(cfg_file), str(ckpt_file), device=device)
     else:
