@@ -91,7 +91,7 @@ def main():
         raise ValueError('Unknown dataset.')
 
     loader = DataLoader(ds, batch_size=args.batch_size,
-                        shuffle=False, num_workers=2, pin_memory=True,
+                        shuffle=False, num_workers=0, pin_memory=True,
                         collate_fn=lambda x: x)
 
     # MARK: Model

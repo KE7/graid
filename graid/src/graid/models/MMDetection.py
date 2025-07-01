@@ -78,7 +78,10 @@ Registry._register_module = _register_module
 
 
 class MMDetRunner:
-    def __init__(self, model: str, weights: str, device: torch.device = 'cpu'):
+    def __init__(self, model: str, weights: str, device: Optional[torch.device] = None):
+
+        device = device or torch.device('cuda' if torch.cuda.is_available else 'cpu')
+
         if _MMDET3:
             self.backend = DetInferencer(model=model, weights=weights, device=device)
             self._v3 = True
