@@ -53,7 +53,7 @@ def parse_args():
                     choices=['bdd'],
                     default='bdd')
     ap.add_argument("-m","--model",
-                    choices=['mask2former', 'rtmdet', 'co-detr'],
+                    choices=['mask2former', 'rtmdet', 'co-detr', 'grounded-sam2'],
                     default='mask2former')
     ap.add_argument("-c","--checkpoint", type=str)
     ap.add_argument("-s","--split", type=str, default='val')
@@ -87,6 +87,7 @@ def main():
     # MARK: Dataset
     if args.dataset == 'bdd':
         ds = Bdd10kDataset(args.split)
+        classes = Bdd10kDataset._CATEGORIES_TO_COCO
     else:
         raise ValueError('Unknown dataset.')
 
@@ -117,6 +118,19 @@ def main():
         cfg_file = './externals/Co-DETR/projects/configs/co_dino_vit/co_dino_5scale_vit_large_coco_instance.py'
         ckpt_file = args.checkpoint
         model = MMdetection_seg(str(cfg_file), str(ckpt_file), device=device)
+    elif args.model == 'grounded-sam2':
+        from graid.models.grounded_sam import GroundedSAM2
+        sam2_cfg = 'configs/sam2.1/sam2.1_hiera_l.yaml'
+        sam2_ckpt = args.checkpoint
+        gnd_model_id = 'IDEA-Research/grounding-dino-tiny'
+        model = GroundedSAM2(
+            sam2_cfg=sam2_cfg,
+            sam2_ckpt=sam2_ckpt,
+            gnd_model_id=gnd_model_id,
+            classes=(classes if args.dataset in ['bdd'] else None),
+            box_threshold=0.2,
+            text_threshold=0.1
+        )
     else:
         raise ValueError('Unknown model.')
 
