@@ -1,7 +1,7 @@
 import pickle
 from functools import wraps
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Tuple
+from typing import Any, Dict, Iterator, List, Tuple, Union
 
 import cv2
 import numpy as np
@@ -129,7 +129,8 @@ def yolo_transform(
         "instances": Instances(
             bboxes=np.array([_get_bbox(label, box_key) for label in labels]),
             # Provide 'segments' to avoid certain ultralytics issues
-            segments=np.zeros(shape=[len(labels), int(new_shape[1] * 3 / 4), 2]),
+            segments=np.zeros(
+                shape=[len(labels), int(new_shape[1] * 3 / 4), 2]),
         ),
     }
 
@@ -140,7 +141,8 @@ def yolo_transform(
 
     # Convert back to torch, scale to [0,1] range
     image_out = (
-        torch.tensor(updated_labels["img"]).permute(2, 0, 1).to(torch.float32) / scale
+        torch.tensor(updated_labels["img"]).permute(
+            2, 0, 1).to(torch.float32) / scale
     )
 
     # Update label bounding boxes based on the new ratio and padding
@@ -197,3 +199,30 @@ def persistent_cache(filepath: str):
         return wrapper
 
     return decorator
+
+
+def convert_image_to_numpy(image: Union[str, np.ndarray, torch.Tensor, Image.Image]) -> np.ndarray:
+    """Convert various image formats to numpy array."""
+    if isinstance(image, str):
+        # File path
+        pil_image = Image.open(image)
+        return np.array(pil_image)
+    elif isinstance(image, np.ndarray):
+        return image
+    elif isinstance(image, torch.Tensor):
+        # Convert tensor to numpy
+        if image.dim() == 3 and image.shape[0] in [1, 3]:
+            # CHW format
+            return image.permute(1, 2, 0).cpu().numpy()
+        else:
+            # HWC format or other
+            return image.cpu().numpy()
+    elif isinstance(image, Image.Image):
+        return np.array(image)
+    else:
+        raise ValueError(f"Unsupported image type: {type(image)}")
+
+
+def convert_batch_to_numpy(batch: List[Union[str, np.ndarray, torch.Tensor, Image.Image]]) -> List[np.ndarray]:
+    """Convert a batch of images to numpy arrays."""
+    return [convert_image_to_numpy(image) for image in batch]

@@ -1,11 +1,9 @@
 #  hack_registry.py
-import logging
 from pathlib import Path
 from typing import Iterator, List, Optional, Type, Union
 
 import numpy as np
 import torch
-from mmengine.logging import print_log
 from mmengine.registry import Registry
 from PIL import Image
 from graid.interfaces.InstanceSegmentationI import (
@@ -17,9 +15,9 @@ from graid.interfaces.ObjectDetectionI import (
     BBox_Format,
     ObjectDetectionModelI,
     ObjectDetectionResultI,
-    ObjectDetectionUtils,
 )
-from graid.utilities.coco import coco_labels
+from graid.utilities.coco import coco_labels, coco_panoptic_labels
+from graid.utilities.common import convert_batch_to_numpy, convert_image_to_numpy
 
 
 # https://github.com/open-mmlab/mmdetection/issues/12008
@@ -50,14 +48,6 @@ def _register_module(
     for name in module_name:
         if not force and name in self._module_dict:
             existed_module = self.module_dict[name]
-            # raise KeyError(f'{name} is already registered in {self.name} '
-            #                f'at {existed_module.__module__}')
-            print_log(
-                f"{name} is already registered in {self.name} "
-                f"at {existed_module.__module__}. Registration ignored.",
-                logger="current",
-                level=logging.INFO,
-            )
         self._module_dict[name] = module
 
 
@@ -72,20 +62,18 @@ from mmengine.utils.dl_utils import collect_env as collect_base_env
 # fmt: on
 
 
-class MMdetection_obj(ObjectDetectionModelI):
-    def __init__(self, config_file: str, checkpoint_file, **kwargs) -> None:
-        if kwargs.get("device", None):
-            device = "cpu"  # Using mps will error, see: https://github.com/open-mmlab/mmdetection/issues/11794
-            if torch.cuda.is_available():
-                device = "cuda"
-        else:
-            device = kwargs["device"]
+class MMDetectionBase:
+    """Base class for MMDetection models with shared functionality."""
+
+    def __init__(self, config_file: str, checkpoint_file: str, device: Optional[str] = None):
+        # Use provided device or auto-detect
+        if device is None:
+            device = "cuda" if torch.cuda.is_available() else "cpu"
 
         self._model = init_detector(config_file, checkpoint_file, device=device)
         self.model_name = config_file
-
-        # set class_agnostic to True to avoid overlaps: https://github.com/open-mmlab/mmdetection/issues/6254
-        # self._model.test_cfg.rcnn.nms.class_agnostic = True
+        self._device = device
+        self.threshold = 0.0
 
     def collect_env(self):
         """Collect the information of the running environments."""
@@ -93,75 +81,72 @@ class MMdetection_obj(ObjectDetectionModelI):
         env_info["MMDetection"] = f"{mmdet.__version__}+{get_git_hash()[:7]}"
         return env_info
 
+    def to(self, device: Union[str, torch.device]):
+        """Move model to specified device."""
+        self._model.to(device)
+        self._device = str(device)
+
+    def set_threshold(self, threshold: float):
+        """Set confidence threshold for detections."""
+        self.threshold = threshold
+
+    def __str__(self):
+        return self.model_name
+
+
+class MMdetection_obj(MMDetectionBase, ObjectDetectionModelI):
+    def __init__(self, config_file: str, checkpoint_file: str, **kwargs) -> None:
+        device = kwargs.get("device", None)
+        super().__init__(config_file, checkpoint_file, device)
+
+    def _extract_detections(self, pred) -> List[ObjectDetectionResultI]:
+        """Extract object detection results from prediction."""
+        bboxes = pred.pred_instances.bboxes.tolist()
+        labels = pred.pred_instances.labels
+        scores = pred.pred_instances.scores
+        image_hw = pred.pad_shape
+
+        objects = []
+        for i in range(len(labels)):
+            cls_id = labels[i].item()
+            score = scores[i].item()
+            bbox = bboxes[i]
+
+            odr = ObjectDetectionResultI(
+                score=score,
+                cls=cls_id,
+                label=coco_labels[cls_id],
+                bbox=bbox,
+                image_hw=image_hw,
+                bbox_format=BBox_Format.XYXY,
+            )
+            objects.append(odr)
+        return objects
+
     def identify_for_image(
         self,
         image: Union[np.ndarray, torch.Tensor],
         debug: bool = False,
         **kwargs,
-    ) -> List[List[ObjectDetectionResultI]]:
-        """
-        Run object detection on an image or a batch of images.
-
-        Args:
-            image: either a PIL image or a tensor of shape (B, C, H, W)
-                where B is the batch size, C is the channel size, H is the
-                height, and W is the width.
-
-        Returns:
-            A list of list of ObjectDetectionResultI, where the outer list
-            represents the batch of images, and the inner list represents the
-            detections in a particular image.
-        """
-        # if len(image.shape) == 3:
-        #     # single image, add batch dimension
-        #     image = image.unsqueeze(0) if isinstance(image, torch.Tensor) else np.expand_dims(image, 0)
-        # image_list = [
-        #     image[i].permute(1, 2, 0).cpu().numpy().astype(np.uint8)
-        #     for i in range(len(image))
-        # ]
-        # image_hw = image_list[0].shape[:-1]
-        image = (
-            image.permute(1, 2, 0).cpu().numpy()
-            if isinstance(image, torch.Tensor)
-            else image
-        )
-        image = image.astype(np.uint8)
+    ) -> List[ObjectDetectionResultI]:
+        """Run object detection on a single image."""
+        image = convert_image_to_numpy(image)
+        if image.dtype != np.uint8:
+            image = image.astype(np.uint8)
 
         predictions = inference_detector(self._model, image, **kwargs)
+        # Handle single image case - predictions is a single DetDataSample
+        if not isinstance(predictions, list):
+            predictions = [predictions]
 
-        all_objects = []
+        detections = self._extract_detections(predictions[0])
 
-        for pred in predictions:
-            bboxes = pred.pred_instances.bboxes.tolist()
-            labels = pred.pred_instances.labels
-            scores = pred.pred_instances.scores
-            image_hw = pred.pad_shape  # TODO: should I use pad_shape or img_shape?
-            objects = []
+        # Apply manual threshold filtering if threshold is set
+        if self.threshold is not None:
+            detections = [
+                det for det in detections if det.score >= self.threshold]
 
-            for i in range(len(labels)):
-                cls_id = labels[i].item()
-                score = scores[i].item()
-                bbox = bboxes[i]
-
-                odr = ObjectDetectionResultI(
-                    score=score,
-                    cls=cls_id,
-                    label=coco_labels[cls_id],
-                    bbox=bbox,
-                    image_hw=image_hw,
-                    bbox_format=BBox_Format.XYXY,
-                )
-                objects.append(odr)
-            all_objects.append(objects)
-
-        if debug:
-            if image.dtype == np.float32:
-                curr_img = curr_img.astype(np.uint8)
-            ObjectDetectionUtils.show_image_with_detections(
-                Image.fromarray(curr_img), all_objects[i]
-            )
-
-        return all_objects
+        return detections
 
     def identify_for_image_batch(
         self,
@@ -182,48 +167,21 @@ class MMdetection_obj(ObjectDetectionModelI):
             represents the batch of images, and the inner list represents the
             detections in a particular image.
         """
-        image_list = [
-            image[i].permute(1, 2, 0).cpu().numpy().astype(np.uint8)
-            for i in range(len(image))
-        ]
-        image_hw = image_list[0].shape[:-1]
+        image_list = convert_batch_to_numpy(image)
+
         predictions = inference_detector(self._model, image_list)
 
-        all_objects = []
-
+        # Extract detections and apply manual threshold filtering
+        all_detections = []
         for pred in predictions:
-            bboxes = pred.pred_instances.bboxes.tolist()
-            labels = pred.pred_instances.labels
-            scores = pred.pred_instances.scores
-            image_hw = pred.pad_shape  # TODO: should I use pad_shape or img_shape?
-            objects = []
+            detections = self._extract_detections(pred)
+            # Apply manual threshold filtering if threshold is set
+            if self.threshold is not None:
+                detections = [
+                    det for det in detections if det.score >= self.threshold]
+            all_detections.append(detections)
 
-            for i in range(len(labels)):
-                cls_id = labels[i].item()
-                score = scores[i].item()
-                bbox = bboxes[i]
-
-                odr = ObjectDetectionResultI(
-                    score=score,
-                    cls=cls_id,
-                    label=coco_labels[cls_id],
-                    bbox=bbox,
-                    image_hw=image_hw,
-                    bbox_format=BBox_Format.XYXY,
-                )
-                objects.append(odr)
-            all_objects.append(objects)
-
-        if debug:
-            for i in range(len(image_list)):
-                curr_img = image_list[i]
-                if image_list[i].dtype == np.float32:
-                    curr_img = curr_img.astype(np.uint8)
-                ObjectDetectionUtils.show_image_with_detections(
-                    Image.fromarray(curr_img), all_objects[i]
-                )
-
-        return all_objects
+        return all_detections
 
     def identify_for_video(
         self,
@@ -232,77 +190,71 @@ class MMdetection_obj(ObjectDetectionModelI):
     ) -> List[List[ObjectDetectionResultI]]:
         pass
 
-    def to(self, device: Union[str, torch.device]):
-        self._model.to(device)
 
-    def set_threshold(self, threshold: float):
-        pass
-
-    def __str__(self):
-        return self.model_name
-
-
-class MMdetection_seg(InstanceSegmentationModelI):
+class MMdetection_seg(MMDetectionBase, InstanceSegmentationModelI):
     def __init__(self, config_file: str, checkpoint_file, **kwargs) -> None:
-        device = "cpu"  # Using mps will error, see: https://github.com/open-mmlab/mmdetection/issues/11794
-        if torch.cuda.is_available():
-            device = "cuda"
-        self._model = init_detector(config_file, checkpoint_file, device=device)
+        device = kwargs.get("device", None)
+        super().__init__(config_file, checkpoint_file, device)
 
         # set class_agnostic to True to avoid overlaps: https://github.com/open-mmlab/mmdetection/issues/6254
-        self._model.test_cfg.rcnn.nms.class_agnostic = True
+        if hasattr(self._model.test_cfg, 'rcnn') and hasattr(self._model.test_cfg.rcnn, 'nms'):
+            self._model.test_cfg.rcnn.nms.class_agnostic = True
 
-    def identify_for_image(
-        self,
-        image: Union[
-            str, Path, int, Image.Image, list, tuple, np.ndarray, torch.Tensor
-        ],
-        debug: bool = False,
-        **kwargs,
-    ) -> List[List[Optional[InstanceSegmentationResultI]]]:
-        """
-        Run instance segmentation on an image or a batch of images.
+        self._supports_panoptic = self._check_panoptic_support()
 
-        Args:
-            image: either a PIL image or a tensor of shape (B, C, H, W)
-                where B is the batch size, C is the channel size, H is the
-                height, and W is the width.
+    def _check_panoptic_support(self) -> bool:
+        """Check if the model supports panoptic segmentation."""
+        if hasattr(self._model, 'test_cfg') and hasattr(self._model.test_cfg, 'panoptic_on'):
+            return self._model.test_cfg.panoptic_on
+        return False
 
-        Returns:
-            A list of list of InstanceSegmentationResultI, where the outer list
-            represents the batch of images, and the inner list represents the
-            detections in a particular image.
-        """
-        image_list = [
-            image[i].permute(1, 2, 0).cpu().numpy() for i in range(len(image))
-        ]
-        predictions = inference_detector(self._model, image_list)
+    def _extract_panoptic_results(self, pred, image_hw) -> List[InstanceSegmentationResultI]:
+        """Extract panoptic segmentation results."""
+        instances = []
 
-        # if debug:
-        #     # TODO: design a new visualizer
-        #     visualizer = VISUALIZERS.build(self._model.cfg.visualizer)
-        #     visualizer.dataset_meta = self._model.dataset_meta
-        #     for i in range(len(image_list)):
-        #         visualizer.add_datasample(
-        #             'result',
-        #             image_list[i],
-        #             data_sample=predictions[i],
-        #             draw_gt = None,
-        #             wait_time=0
-        #         )
-        #         visualizer.show()
+        if hasattr(pred, 'pred_panoptic_seg') and pred.pred_panoptic_seg is not None:
+            panoptic_seg = pred.pred_panoptic_seg
+            if hasattr(panoptic_seg, 'sem_seg'):
+                sem_seg = panoptic_seg.sem_seg[0]
+                unique_ids = torch.unique(sem_seg)
 
-        all_instances = []
-        for pred in predictions:
+                for segment_id in unique_ids:
+                    if segment_id == 0:
+                        continue
+
+                    segment_id_int = segment_id.item()
+                    class_id = segment_id_int if segment_id_int < 1000 else segment_id_int // 1000
+
+                    if class_id in coco_panoptic_labels:
+                        mask = (sem_seg == segment_id).unsqueeze(0)
+
+                        instance = InstanceSegmentationResultI(
+                            score=0.0,
+                            cls=class_id,
+                            label=coco_panoptic_labels[class_id],
+                            instance_id=len(instances),
+                            mask=mask,
+                            image_hw=image_hw,
+                            mask_format=Mask_Format.BITMASK,
+                        )
+                        instances.append(instance)
+
+        return instances
+
+    def _extract_instance_results(self, pred, image_hw) -> List[InstanceSegmentationResultI]:
+        """Extract instance segmentation results."""
+        instances = []
+
+        if hasattr(pred, 'pred_instances') and hasattr(pred.pred_instances, 'masks'):
             masks = pred.pred_instances.masks
             labels = pred.pred_instances.labels
             scores = pred.pred_instances.scores
-            image_hw = pred.pad_shape  # TODO: should I use pad_shape or img_shape?
-            instances = []
+
             for i in range(len(labels)):
                 cls_id = labels[i].item()
                 mask = masks[i]
                 score = scores[i].item()
+
                 instance = InstanceSegmentationResultI(
                     score=score,
                     cls=cls_id,
@@ -312,37 +264,75 @@ class MMdetection_seg(InstanceSegmentationModelI):
                     image_hw=image_hw,
                     mask_format=Mask_Format.BITMASK,
                 )
-
                 instances.append(instance)
-            all_instances.append(instances)
 
-        return all_instances
+        return instances
+
+    def _process_single_image(self, image: np.ndarray) -> List[InstanceSegmentationResultI]:
+        """Process a single image for segmentation."""
+        predictions = inference_detector(self._model, image)
+        pred = predictions[0] if isinstance(predictions, list) else predictions
+        image_hw = pred.pad_shape
+
+        if self._supports_panoptic:
+            instances = self._extract_panoptic_results(pred, image_hw)
+        else:
+            instances = self._extract_instance_results(pred, image_hw)
+
+        # Apply manual threshold filtering if threshold is set
+        if self.threshold is not None:
+            instances = [
+                inst for inst in instances if inst.score >= self.threshold]
+
+        return instances
+
+    def identify_for_image(
+        self,
+        image: Union[str, Path, int, Image.Image, list, tuple, np.ndarray, torch.Tensor],
+        debug: bool = False,
+        **kwargs,
+    ) -> List[InstanceSegmentationResultI]:
+        """Run segmentation on a single image."""
+        image = convert_image_to_numpy(image)
+        if image.dtype == np.float32:
+            image = (image * 255).astype(np.uint8)
+        return self._process_single_image(image)
 
     def identify_for_image_batch(
         self,
-        image: Union[
-            str, Path, int, Image.Image, list, tuple, np.ndarray, torch.Tensor
-        ],
+        image: Union[np.ndarray, torch.Tensor],
         debug: bool = False,
         **kwargs,
-    ) -> List[Optional[InstanceSegmentationResultI]]:
-        """Run instance segmentation on an image or a batch of images.
-        Args:
-            image: either a PIL image or a tensor of shape (B, C, H, W) where B is the batch size,
-                C is the channel size, H is the height, and W is the width.
-            debug: If True, displays the image with segmentations.
-        Returns:
-            A list of InstanceSegmentationResultI for each image in the batch.
-        """
-        pass
+    ) -> List[List[InstanceSegmentationResultI]]:
+        """Run segmentation on a batch of images."""
+        if isinstance(image, torch.Tensor):
+            image_list = convert_batch_to_numpy(image)
+
+            predictions = inference_detector(self._model, image_list)
+
+            all_instances = []
+            for pred in predictions:
+                image_hw = pred.pad_shape
+
+                if self._supports_panoptic:
+                    instances = self._extract_panoptic_results(pred, image_hw)
+                else:
+                    instances = self._extract_instance_results(pred, image_hw)
+
+                # Apply manual threshold filtering if threshold is set
+                if self.threshold is not None:
+                    instances = [
+                        inst for inst in instances if inst.score >= self.threshold]
+
+                all_instances.append(instances)
+
+            return all_instances
+        else:
+            return [self.identify_for_image(image, debug=debug, **kwargs)]
 
     def identify_for_video(
         self,
         video: Union[Iterator[Image.Image], List[Image.Image]],
         batch_size: int = 1,
     ) -> Iterator[List[InstanceSegmentationResultI]]:
-        pass
-
-    def to(self, device: Union[str, torch.device]):
-        # self._model.to(device)
         pass

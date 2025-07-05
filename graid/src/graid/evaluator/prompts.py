@@ -67,7 +67,7 @@ class CoT(PromptingStrategy):
         Steps:
         1. I see three pedestrians walking on the left sidewalk, roughly in the left third of the image.
         2. I also see a single motorcyclist riding away from the camera, positioned nearer the center of the road and center of the camera frame but clearly to the right of those pedestrians.
-        3. Comparing their horizontal positions, the motorcyclist’s x‑coordinate is larger (further to the right) than either pedestrian’s.
+        3. Comparing their horizontal positions, the motorcyclist's x‑coordinate is larger (further to the right) than either pedestrian's.
 
         Conclusion: The motorcyclist is to the right of the pedestrians.
         Final_Answer: Yes.
@@ -105,7 +105,7 @@ class CoT(PromptingStrategy):
 
         Steps:
         1. Among the COCO categories present, the object farthest to the left is the bench under the bus‐stop canopy.
-        2. That bench’s bounding area is much broader horizontally than it is tall vertically.
+        2. That bench's bounding area is much broader horizontally than it is tall vertically.
 
         Conclusion: The bench is wider than it is tall.
         Final_Answer: Yes.
@@ -188,15 +188,18 @@ class SetOfMarkPrompt(PromptingStrategy):
         height, width, channels = image_bgr.shape
         image_area = height * width
 
-        min_area_mask = (detections.area / image_area) > self.MIN_AREA_PERCENTAGE
-        max_area_mask = (detections.area / image_area) < self.MAX_AREA_PERCENTAGE
+        min_area_mask = (detections.area /
+                         image_area) > self.MIN_AREA_PERCENTAGE
+        max_area_mask = (detections.area /
+                         image_area) < self.MAX_AREA_PERCENTAGE
         detections = detections[min_area_mask & max_area_mask]
 
         def Find_Center(mask: np.ndarray) -> tuple[int, int]:
             mask_8u = mask.astype(np.uint8)
 
             # Distance transform
-            dist = cv2.distanceTransform(mask_8u, distanceType=cv2.DIST_L2, maskSize=3)
+            dist = cv2.distanceTransform(
+                mask_8u, distanceType=cv2.DIST_L2, maskSize=3)
 
             # Find the global maximum in distance map
             _, _, _, max_loc = cv2.minMaxLoc(dist)

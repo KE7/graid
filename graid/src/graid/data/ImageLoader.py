@@ -5,7 +5,7 @@ import logging
 import os
 import pickle
 import re
-from datetime import datetime, time
+from datetime import datetime, time, timezone
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
@@ -668,7 +668,7 @@ class NuImagesDataset(ImageDataset):
         "vehicle.construction": "truck",
         "vehicle.ego": "undefined",
         "vehicle.emergency.ambulance": "undefined",
-        "vehicle.emergency.police": "person",
+        "vehicle.emergency.police": "car",
         "vehicle.motorcycle": "motorcycle",
         "vehicle.trailer": "undefined",
         "vehicle.truck": "truck",
@@ -741,7 +741,7 @@ class NuImagesDataset(ImageDataset):
     def __init__(
         self,
         split: Literal["train", "val", "test", "mini"] = "val",
-        size: Literal["mini", "full"] = "full",
+        size: Literal["mini", "all"] = "all",
         rebuild: bool = False,
         use_time_filtered: bool = True,
         **kwargs,
@@ -1060,7 +1060,7 @@ class NuImagesDataset_seg(ImageDataset):
     def __init__(
         self,
         split: Literal["train", "val", "test", "mini"] = "val",
-        size: Literal["mini", "full"] = "mini",
+        size: Literal["mini", "all"] = "all",
         **kwargs,
     ):
 
@@ -1258,7 +1258,7 @@ class WaymoDataset(ImageDataset):
 
     def is_time_in_working_hours(self, timestamp_micro: str) -> bool:
         timestamp_sec = int(timestamp_micro) / 1e6
-        dt = datetime.utcfromtimestamp(timestamp_sec)
+        dt = datetime.fromtimestamp(timestamp_sec, tz=timezone.utc)
         return time(8, 0) <= dt.time() < time(18, 0)
 
     def __repr__(self):
