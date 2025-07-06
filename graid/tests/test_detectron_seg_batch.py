@@ -1,6 +1,7 @@
 import time
-import torch
 from itertools import islice
+
+import torch
 
 from graid.data.ImageLoader import Bdd10kDataset
 from graid.models.Detectron import Detectron_seg
@@ -23,7 +24,7 @@ model = Detectron_seg(
     config_file=config_file,
     weights_file=weights_file,
     threshold=0.5,
-    device=get_default_device()
+    device=get_default_device(),
 )
 
 print(f"Model loaded on device: {get_default_device()}")
@@ -33,7 +34,7 @@ print(f"Testing with batch size: {BATCH_SIZE}")
 print(f"\nCollecting {BATCH_SIZE} images from dataset...")
 images = []
 for i, data in enumerate(islice(bdd, BATCH_SIZE)):
-    image = data['image']  # Extract image from the data dictionary
+    image = data["image"]  # Extract image from the data dictionary
     print(f"  Image {i+1}: {image.shape}")
     images.append(image)
 
@@ -63,22 +64,23 @@ try:
     batch_time = time.time() - start_time
     print(f"Batch processing time: {batch_time:.3f}s")
     print(f"Speedup: {single_time/batch_time:.2f}x")
-    
+
     # Verify results consistency
     print("\n=== Verifying Results Consistency ===")
     for i in range(len(single_results)):
         single_count = len(single_results[i])
         batch_count = len(batch_results[i])
         print(f"  Image {i+1}: Single={single_count}, Batch={batch_count}")
-        
+
         if single_count != batch_count:
             print(f"    WARNING: Count mismatch!")
         else:
             print(f"    ✓ Counts match")
-            
+
 except Exception as e:
     print(f"Batch processing failed: {e}")
     import traceback
+
     traceback.print_exc()
 
-print("\nTest completed!") 
+print("\nTest completed!")

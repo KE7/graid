@@ -1,29 +1,35 @@
-from graid.interfaces.ObjectDetectionI import (
-    BBox_Format,
-    ObjectDetectionModelI,
-    ObjectDetectionResultI,
-)
+from itertools import islice
+from pathlib import Path
+from typing import Iterator, List, Optional, Union
+
+import cv2
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
+from detectron2 import model_zoo
+from detectron2.config import get_cfg
+from detectron2.data import MetadataCatalog
+from detectron2.engine import DefaultPredictor
+from detectron2.structures import BitMasks
+from detectron2.utils.logger import setup_logger
+from detectron2.utils.visualizer import Visualizer
+from PIL import Image
+
 from graid.interfaces.InstanceSegmentationI import (
     InstanceSegmentationModelI,
     InstanceSegmentationResultI,
     Mask_Format,
 )
-from PIL import Image
-from detectron2.utils.visualizer import Visualizer
-from detectron2.structures import BitMasks
-from detectron2.engine import DefaultPredictor
-from detectron2.data import MetadataCatalog
-from detectron2.config import get_cfg
-from detectron2 import model_zoo
-import numpy as np
-import matplotlib.pyplot as plt
-from typing import Iterator, List, Optional, Union
-from pathlib import Path
-from itertools import islice
-import cv2
-import torch
-from detectron2.utils.logger import setup_logger
-from graid.utilities.common import get_default_device, convert_batch_to_numpy, convert_image_to_numpy
+from graid.interfaces.ObjectDetectionI import (
+    BBox_Format,
+    ObjectDetectionModelI,
+    ObjectDetectionResultI,
+)
+from graid.utilities.common import (
+    convert_batch_to_numpy,
+    convert_image_to_numpy,
+    get_default_device,
+)
 
 setup_logger()
 
@@ -40,8 +46,7 @@ class DetectronBase:
     ):
         # Input Detectron2 config file and weights file
         cfg = get_cfg()
-        cfg.MODEL.DEVICE = str(get_default_device()
-                               ) if device is None else str(device)
+        cfg.MODEL.DEVICE = str(get_default_device()) if device is None else str(device)
         cfg.merge_from_file(model_zoo.get_config_file(config_file))
         cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = threshold
         cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url(weights_file)
@@ -106,8 +111,7 @@ class Detectron_obj(DetectronBase, ObjectDetectionModelI):
             if image.ndimension() == 4:  # Batched input (B, C, H, W)
                 batch_results = []
                 for img in image:
-                    img_np = img.permute(
-                        1, 2, 0).cpu().numpy()  # Convert to HWC
+                    img_np = img.permute(1, 2, 0).cpu().numpy()  # Convert to HWC
                     batch_results.append(self._process_single_image(img_np))
                 return batch_results
 
@@ -170,14 +174,15 @@ class Detectron_obj(DetectronBase, ObjectDetectionModelI):
             for i in range(batched_images.shape[0]):
                 image = batched_images[i]
                 image = image.permute(1, 2, 0).cpu().numpy()  # Convert to HWC
-                image = self._predictor.aug.get_transform(
-                    image).apply_image(image)
-                image = torch.as_tensor(image.astype(
-                    "float32").transpose(2, 0, 1))  # Convert back to CHW
+                image = self._predictor.aug.get_transform(image).apply_image(image)
+                image = torch.as_tensor(
+                    image.astype("float32").transpose(2, 0, 1)
+                )  # Convert back to CHW
                 image = image.to(self.cfg.MODEL.DEVICE).detach()
                 height, width = image.shape[1:]
                 list_of_images.append(
-                    {"image": image, "height": height, "width": width})
+                    {"image": image, "height": height, "width": width}
+                )
 
             predictions = self._predictor.model(list_of_images)
 
@@ -257,7 +262,9 @@ class Detectron_seg(DetectronBase, InstanceSegmentationModelI):
 
     def identify_for_image(
         self,
-        image: Union[str, Path, int, Image.Image, list, tuple, np.ndarray, torch.Tensor],
+        image: Union[
+            str, Path, int, Image.Image, list, tuple, np.ndarray, torch.Tensor
+        ],
         debug: bool = False,
         **kwargs,
     ) -> List[InstanceSegmentationResultI]:
@@ -271,7 +278,9 @@ class Detectron_seg(DetectronBase, InstanceSegmentationModelI):
         image = convert_image_to_numpy(image)
         return self._process_single_image(image)
 
-    def _process_single_image(self, image: np.ndarray) -> List[InstanceSegmentationResultI]:
+    def _process_single_image(
+        self, image: np.ndarray
+    ) -> List[InstanceSegmentationResultI]:
         """Process a single image for instance segmentation."""
         predictions = self._predictor(image)
 
@@ -317,7 +326,9 @@ class Detectron_seg(DetectronBase, InstanceSegmentationModelI):
 
     def identify_for_image_batch(
         self,
-        image: Union[str, Path, int, Image.Image, list, tuple, np.ndarray, torch.Tensor],
+        image: Union[
+            str, Path, int, Image.Image, list, tuple, np.ndarray, torch.Tensor
+        ],
         debug: bool = False,
         **kwargs,
     ) -> List[List[InstanceSegmentationResultI]]:
@@ -330,7 +341,9 @@ class Detectron_seg(DetectronBase, InstanceSegmentationModelI):
         """
 
         if isinstance(image, torch.Tensor):
-            assert image.ndimension() == 4, "Input tensor must be of shape (B, C, H, W) in RGB format"
+            assert (
+                image.ndimension() == 4
+            ), "Input tensor must be of shape (B, C, H, W) in RGB format"
 
             # Convert RGB to BGR and prepare images for model
             batched_images = image[:, [2, 1, 0], ...]  # Convert RGB to BGR
@@ -342,15 +355,16 @@ class Detectron_seg(DetectronBase, InstanceSegmentationModelI):
                     img = img.permute(1, 2, 0).cpu().numpy()  # Convert to HWC
 
                     # Apply preprocessing transformations from predictor
-                    img = self._predictor.aug.get_transform(
-                        img).apply_image(img)
-                    img = torch.as_tensor(img.astype("float32").transpose(
-                        2, 0, 1))  # Convert back to CHW
+                    img = self._predictor.aug.get_transform(img).apply_image(img)
+                    img = torch.as_tensor(
+                        img.astype("float32").transpose(2, 0, 1)
+                    )  # Convert back to CHW
                     img = img.to(self.cfg.MODEL.DEVICE).detach()
 
                     height, width = img.shape[1:]
                     list_of_images.append(
-                        {"image": img, "height": height, "width": width})
+                        {"image": img, "height": height, "width": width}
+                    )
 
                 # Process entire batch through model at once
                 predictions = self._predictor.model(list_of_images)
@@ -360,13 +374,19 @@ class Detectron_seg(DetectronBase, InstanceSegmentationModelI):
             for i in range(len(predictions)):
                 img_results = []
 
-                if "instances" not in predictions[i] or len(predictions[i]["instances"]) == 0:
+                if (
+                    "instances" not in predictions[i]
+                    or len(predictions[i]["instances"]) == 0
+                ):
                     formatted_results.append(img_results)
                     continue
 
                 instances = predictions[i]["instances"]
 
-                if not hasattr(instances, "pred_masks") or len(instances.pred_masks) == 0:
+                if (
+                    not hasattr(instances, "pred_masks")
+                    or len(instances.pred_masks) == 0
+                ):
                     formatted_results.append(img_results)
                     continue
 

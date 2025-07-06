@@ -6,18 +6,20 @@ showing class names and confidence scores. Automatically uses panoptic segmentat
 if available, otherwise falls back to instance segmentation.
 """
 
-from graid.utilities.common import yolo_bdd_transform
-from graid.models.MMDetection import MMdetection_seg
-from graid.data.ImageLoader import Bdd100kDataset
+import sys
+from itertools import islice
+from pathlib import Path
+
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from itertools import islice
-from pathlib import Path
 
-import sys
-sys.path.append('/work/ke/research/scenic-reasoning/graid/src')
+from graid.data.ImageLoader import Bdd100kDataset
+from graid.models.MMDetection import MMdetection_seg
+from graid.utilities.common import yolo_bdd_transform
+
+sys.path.append("/work/ke/research/scenic-reasoning/graid/src")
 
 
 def draw_masks_with_labels(image, results, alpha=0.5):
@@ -40,9 +42,9 @@ def draw_masks_with_labels(image, results, alpha=0.5):
 
     # Colors for different instances (using distinct colors)
     colors = [
-        (255, 0, 0),    # Red
-        (0, 255, 0),    # Green
-        (0, 0, 255),    # Blue
+        (255, 0, 0),  # Red
+        (0, 255, 0),  # Green
+        (0, 0, 255),  # Blue
         (255, 255, 0),  # Yellow
         (255, 0, 255),  # Magenta
         (0, 255, 255),  # Cyan
@@ -79,19 +81,28 @@ def draw_masks_with_labels(image, results, alpha=0.5):
             text_y = max(20, y_min)
 
             # Draw text background
-            text_size = cv2.getTextSize(
-                label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)[0]
-            cv2.rectangle(overlay,
-                          (text_x, text_y - text_size[1] - 5),
-                          (text_x + text_size[0] + 10, text_y + 5),
-                          (0, 0, 0), -1)
+            text_size = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)[0]
+            cv2.rectangle(
+                overlay,
+                (text_x, text_y - text_size[1] - 5),
+                (text_x + text_size[0] + 10, text_y + 5),
+                (0, 0, 0),
+                -1,
+            )
 
             # Draw text
-            cv2.putText(overlay, label_text, (text_x + 5, text_y),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+            cv2.putText(
+                overlay,
+                label_text,
+                (text_x + 5, text_y),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (255, 255, 255),
+                2,
+            )
 
     # Blend original image with overlay
-    result_image = cv2.addWeighted(display_image, 1-alpha, overlay, alpha, 0)
+    result_image = cv2.addWeighted(display_image, 1 - alpha, overlay, alpha, 0)
 
     return result_image
 
@@ -137,8 +148,8 @@ def main():
 
         # Get sample from dataset
         sample = dataset[i]
-        if isinstance(sample, dict) and 'image' in sample:
-            image_tensor = sample['image']
+        if isinstance(sample, dict) and "image" in sample:
+            image_tensor = sample["image"]
             image_name = f"image_{i+1}"
         elif isinstance(sample, (tuple, list)) and len(sample) >= 2:
             image_tensor = sample[0]
@@ -176,8 +187,17 @@ def main():
             print(f"Found {len(image_results)} instances:")
 
             # Count different types of detections
-            stuff_classes = ['road', 'sky', 'building', 'wall',
-                             'fence', 'tree', 'grass', 'pavement', 'mountain']
+            stuff_classes = [
+                "road",
+                "sky",
+                "building",
+                "wall",
+                "fence",
+                "tree",
+                "grass",
+                "pavement",
+                "mountain",
+            ]
             things_count = 0
             stuff_count = 0
 
@@ -189,7 +209,8 @@ def main():
                 print(f"  {j+1}. {result.label}: {result.score:.1%}")
 
             print(
-                f"Things (instances): {things_count}, Stuff (semantic): {stuff_count}")
+                f"Things (instances): {things_count}, Stuff (semantic): {stuff_count}"
+            )
 
             # Create visualization
             if len(image_results) > 0:
@@ -204,22 +225,24 @@ def main():
                     plt.subplot(1, 2, 1)
                     plt.imshow(image_np)
                     plt.title(f"Original Image: {image_name}")
-                    plt.axis('off')
+                    plt.axis("off")
 
                     # Segmentation results
                     plt.subplot(1, 2, 2)
                     plt.imshow(vis_image)
-                    segmentation_type = "Panoptic" if model._supports_panoptic else "Instance"
+                    segmentation_type = (
+                        "Panoptic" if model._supports_panoptic else "Instance"
+                    )
                     plt.title(
-                        f"{segmentation_type} Segmentation ({len(image_results)} segments)")
-                    plt.axis('off')
+                        f"{segmentation_type} Segmentation ({len(image_results)} segments)"
+                    )
+                    plt.axis("off")
 
                     plt.tight_layout()
 
                     if SAVE_RESULTS:
-                        save_path = output_dir / \
-                            f"mask2former_{i+1}_{image_name}.png"
-                        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+                        save_path = output_dir / f"mask2former_{i+1}_{image_name}.png"
+                        plt.savefig(save_path, dpi=150, bbox_inches="tight")
                         print(f"Saved: {save_path}")
 
                     plt.show()

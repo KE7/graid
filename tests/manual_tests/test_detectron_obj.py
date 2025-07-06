@@ -1,12 +1,14 @@
 from itertools import islice
-from graid.data.ImageLoader import Bdd100kDataset
-from graid.measurements.ObjectDetection import ObjectDetectionMeasurements
-from graid.interfaces.ObjectDetectionI import ObjectDetectionUtils
-from graid.utilities.common import get_default_device
-from graid.models.Detectron import Detectron_obj
-from ultralytics.data.augment import LetterBox
+
 import numpy as np
 from PIL import Image
+from ultralytics.data.augment import LetterBox
+
+from graid.data.ImageLoader import Bdd100kDataset
+from graid.interfaces.ObjectDetectionI import ObjectDetectionUtils
+from graid.measurements.ObjectDetection import ObjectDetectionMeasurements
+from graid.models.Detectron import Detectron_obj
+from graid.utilities.common import get_default_device
 
 NUM_EXAMPLES_TO_SHOW = 3
 BATCH_SIZE = 1

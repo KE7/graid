@@ -222,12 +222,15 @@ def _download_chunk(
     chunk_path = os.path.join(temp_dir, f"chunk_{chunk_index}")
     chunk_size = end - start + 1
 
-    with open(chunk_path, "wb") as f, tqdm(
-        total=chunk_size,
-        unit="B",
-        unit_scale=True,
-        desc=f"Downloading chunk {chunk_index + 1}",
-    ) as pbar:
+    with (
+        open(chunk_path, "wb") as f,
+        tqdm(
+            total=chunk_size,
+            unit="B",
+            unit_scale=True,
+            desc=f"Downloading chunk {chunk_index + 1}",
+        ) as pbar,
+    ):
         for chunk in response.iter_content(chunk_size=8192):
             f.write(chunk)
             pbar.update(len(chunk))
@@ -243,9 +246,10 @@ def _download_chunk(
 def _merge_chunks(
     temp_dir: str, dest_path: str, num_chunks: int, file_size: int
 ) -> None:
-    with open(dest_path, "wb") as dest_file, tqdm(
-        total=file_size, unit="B", unit_scale=True, desc="Writing"
-    ) as pbar:
+    with (
+        open(dest_path, "wb") as dest_file,
+        tqdm(total=file_size, unit="B", unit_scale=True, desc="Writing") as pbar,
+    ):
         for i in range(num_chunks):
             chunk_path = os.path.join(temp_dir, f"chunk_{i}")
             with open(chunk_path, "rb") as chunk_file:
@@ -427,12 +431,18 @@ def download_bdd(task: Optional[str] = None, split: Optional[str] = None) -> Non
     if label_file_path and os.path.exists(label_file_path):
         # Check if zip contains bdd100k prefix and adjust extraction path accordingly
         with zipfile.ZipFile(label_file_path, "r") as zip_ref:
-            has_bdd100k_prefix = any(name.startswith("bdd100k/") for name in zip_ref.namelist())
-        
+            has_bdd100k_prefix = any(
+                name.startswith("bdd100k/") for name in zip_ref.namelist()
+            )
+
         # If zip has bdd100k prefix, extract to parent directory to avoid nesting
-        extract_path = os.path.dirname(root_dir + data_dir) if has_bdd100k_prefix else root_dir + data_dir
+        extract_path = (
+            os.path.dirname(root_dir + data_dir)
+            if has_bdd100k_prefix
+            else root_dir + data_dir
+        )
         unzip_file(label_file_path, extract_path)
-        
+
         # Add label file to cleanup list
         files_to_download.append((source_url + label_file, label_file_path))
 

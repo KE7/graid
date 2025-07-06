@@ -5,41 +5,158 @@ This test shows both instance segmentation (things) and semantic segmentation (s
 like road, sky, sidewalk, etc.
 """
 
-from graid.utilities.common import yolo_bdd_transform
-from graid.models.MMDetection import MMdetection_seg
-from graid.data.ImageLoader import Bdd100kDataset
+import sys
+from itertools import islice
+from pathlib import Path
+
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from itertools import islice
-from pathlib import Path
 
-import sys
-sys.path.append('/work/ke/research/scenic-reasoning/graid/src')
+from graid.data.ImageLoader import Bdd100kDataset
+from graid.models.MMDetection import MMdetection_seg
+from graid.utilities.common import yolo_bdd_transform
+
+sys.path.append("/work/ke/research/scenic-reasoning/graid/src")
 
 
 # COCO panoptic class names (things + stuff)
 COCO_PANOPTIC_CLASSES = [
-    'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat',
-    'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat',
-    'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack',
-    'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball',
-    'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket',
-    'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple',
-    'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair',
-    'couch', 'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop', 'mouse',
-    'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 'refrigerator',
-    'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush',
+    "person",
+    "bicycle",
+    "car",
+    "motorcycle",
+    "airplane",
+    "bus",
+    "train",
+    "truck",
+    "boat",
+    "traffic light",
+    "fire hydrant",
+    "stop sign",
+    "parking meter",
+    "bench",
+    "bird",
+    "cat",
+    "dog",
+    "horse",
+    "sheep",
+    "cow",
+    "elephant",
+    "bear",
+    "zebra",
+    "giraffe",
+    "backpack",
+    "umbrella",
+    "handbag",
+    "tie",
+    "suitcase",
+    "frisbee",
+    "skis",
+    "snowboard",
+    "sports ball",
+    "kite",
+    "baseball bat",
+    "baseball glove",
+    "skateboard",
+    "surfboard",
+    "tennis racket",
+    "bottle",
+    "wine glass",
+    "cup",
+    "fork",
+    "knife",
+    "spoon",
+    "bowl",
+    "banana",
+    "apple",
+    "sandwich",
+    "orange",
+    "broccoli",
+    "carrot",
+    "hot dog",
+    "pizza",
+    "donut",
+    "cake",
+    "chair",
+    "couch",
+    "potted plant",
+    "bed",
+    "dining table",
+    "toilet",
+    "tv",
+    "laptop",
+    "mouse",
+    "remote",
+    "keyboard",
+    "cell phone",
+    "microwave",
+    "oven",
+    "toaster",
+    "sink",
+    "refrigerator",
+    "book",
+    "clock",
+    "vase",
+    "scissors",
+    "teddy bear",
+    "hair drier",
+    "toothbrush",
     # Stuff classes start here
-    'banner', 'blanket', 'bridge', 'cardboard', 'counter', 'curtain', 'door-stuff', 'floor-wood',
-    'flower', 'fruit', 'gravel', 'house', 'light', 'mirror-stuff', 'net', 'pillow', 'platform',
-    'playingfield', 'railroad', 'river', 'road', 'roof', 'sand', 'sea', 'shelf', 'snow',
-    'stairs', 'tent', 'towel', 'wall-brick', 'wall-stone', 'wall-tile', 'wall-wood', 'water-other',
-    'window-blind', 'window-other', 'tree-merged', 'fence-merged', 'ceiling-merged', 'sky-other-merged',
-    'cabinet-merged', 'table-merged', 'floor-other-merged', 'pavement-merged', 'mountain-merged',
-    'grass-merged', 'dirt-merged', 'paper-merged', 'food-other-merged', 'building-other-merged',
-    'rock-merged', 'wall-other-merged', 'rug-merged'
+    "banner",
+    "blanket",
+    "bridge",
+    "cardboard",
+    "counter",
+    "curtain",
+    "door-stuff",
+    "floor-wood",
+    "flower",
+    "fruit",
+    "gravel",
+    "house",
+    "light",
+    "mirror-stuff",
+    "net",
+    "pillow",
+    "platform",
+    "playingfield",
+    "railroad",
+    "river",
+    "road",
+    "roof",
+    "sand",
+    "sea",
+    "shelf",
+    "snow",
+    "stairs",
+    "tent",
+    "towel",
+    "wall-brick",
+    "wall-stone",
+    "wall-tile",
+    "wall-wood",
+    "water-other",
+    "window-blind",
+    "window-other",
+    "tree-merged",
+    "fence-merged",
+    "ceiling-merged",
+    "sky-other-merged",
+    "cabinet-merged",
+    "table-merged",
+    "floor-other-merged",
+    "pavement-merged",
+    "mountain-merged",
+    "grass-merged",
+    "dirt-merged",
+    "paper-merged",
+    "food-other-merged",
+    "building-other-merged",
+    "rock-merged",
+    "wall-other-merged",
+    "rug-merged",
 ]
 
 
@@ -114,22 +231,38 @@ def draw_panoptic_segmentation(image, panoptic_seg, alpha=0.6):
 
                     # Draw text background
                     text_size = cv2.getTextSize(
-                        label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)[0]
-                    cv2.rectangle(overlay,
-                                  (centroid_x - text_size[0]//2 - 2,
-                                   centroid_y - text_size[1]//2 - 2),
-                                  (centroid_x + text_size[0]//2 + 2,
-                                   centroid_y + text_size[1]//2 + 2),
-                                  (0, 0, 0), -1)
+                        label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1
+                    )[0]
+                    cv2.rectangle(
+                        overlay,
+                        (
+                            centroid_x - text_size[0] // 2 - 2,
+                            centroid_y - text_size[1] // 2 - 2,
+                        ),
+                        (
+                            centroid_x + text_size[0] // 2 + 2,
+                            centroid_y + text_size[1] // 2 + 2,
+                        ),
+                        (0, 0, 0),
+                        -1,
+                    )
 
                     # Draw text
-                    cv2.putText(overlay, label_text,
-                                (centroid_x - text_size[0]//2,
-                                 centroid_y + text_size[1]//2),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                    cv2.putText(
+                        overlay,
+                        label_text,
+                        (
+                            centroid_x - text_size[0] // 2,
+                            centroid_y + text_size[1] // 2,
+                        ),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5,
+                        (255, 255, 255),
+                        1,
+                    )
 
     # Blend original image with overlay
-    result_image = cv2.addWeighted(display_image, 1-alpha, overlay, alpha, 0)
+    result_image = cv2.addWeighted(display_image, 1 - alpha, overlay, alpha, 0)
 
     return result_image
 
@@ -213,8 +346,8 @@ def main():
 
         # Get sample from dataset
         sample = dataset[i]
-        if isinstance(sample, dict) and 'image' in sample:
-            image_tensor = sample['image']
+        if isinstance(sample, dict) and "image" in sample:
+            image_tensor = sample["image"]
             image_name = f"image_{i+1}"
         elif isinstance(sample, (tuple, list)) and len(sample) >= 2:
             image_tensor = sample[0]
@@ -244,12 +377,16 @@ def main():
         # Run inference to get panoptic results
         print("Running panoptic segmentation...")
         from mmdet.apis import inference_detector
+
         raw_results = inference_detector(model._model, image_np)
 
-        if hasattr(raw_results, 'pred_panoptic_seg') and raw_results.pred_panoptic_seg is not None:
+        if (
+            hasattr(raw_results, "pred_panoptic_seg")
+            and raw_results.pred_panoptic_seg is not None
+        ):
             panoptic_seg = raw_results.pred_panoptic_seg
 
-            if hasattr(panoptic_seg, 'sem_seg'):
+            if hasattr(panoptic_seg, "sem_seg"):
                 sem_seg = panoptic_seg.sem_seg[0]  # Remove batch dimension
                 print(f"Semantic segmentation shape: {sem_seg.shape}")
 
@@ -268,21 +405,21 @@ def main():
                     plt.subplot(1, 2, 1)
                     plt.imshow(image_np)
                     plt.title(f"Original Image: {image_name}")
-                    plt.axis('off')
+                    plt.axis("off")
 
                     # Panoptic segmentation results
                     plt.subplot(1, 2, 2)
                     plt.imshow(vis_image)
                     plt.title(
-                        f"Panoptic Segmentation\n({len(class_counts)} classes detected)")
-                    plt.axis('off')
+                        f"Panoptic Segmentation\n({len(class_counts)} classes detected)"
+                    )
+                    plt.axis("off")
 
                     plt.tight_layout()
 
                     if SAVE_RESULTS:
-                        save_path = output_dir / \
-                            f"panoptic_{i+1}_{image_name}.png"
-                        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+                        save_path = output_dir / f"panoptic_{i+1}_{image_name}.png"
+                        plt.savefig(save_path, dpi=150, bbox_inches="tight")
                         print(f"Saved: {save_path}")
 
                     plt.show()

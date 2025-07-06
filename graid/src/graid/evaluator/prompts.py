@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 import supervision as sv
 import torch
+
 from graid.utilities.common import get_default_device
 
 
@@ -188,18 +189,15 @@ class SetOfMarkPrompt(PromptingStrategy):
         height, width, channels = image_bgr.shape
         image_area = height * width
 
-        min_area_mask = (detections.area /
-                         image_area) > self.MIN_AREA_PERCENTAGE
-        max_area_mask = (detections.area /
-                         image_area) < self.MAX_AREA_PERCENTAGE
+        min_area_mask = (detections.area / image_area) > self.MIN_AREA_PERCENTAGE
+        max_area_mask = (detections.area / image_area) < self.MAX_AREA_PERCENTAGE
         detections = detections[min_area_mask & max_area_mask]
 
         def Find_Center(mask: np.ndarray) -> tuple[int, int]:
             mask_8u = mask.astype(np.uint8)
 
             # Distance transform
-            dist = cv2.distanceTransform(
-                mask_8u, distanceType=cv2.DIST_L2, maskSize=3)
+            dist = cv2.distanceTransform(mask_8u, distanceType=cv2.DIST_L2, maskSize=3)
 
             # Find the global maximum in distance map
             _, _, _, max_loc = cv2.minMaxLoc(dist)

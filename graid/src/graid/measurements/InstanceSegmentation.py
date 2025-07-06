@@ -1,6 +1,9 @@
 from typing import Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import torch
+from torch.utils.data import DataLoader
+from ultralytics.engine.results import Results
+
 from graid.data.ImageLoader import ImageDataset
 from graid.interfaces.InstanceSegmentationI import (
     InstanceSegmentationModelI,
@@ -9,8 +12,6 @@ from graid.interfaces.InstanceSegmentationI import (
 )
 from graid.models.Ultralytics import Yolo, Yolo_seg
 from graid.utilities.common import get_default_device
-from torch.utils.data import DataLoader
-from ultralytics.engine.results import Results
 
 # TODO: torch metrics and validate comparison methods
 #       implement onto YOLO and other datasets
@@ -55,7 +56,7 @@ class InstanceSegmentationMeasurements:
         class_metrics: bool = False,
         extended_summary: bool = False,
         debug: bool = False,
-        **kwargs
+        **kwargs,
     ) -> Iterator[Union[List[Dict], Tuple[List[Dict], List[Results]]]]:
         if self.collate_fn is not None:
             data_loader = DataLoader(
