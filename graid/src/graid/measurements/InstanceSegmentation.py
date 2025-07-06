@@ -85,7 +85,8 @@ class InstanceSegmentationMeasurements:
                 x = x * 255.0
             else:
                 self.model.to(device=get_default_device())
-                prediction = self.model.identify_for_image(x, debug=debug)
+                # Use identify_for_image_batch for batch processing
+                prediction = self.model.identify_for_image_batch(x, debug=debug)
                 self.model.to(device="cpu")
 
             results = []
