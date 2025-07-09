@@ -89,7 +89,7 @@ class InstanceSegmentationResultI:
 
     def get_area(self) -> float:
         bm = self._bitmask
-        if hasattr(bm, 'area'):
+        if hasattr(bm, "area"):
             return float(bm.area())
         return float(bm.tensor.sum())
 

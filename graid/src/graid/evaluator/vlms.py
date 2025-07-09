@@ -15,10 +15,11 @@ from google import genai
 from openai import OpenAI
 from PIL import Image
 from pydantic import BaseModel, Field
-from graid.utilities.coco import coco_labels
-from graid.utilities.common import project_root_dir
 from tenacity import retry, stop_after_attempt, wait_exponential
 from torchvision import transforms
+
+from graid.utilities.coco import coco_labels
+from graid.utilities.common import project_root_dir
 
 
 class GPT:
@@ -136,7 +137,9 @@ class Gemini:
 
 
 class Llama:
-    def __init__(self, model_name="meta-llama/Llama-3.2-90B-Vision-Instruct", use_vllm=False):
+    def __init__(
+        self, model_name="meta-llama/Llama-3.2-90B-Vision-Instruct", use_vllm=False
+    ):
         PROJECT_ID = "graid-451620"
         REGION = "us-central1"
         ENDPOINT = f"http://127.0.0.1:9099/v1/"
@@ -154,12 +157,12 @@ class Llama:
         else:
             # import os
             # os.environ["GOOGLE_APPLICATION_CREDENTIALS"]="token.txt"
-            
+
             # with open("token.txt", "r") as token_file:
             #     self.token = token_file.read().strip()
-            
+
             # # google_url = f"https://{MAAS_ENDPOINT}/v1beta1/projects/{PROJECT_ID}/locations/{REGION}/endpoints/openapi"
-            
+
             # print("Using Google Vertex hosted Llama")
             # self.client = genai.Client(
             #     vertexai=True,
@@ -177,14 +180,16 @@ class Llama:
             from google.auth import default
             from google.auth.transport.requests import Request
 
-            credentials, _ = default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+            credentials, _ = default(
+                scopes=["https://www.googleapis.com/auth/cloud-platform"]
+            )
             credentials.refresh(Request())
-            
+
             # with open("token.txt", "r") as token_file:
             #     self.token = token_file.read().strip()
-            
+
             google_url = f"https://{MAAS_ENDPOINT}/v1beta1/projects/{PROJECT_ID}/locations/{REGION}/endpoints/openapi"
-            
+
             print("Using Google Vertex hosted Llama")
             self.client = OpenAI(
                 base_url=google_url,
@@ -698,9 +703,8 @@ class Gemini_CoT_CD(Gemini):
 class Claude:
     def __init__(self, model_name="claude-3-7-sonnet-20250219"):
         import anthropic
-        self.client = anthropic.Anthropic(
-            api_key=os.getenv("ANTHROPIC_API_KEY")
-        )
+
+        self.client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
         self.model = model_name
 
     def encode_image(self, image):
@@ -737,10 +741,7 @@ class Claude:
                                 "data": base64_image,
                             },
                         },
-                        {
-                            "type": "text",
-                            "text": prompt
-                        }
+                        {"type": "text", "text": prompt},
                     ],
                 }
             ],
@@ -759,7 +760,7 @@ class Claude_CD(Claude):
     def generate_answer(self, image, questions: str, prompting_style):
         import anthropic
         from pydantic import create_model
-        
+
         # Get the answer class based on the question
         answer_class = get_answer_class_from_question(questions)
         if answer_class is None:
@@ -784,10 +785,7 @@ class Claude_CD(Claude):
                                 "data": base64_image,
                             },
                         },
-                        {
-                            "type": "text",
-                            "text": prompt
-                        }
+                        {"type": "text", "text": prompt},
                     ],
                 }
             ],
@@ -818,7 +816,7 @@ class Claude_CoT_CD(Claude):
             messages=[
                 {
                     "role": "system",
-                    "content": f"The final_answer should be of type: {answer_class.model_json_schema()}"
+                    "content": f"The final_answer should be of type: {answer_class.model_json_schema()}",
                 },
                 {
                     "role": "user",
@@ -831,12 +829,9 @@ class Claude_CoT_CD(Claude):
                                 "data": base64_image,
                             },
                         },
-                        {
-                            "type": "text",
-                            "text": prompt
-                        }
+                        {"type": "text", "text": prompt},
                     ],
-                }
+                },
             ],
             response_model=Reasoning,
         )

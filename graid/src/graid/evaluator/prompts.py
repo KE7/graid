@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 import supervision as sv
 import torch
+
 from graid.utilities.common import get_default_device
 
 
@@ -67,7 +68,7 @@ class CoT(PromptingStrategy):
         Steps:
         1. I see three pedestrians walking on the left sidewalk, roughly in the left third of the image.
         2. I also see a single motorcyclist riding away from the camera, positioned nearer the center of the road and center of the camera frame but clearly to the right of those pedestrians.
-        3. Comparing their horizontal positions, the motorcyclist’s x‑coordinate is larger (further to the right) than either pedestrian’s.
+        3. Comparing their horizontal positions, the motorcyclist's x‑coordinate is larger (further to the right) than either pedestrian's.
 
         Conclusion: The motorcyclist is to the right of the pedestrians.
         Final_Answer: Yes.
@@ -105,7 +106,7 @@ class CoT(PromptingStrategy):
 
         Steps:
         1. Among the COCO categories present, the object farthest to the left is the bench under the bus‐stop canopy.
-        2. That bench’s bounding area is much broader horizontally than it is tall vertically.
+        2. That bench's bounding area is much broader horizontally than it is tall vertically.
 
         Conclusion: The bench is wider than it is tall.
         Final_Answer: Yes.

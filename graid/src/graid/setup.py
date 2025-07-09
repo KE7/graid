@@ -222,12 +222,15 @@ def _download_chunk(
     chunk_path = os.path.join(temp_dir, f"chunk_{chunk_index}")
     chunk_size = end - start + 1
 
-    with open(chunk_path, "wb") as f, tqdm(
-        total=chunk_size,
-        unit="B",
-        unit_scale=True,
-        desc=f"Downloading chunk {chunk_index + 1}",
-    ) as pbar:
+    with (
+        open(chunk_path, "wb") as f,
+        tqdm(
+            total=chunk_size,
+            unit="B",
+            unit_scale=True,
+            desc=f"Downloading chunk {chunk_index + 1}",
+        ) as pbar,
+    ):
         for chunk in response.iter_content(chunk_size=8192):
             f.write(chunk)
             pbar.update(len(chunk))
@@ -243,9 +246,10 @@ def _download_chunk(
 def _merge_chunks(
     temp_dir: str, dest_path: str, num_chunks: int, file_size: int
 ) -> None:
-    with open(dest_path, "wb") as dest_file, tqdm(
-        total=file_size, unit="B", unit_scale=True, desc="Writing"
-    ) as pbar:
+    with (
+        open(dest_path, "wb") as dest_file,
+        tqdm(total=file_size, unit="B", unit_scale=True, desc="Writing") as pbar,
+    ):
         for i in range(num_chunks):
             chunk_path = os.path.join(temp_dir, f"chunk_{i}")
             with open(chunk_path, "rb") as chunk_file:
@@ -384,8 +388,8 @@ def download_bdd(task: Optional[str] = None, split: Optional[str] = None) -> Non
     files_to_download = []
     file_splits = ["train", "val", "test"] if split == "all" else [split]
 
-    for split in file_splits:
-        zip_file = f"{split_prefix}_images_{split}.zip"
+    for current_split in file_splits:
+        zip_file = f"{split_prefix}_images_{current_split}.zip"
         files_to_download.append(
             (source_url + zip_file, root_dir + data_dir + "/" + zip_file)
         )
@@ -407,19 +411,14 @@ def download_bdd(task: Optional[str] = None, split: Optional[str] = None) -> Non
             future.result()
 
     # label files don't have an md5 so we download them separately
+    label_file_path = None
     if split != "test":  # test split doesn't have labels
         label_file = task_map[task][1]
-        if not _download_file(
-            source_url + label_file, root_dir + data_dir + "/" + label_file
-        ):
+        label_file_path = root_dir + data_dir + "/" + label_file
+        if not _download_file(source_url + label_file, label_file_path):
             raise RuntimeError(f"Failed to download file {label_file}.")
 
-        # after downloading the label file, unzip it so
-        # add it to the list of files to unzip and cleanup
-        files_to_download.append(
-            (source_url + label_file, root_dir + data_dir + "/" + label_file)
-        )
-
+    # Extract image files first
     with concurrent.futures.ThreadPoolExecutor() as executor:
         futures = [
             executor.submit(unzip_file, file_name, root_dir + data_dir)
@@ -427,6 +426,25 @@ def download_bdd(task: Optional[str] = None, split: Optional[str] = None) -> Non
         ]
         for future in concurrent.futures.as_completed(futures):
             future.result()
+
+    # Handle label file extraction specially to avoid nested bdd100k directory
+    if label_file_path and os.path.exists(label_file_path):
+        # Check if zip contains bdd100k prefix and adjust extraction path accordingly
+        with zipfile.ZipFile(label_file_path, "r") as zip_ref:
+            has_bdd100k_prefix = any(
+                name.startswith("bdd100k/") for name in zip_ref.namelist()
+            )
+
+        # If zip has bdd100k prefix, extract to parent directory to avoid nesting
+        extract_path = (
+            os.path.dirname(root_dir + data_dir)
+            if has_bdd100k_prefix
+            else root_dir + data_dir
+        )
+        unzip_file(label_file_path, extract_path)
+
+        # Add label file to cleanup list
+        files_to_download.append((source_url + label_file, label_file_path))
 
     with concurrent.futures.ThreadPoolExecutor() as executor:
         futures = [

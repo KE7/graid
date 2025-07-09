@@ -1,16 +1,13 @@
 from itertools import islice
-from graid.data.ImageLoader import (
-    Bdd100kDataset,
-    NuImagesDataset,
-    WaymoDataset,
-)
-from graid.models.MMDetection import MMdetection_obj
-from graid.measurements.ObjectDetection import ObjectDetectionMeasurements
-from graid.interfaces.ObjectDetectionI import ObjectDetectionUtils
-from graid.utilities.common import project_root_dir, yolo_bdd_transform
-from PIL import Image
-import numpy as np
 
+import numpy as np
+from PIL import Image
+
+from graid.data.ImageLoader import Bdd100kDataset, NuImagesDataset, WaymoDataset
+from graid.interfaces.ObjectDetectionI import ObjectDetectionUtils
+from graid.measurements.ObjectDetection import ObjectDetectionMeasurements
+from graid.models.MMDetection import MMdetection_obj
+from graid.utilities.common import project_root_dir, yolo_bdd_transform
 
 NUM_EXAMPLES_TO_SHOW = 3
 BATCH_SIZE = 4

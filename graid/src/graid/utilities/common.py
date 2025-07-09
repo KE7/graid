@@ -1,12 +1,14 @@
+import io
 import pickle
 from functools import wraps
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Tuple
+from typing import Any, Dict, Iterator, List, Tuple, Union
 
 import cv2
 import numpy as np
 import torch
 from PIL import Image
+from pycocotools import mask as mask_util
 from torchvision.io import decode_image
 from ultralytics.data.augment import LetterBox
 from ultralytics.utils.instance import Instances
@@ -175,6 +177,173 @@ def yolo_waymo_transform(
     return yolo_transform(image, labels, new_shape, "bbox", scale=(1.0 / 255.0))
 
 
+def _decode_to_bool(
+    mask: Union[dict, List, Tuple, np.ndarray, torch.Tensor]
+) -> np.ndarray:
+    """Decode various mask representations to a boolean numpy array."""
+    if isinstance(mask, dict):
+        # COCO RLE dict
+        decoded = mask_util.decode(mask)
+        return decoded.astype(bool)
+    elif isinstance(mask, (list, tuple)):
+        # RLE in list format (as returned by some APIs)
+        rle = (
+            mask_util.frPyObjects(mask, *mask[0]["size"])
+            if isinstance(mask[0], dict)
+            else mask[0]
+        )
+        decoded = mask_util.decode(rle)
+        return decoded.astype(bool)
+    elif isinstance(mask, (bytes, bytearray)):
+        # Assume PNG-encoded binary mask (Waymo dataset). Decode with PIL
+        img = Image.open(io.BytesIO(mask)).convert("L")
+        return np.array(img) > 0
+    elif isinstance(mask, torch.Tensor):
+        return mask.squeeze().cpu().numpy().astype(bool)
+    elif isinstance(mask, np.ndarray):
+        return mask.astype(bool)
+    else:
+        raise TypeError(f"Unsupported mask type: {type(mask)}")
+
+
+def _encode_from_bool(boolean_mask: np.ndarray, original_type_example):
+    """Encode boolean numpy mask back to the original type (RLE dict or tensor)."""
+    if isinstance(original_type_example, dict):
+        rle = mask_util.encode(np.asfortranarray(boolean_mask.astype(np.uint8)))
+        # pycocotools returns bytes for counts; convert to str for JSON friendliness
+        rle["counts"] = (
+            rle["counts"].decode("ascii")
+            if isinstance(rle["counts"], bytes)
+            else rle["counts"]
+        )
+        rle["size"] = list(boolean_mask.shape)
+        return rle
+    elif isinstance(original_type_example, torch.Tensor):
+        return torch.from_numpy(boolean_mask).unsqueeze(0)
+    elif isinstance(original_type_example, (bytes, bytearray)):
+        # Encode back to PNG bytes so downstream Waymo logic still works
+        from PIL import Image
+
+        img = Image.fromarray((boolean_mask.astype(np.uint8)) * 255)
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return buf.getvalue()
+    elif isinstance(original_type_example, np.ndarray):
+        return boolean_mask
+    else:
+        # Fallback to numpy array
+        return boolean_mask
+
+
+def _resize_and_letterbox_mask(
+    mask_bool: np.ndarray, new_shape: Tuple[int, int]
+) -> np.ndarray:
+    """Resize a boolean mask using letterbox logic (maintaining aspect ratio with padding)."""
+    orig_H, orig_W = mask_bool.shape
+    ratio = min(new_shape[0] / orig_H, new_shape[1] / orig_W)
+    new_w, new_h = int(round(orig_W * ratio)), int(round(orig_H * ratio))
+
+    # Resize mask
+    resized = cv2.resize(
+        mask_bool.astype(np.uint8), (new_w, new_h), interpolation=cv2.INTER_NEAREST
+    ).astype(bool)
+
+    # Compute padding
+    pad_w, pad_h = new_shape[1] - new_w, new_shape[0] - new_h
+    left, top = pad_w // 2, pad_h // 2
+
+    # Pad to desired shape
+    padded_mask = np.zeros(new_shape, dtype=bool)
+    padded_mask[top : top + new_h, left : left + new_w] = resized
+    return padded_mask
+
+
+def yolo_segmentation_transform(
+    image: torch.Tensor,
+    labels: List[Dict[str, Any]],
+    new_shape: Tuple[int, int],
+    box_key: str,
+    mask_key: str = "mask",
+    scale: float = 1.0,
+) -> Tuple[torch.Tensor, List[Dict[str, Any]]]:
+    """Apply letter-box style resizing to both image and masks.
+
+    1. If the labels contain a bounding-box field (``box_key`` exists in at least one
+       label), we delegate to the generic ``yolo_transform`` to keep bbox logic.
+    2. Otherwise (e.g. pure segmentation datasets without bboxes) we perform a
+       lightweight letter-box operation that only rescales the image and masks.
+    """
+
+    can_use_bbox = len(labels) > 0 and all(box_key in l for l in labels)
+
+    if can_use_bbox:
+        # Use full bbox-aware pipeline
+        image_out, labels = yolo_transform(image, labels, new_shape, box_key, scale)
+    else:
+        # Manual letter-box without bounding boxes ----------------------------------
+        orig_C, orig_H, orig_W = image.shape
+        ratio = min(new_shape[0] / orig_H, new_shape[1] / orig_W)
+        new_w, new_h = int(round(orig_W * ratio)), int(round(orig_H * ratio))
+
+        # Resize image
+        image_np = image.permute(1, 2, 0).cpu().numpy()
+        resized_img = cv2.resize(
+            image_np, (new_w, new_h), interpolation=cv2.INTER_LINEAR
+        )
+
+        # Pad image to target shape
+        pad_w, pad_h = new_shape[1] - new_w, new_shape[0] - new_h
+        left, top = pad_w // 2, pad_h // 2
+        # 114 is Ultralytics' default pad value
+        padded_img = np.full(
+            (new_shape[0], new_shape[1], orig_C), 114, dtype=resized_img.dtype
+        )
+        padded_img[top : top + new_h, left : left + new_w] = resized_img
+
+        image_out = (
+            torch.from_numpy(padded_img).permute(2, 0, 1).to(torch.float32) / scale
+        )
+
+    # -----------------------------------------------------------------------------
+    # Resize & pad masks (works for both branches above)
+    for label in labels:
+        if mask_key in label and label[mask_key] is not None:
+            original_mask_repr = label[mask_key]
+            mask_bool = _decode_to_bool(original_mask_repr)
+            mask_resized = _resize_and_letterbox_mask(mask_bool, new_shape)
+            label[mask_key] = _encode_from_bool(mask_resized, original_mask_repr)
+
+    return image_out, labels
+
+
+# Convenience wrappers for specific datasets -----------------------------------------------------------
+
+
+def yolo_bdd_seg_transform(
+    image: torch.Tensor, labels: List[dict], new_shape: Tuple[int, int]
+):
+    # BDD segmentation masks stored under 'rle'
+    return yolo_segmentation_transform(
+        image, labels, new_shape, box_key="box2d", mask_key="rle", scale=1.0
+    )
+
+
+def yolo_nuscene_seg_transform(
+    image: torch.Tensor, labels: List[dict], new_shape: Tuple[int, int]
+):
+    return yolo_segmentation_transform(
+        image, labels, new_shape, box_key="bbox", mask_key="mask", scale=1.0
+    )
+
+
+def yolo_waymo_seg_transform(
+    image: torch.Tensor, labels: List[dict], new_shape: Tuple[int, int]
+):
+    return yolo_segmentation_transform(
+        image, labels, new_shape, box_key="bbox", mask_key="masks", scale=(1.0 / 255.0)
+    )
+
+
 def persistent_cache(filepath: str):
     def decorator(func):
         cache = {}
@@ -197,3 +366,34 @@ def persistent_cache(filepath: str):
         return wrapper
 
     return decorator
+
+
+def convert_image_to_numpy(
+    image: Union[str, np.ndarray, torch.Tensor, Image.Image]
+) -> np.ndarray:
+    """Convert various image formats to numpy array."""
+    if isinstance(image, str):
+        # File path
+        pil_image = Image.open(image)
+        return np.array(pil_image)
+    elif isinstance(image, np.ndarray):
+        return image
+    elif isinstance(image, torch.Tensor):
+        # Convert tensor to numpy
+        if image.dim() == 3 and image.shape[0] in [1, 3]:
+            # CHW format
+            return image.permute(1, 2, 0).cpu().numpy()
+        else:
+            # HWC format or other
+            return image.cpu().numpy()
+    elif isinstance(image, Image.Image):
+        return np.array(image)
+    else:
+        raise ValueError(f"Unsupported image type: {type(image)}")
+
+
+def convert_batch_to_numpy(
+    batch: List[Union[str, np.ndarray, torch.Tensor, Image.Image]]
+) -> List[np.ndarray]:
+    """Convert a batch of images to numpy arrays."""
+    return [convert_image_to_numpy(image) for image in batch]

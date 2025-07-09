@@ -1,23 +1,21 @@
 from itertools import islice
 from pathlib import Path
+
+import cv2
 import numpy as np
 from PIL import Image
-from graid.data.ImageLoader import (
-    Bdd100kDataset,
-    NuImagesDataset,
-    WaymoDataset,
-)
+
+from graid.data.ImageLoader import Bdd100kDataset, NuImagesDataset, WaymoDataset
 from graid.interfaces.ObjectDetectionI import ObjectDetectionUtils
 from graid.measurements.ObjectDetection import ObjectDetectionMeasurements
 from graid.models.DINO_idea import DINO_IDEA
 from graid.utilities.common import (
     get_default_device,
+    project_root_dir,
     yolo_bdd_transform,
     yolo_nuscene_transform,
     yolo_waymo_transform,
-    project_root_dir
 )
-import cv2
 
 NUM_EXAMPLES_TO_SHOW = 20
 BATCH_SIZE = 1
@@ -26,7 +24,8 @@ bdd = Bdd100kDataset(
     split="val",
     transform=lambda i, l: yolo_bdd_transform(i, l, new_shape=(768, 1280)),
     use_original_categories=False,
-    use_extended_annotations=False,)
+    use_extended_annotations=False,
+)
 
 # nu = NuImagesDataset(
 #     split="val",

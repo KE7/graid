@@ -1,13 +1,11 @@
 import logging
 
 import torchvision.transforms as transforms
-from graid.data.ImageLoader import (
-    Bdd100kDataset,
-    NuImagesDataset,
-    WaymoDataset,
-)
+
+from graid.data.ImageLoader import Bdd100kDataset, NuImagesDataset, WaymoDataset
 from graid.interfaces.ObjectDetectionI import ObjectDetectionUtils
 from graid.questions.ObjectDetectionQ import (
+    AreMore,
     HowMany,
     IsObjectCentered,
     LargestAppearance,
@@ -16,16 +14,15 @@ from graid.questions.ObjectDetectionQ import (
     LeftMostWidthVsHeight,
     LeftOf,
     MostAppearance,
+    MostClusteredObjects,
+    ObjectsInLine,
+    ObjectsInRow,
     Quadrants,
     RightMost,
     RightMostWidthVsHeight,
     RightOf,
-    WidthVsHeight,
-    AreMore,
     WhichMore,
-    ObjectsInRow,
-    ObjectsInLine,
-    MostClusteredObjects,
+    WidthVsHeight,
 )
 from graid.utilities.common import (
     get_default_device,
@@ -87,7 +84,7 @@ for i in range(100):
     image = data["image"]
     image = transforms.ToPILImage()(image)
     labels = data["labels"]
-    path = data['path']
+    path = data["path"]
     print(path)
     # let's filter out labels that are really small.
     # say anything with area less than 1000 pixels

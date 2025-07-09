@@ -5,6 +5,8 @@ from typing import Iterator, List, Optional, Union
 import numpy as np
 import torch
 from PIL import Image
+from ultralytics import RTDETR, YOLO
+
 from graid.interfaces.InstanceSegmentationI import (
     InstanceSegmentationModelI,
     InstanceSegmentationResultI,
@@ -16,7 +18,6 @@ from graid.interfaces.ObjectDetectionI import (
     ObjectDetectionResultI,
     ObjectDetectionUtils,
 )
-from ultralytics import RTDETR, YOLO
 
 
 class Yolo(ObjectDetectionModelI):
@@ -29,7 +30,7 @@ class Yolo(ObjectDetectionModelI):
         image: Union[np.ndarray, torch.Tensor],
         debug: bool = False,
         verbose: bool = False,
-        **kwargs
+        **kwargs,
     ) -> List[List[ObjectDetectionResultI]]:
         """
         Run object detection on an image or a batch of images.
@@ -119,7 +120,7 @@ class Yolo(ObjectDetectionModelI):
         image: Union[np.ndarray, torch.Tensor],
         debug: bool = False,
         verbose: bool = False,
-        **kwargs
+        **kwargs,
     ) -> List[List[ObjectDetectionResultI]]:
         """
         Run object detection on an image or a batch of images.
@@ -231,7 +232,7 @@ class Yolo_seg(InstanceSegmentationModelI):
             str, Path, int, Image.Image, list, tuple, np.ndarray, torch.Tensor
         ],
         debug: bool = False,
-        **kwargs
+        **kwargs,
     ) -> List[List[Optional[InstanceSegmentationResultI]]]:
         """
         Run instance segmentation on an image or a batch of images.
@@ -295,7 +296,7 @@ class Yolo_seg(InstanceSegmentationModelI):
             str, Path, int, Image.Image, list, tuple, np.ndarray, torch.Tensor
         ],
         debug: bool = False,
-        **kwargs
+        **kwargs,
     ) -> List[Optional[InstanceSegmentationResultI]]:
         """Run instance segmentation on an image or a batch of images.
         Args:

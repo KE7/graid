@@ -7,8 +7,8 @@
 ### Installation
 1. Create a conda environment: `conda create -n scenic_reason python=3.9`
 2. Activate it: `conda activate scenic_reason`
-3. Install dependencies: `poetry install`
-4. Install all backends: `poetry run install_all`
+3. Install dependencies: `uv sync`
+4. Install all backends: `uv run install_all`
 
 ### Using GRAID CLI
 
@@ -17,24 +17,24 @@
 # Using conda environment
 /work/ke/miniconda3/envs/scenic_reason/bin/python scenic_reasoning/src/scenic_reasoning/graid_cli.py generate
 
-# Using Poetry (after installation)
-poetry run graid generate
+# Using uv (after installation)
+uv run graid generate
 ```
 
 **Non-Interactive Mode:**
 ```bash
 # Generate ground truth database
-poetry run graid generate --dataset bdd --split val --interactive false
+uv run graid generate --dataset bdd --split val --interactive false
 
 # Use pre-configured model
-poetry run graid generate --dataset nuimage --split train --backend ultralytics --model yolov8x --conf 0.3 --interactive false
+uv run graid generate --dataset nuimage --split train --backend ultralytics --model yolov8x --conf 0.3 --interactive false
 ```
 
 **Available Commands:**
 ```bash
-poetry run graid --help          # Show help
-poetry run graid list-models     # List available models
-poetry run graid info           # Show project information
+uv run graid --help          # Show help
+uv run graid list-models     # List available models
+uv run graid info           # Show project information
 ```
 
 ## Status

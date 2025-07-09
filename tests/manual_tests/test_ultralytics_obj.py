@@ -1,12 +1,11 @@
 from itertools import islice
 from pathlib import Path
+
+import cv2
 import numpy as np
 from PIL import Image
-from graid.data.ImageLoader import (
-    Bdd100kDataset,
-    NuImagesDataset,
-    WaymoDataset,
-)
+
+from graid.data.ImageLoader import Bdd100kDataset, NuImagesDataset, WaymoDataset
 from graid.interfaces.ObjectDetectionI import ObjectDetectionUtils
 from graid.measurements.ObjectDetection import ObjectDetectionMeasurements
 from graid.models.Ultralytics import Yolo
@@ -16,7 +15,6 @@ from graid.utilities.common import (
     yolo_nuscene_transform,
     yolo_waymo_transform,
 )
-import cv2
 
 NUM_EXAMPLES_TO_SHOW = 20
 BATCH_SIZE = 1

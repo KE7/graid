@@ -3,6 +3,9 @@ from typing import Callable, Dict, Iterator, List, Optional, Tuple, Union
 import numpy as np
 import torch
 from PIL import Image
+from torch.utils.data import DataLoader
+from ultralytics.engine.results import Results
+
 from graid.data.ImageLoader import ImageDataset
 from graid.interfaces.ObjectDetectionI import (
     ObjectDetectionModelI,
@@ -11,8 +14,6 @@ from graid.interfaces.ObjectDetectionI import (
 )
 from graid.models.Ultralytics import Yolo
 from graid.utilities.common import get_default_device
-from torch.utils.data import DataLoader
-from ultralytics.engine.results import Results
 
 
 class ObjectDetectionMeasurements:
@@ -56,7 +57,7 @@ class ObjectDetectionMeasurements:
         extended_summary: bool = False,
         debug: bool = False,
         fake_boxes: bool = False,
-        **kwargs
+        **kwargs,
     ) -> Iterator[Union[List[Dict], Tuple[List[Dict], List[Results]]]]:
         if self.collate_fn is not None:
             data_loader = DataLoader(

@@ -5,6 +5,8 @@
 # dependencies
 /install/*
 /checkpoints/*
+graid/wandb/*
+wandb/*
 
 # MAC
 .DS_Store

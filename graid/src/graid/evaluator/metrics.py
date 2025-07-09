@@ -1,14 +1,10 @@
 import ast
 import json
-import os
 import re
 from textwrap import dedent
 from typing import List
 
-import outlines
-import requests
-from dotenv import load_dotenv
-from guidance import gen, image, models
+from guidance import models
 from outlines import generate, models
 from pydantic import BaseModel
 

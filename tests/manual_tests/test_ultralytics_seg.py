@@ -1,14 +1,10 @@
 from itertools import islice
 
 import torch
-from graid.data.ImageLoader import (
-    Bdd10kDataset,
-    NuImagesDataset_seg,
-    WaymoDataset_seg,
-)
-from graid.measurements.InstanceSegmentation import (
-    InstanceSegmentationMeasurements,
-)
+from ultralytics.data.augment import LetterBox
+
+from graid.data.ImageLoader import Bdd10kDataset, NuImagesDataset_seg, WaymoDataset_seg
+from graid.measurements.InstanceSegmentation import InstanceSegmentationMeasurements
 from graid.models.Ultralytics import Yolo_seg
 from graid.utilities.common import (
     get_default_device,
@@ -16,7 +12,6 @@ from graid.utilities.common import (
     yolo_nuscene_transform,
     yolo_waymo_transform,
 )
-from ultralytics.data.augment import LetterBox
 
 shape_transform = LetterBox(new_shape=(768, 1280))
 

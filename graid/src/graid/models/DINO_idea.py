@@ -3,6 +3,8 @@ from typing import Iterator, List, Optional, Union
 
 import numpy as np
 import torch
+from torchvision.transforms import ToPILImage
+
 from graid.interfaces.ObjectDetectionI import (
     BBox_Format,
     ObjectDetectionModelI,
@@ -12,7 +14,6 @@ from graid.utilities.coco import coco_labels
 
 # fmt: off
 from graid.utilities.common import project_root_dir
-from torchvision.transforms import ToPILImage
 
 sys.path.insert(0, str(project_root_dir() / "install" / "DINO"))
 sys.path.insert(0, str(project_root_dir() / "install" ))

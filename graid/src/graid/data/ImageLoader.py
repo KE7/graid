@@ -5,7 +5,7 @@ import logging
 import os
 import pickle
 import re
-from datetime import datetime, time
+from datetime import datetime, time, timezone
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
@@ -13,24 +13,18 @@ import pandas as pd
 import torch
 from PIL import Image
 from pycocotools import mask as cocomask
-from graid.interfaces.InstanceSegmentationI import (
-    InstanceSegmentationResultI,
-    Mask_Format,
-)
-from graid.interfaces.ObjectDetectionI import (
-    BBox_Format,
-    ObjectDetectionResultI,
-)
-from graid.utilities.coco import inverse_coco_label
-from graid.utilities.common import (
-    convert_to_xyxy,
-    project_root_dir,
-    read_image,
-)
 from torch import Tensor
 from torch.utils.data import Dataset
 from torchvision import transforms
 from tqdm import tqdm
+
+from graid.interfaces.InstanceSegmentationI import (
+    InstanceSegmentationResultI,
+    Mask_Format,
+)
+from graid.interfaces.ObjectDetectionI import BBox_Format, ObjectDetectionResultI
+from graid.utilities.coco import inverse_coco_label
+from graid.utilities.common import convert_to_xyxy, project_root_dir, read_image
 
 logger = logging.getLogger(__name__)
 
@@ -185,8 +179,14 @@ class Bdd10kDataset(ImageDataset):
         timestamp = data["timestamp"]
         image = read_image(img_path)
 
+        # Apply transform that may act on both image *and* labels
         if self.transform:
-            image = self.transform(image)
+            try:
+                image, labels = self.transform(image, labels)
+            except TypeError:
+                # Fallback to legacy transform that expects only the image
+                image = self.transform(image)
+
         if self.target_transform:
             labels = self.target_transform(labels)
         if self.merge_transform:
@@ -537,17 +537,28 @@ class Bdd100kDataset(ImageDataset):
         timestamp = data["timestamp"]
 
         # load the image
-        img = read_image(img_path)
+        image = read_image(img_path)
 
-        # apply transforms if they exist
+        # Apply transform that may act on both image *and* labels
         if self.transform:
-            img, labels = self.transform(img, labels)
+            try:
+                image, labels = self.transform(image, labels)
+            except TypeError:
+                # Fallback to legacy transform that expects only the image
+                image = self.transform(image)
 
-        # load the labels
-        if self.merge_transform is not None:
-            return self.merge_transform(img, labels, timestamp)
-        else:
-            return img, labels, timestamp
+        if self.target_transform:
+            labels = self.target_transform(labels)
+        if self.merge_transform:
+            image, labels, timestamp = self.merge_transform(image, labels, timestamp)
+
+        return {
+            "name": data["name"],
+            "path": img_path,
+            "image": image,
+            "labels": labels,
+            "timestamp": timestamp,
+        }
 
 
 class NuImagesDataset(ImageDataset):
@@ -668,7 +679,7 @@ class NuImagesDataset(ImageDataset):
         "vehicle.construction": "truck",
         "vehicle.ego": "undefined",
         "vehicle.emergency.ambulance": "undefined",
-        "vehicle.emergency.police": "person",
+        "vehicle.emergency.police": "car",
         "vehicle.motorcycle": "motorcycle",
         "vehicle.trailer": "undefined",
         "vehicle.truck": "truck",
@@ -741,7 +752,7 @@ class NuImagesDataset(ImageDataset):
     def __init__(
         self,
         split: Literal["train", "val", "test", "mini"] = "val",
-        size: Literal["mini", "full"] = "full",
+        size: Literal["mini", "all"] = "all",
         rebuild: bool = False,
         use_time_filtered: bool = True,
         **kwargs,
@@ -930,8 +941,14 @@ class NuImagesDataset(ImageDataset):
         img_path = os.path.join(self.img_dir, img_filename)
         image = read_image(img_path)
 
+        # Apply transform that may act on both image *and* labels
         if self.transform:
-            image, labels = self.transform(image, labels)
+            try:
+                image, labels = self.transform(image, labels)
+            except TypeError:
+                # Fallback to legacy transform that expects only the image
+                image = self.transform(image)
+
         if self.target_transform:
             labels = self.target_transform(labels)
         if self.merge_transform:
@@ -940,7 +957,7 @@ class NuImagesDataset(ImageDataset):
             )
 
         return {
-            "name": img_filename,
+            "name": data["name"],
             "path": img_path,
             "image": image,
             "labels": labels,
@@ -1045,6 +1062,34 @@ class NuImagesDataset_seg(ImageDataset):
         "vehicle.truck": 24,
     }
 
+    _CATEGORIES_TO_COCO = {
+        "animal": "undefined",  # TODO: change this to include speicfic animals
+        "flat.driveable_surface": "undefined",
+        "human.pedestrian.adult": "person",
+        "human.pedestrian.child": "person",
+        "human.pedestrian.construction_worker": "person",
+        "human.pedestrian.personal_mobility": "person",
+        "human.pedestrian.police_officer": "person",
+        "human.pedestrian.stroller": "person",
+        "human.pedestrian.wheelchair": "person",
+        "movable_object.barrier": "undefined",
+        "movable_object.debris": "undefined",
+        "movable_object.pushable_pullable": "undefined",
+        "movable_object.trafficcone": "undefined",
+        "static_object.bicycle_rack": "undefined",
+        "vehicle.bicycle": "bicycle",
+        "vehicle.bus.bendy": "bus",
+        "vehicle.bus.rigid": "bus",
+        "vehicle.car": "car",
+        "vehicle.construction": "truck",
+        "vehicle.ego": "undefined",
+        "vehicle.emergency.ambulance": "undefined",
+        "vehicle.emergency.police": "car",
+        "vehicle.motorcycle": "motorcycle",
+        "vehicle.trailer": "undefined",
+        "vehicle.truck": "truck",
+    }
+
     def category_to_cls(self, category: str) -> int:
         return self._CATEGORIES[category]
 
@@ -1060,7 +1105,7 @@ class NuImagesDataset_seg(ImageDataset):
     def __init__(
         self,
         split: Literal["train", "val", "test", "mini"] = "val",
-        size: Literal["mini", "full"] = "mini",
+        size: Literal["mini", "all"] = "all",
         **kwargs,
     ):
 
@@ -1168,8 +1213,14 @@ class NuImagesDataset_seg(ImageDataset):
         img_path = os.path.join(self.img_dir, img_filename)
         image = read_image(img_path)
 
+        # Apply transform that may act on both image *and* labels
         if self.transform:
-            image = self.transform(image)
+            try:
+                image, labels = self.transform(image, labels)
+            except TypeError:
+                # Fallback to legacy transform that expects only the image
+                image = self.transform(image)
+
         if self.target_transform:
             labels = self.target_transform(labels)
         if self.merge_transform:
@@ -1254,11 +1305,13 @@ class WaymoDataset(ImageDataset):
         return self._CLS_TO_COCO_CLS[category]
 
     def cls_to_category(self, cls: int) -> str:
-        return self._CATEGORIES_R[cls]
+        # Robustly handle float inputs (e.g., 0.0) by casting to int
+        cls_int = int(cls)
+        return self._CLS_TO_CATEGORIES.get(str(cls_int), "TYPE_UNDEFINED")
 
     def is_time_in_working_hours(self, timestamp_micro: str) -> bool:
         timestamp_sec = int(timestamp_micro) / 1e6
-        dt = datetime.utcfromtimestamp(timestamp_sec)
+        dt = datetime.fromtimestamp(timestamp_sec, tz=timezone.utc)
         return time(8, 0) <= dt.time() < time(18, 0)
 
     def __repr__(self):
@@ -1477,9 +1530,13 @@ class WaymoDataset(ImageDataset):
         # Decode the image
         image = transforms.ToTensor()(Image.open(io.BytesIO(img_bytes)))
 
-        # Apply transformations if any
+        # Apply transformations if any (may operate on both image and labels)
         if self.transform:
-            image, labels = self.transform(image, labels)
+            try:
+                image, labels = self.transform(image, labels)
+            except TypeError:
+                image = self.transform(image)
+
         if self.target_transform:
             labels = self.target_transform(labels)
         if self.merge_transform:
@@ -1539,7 +1596,9 @@ class WaymoDataset_seg(ImageDataset):
         return self._CATEGORIES[category]
 
     def cls_to_category(self, cls: int) -> str:
-        return self._CLS_TO_CATEGORIES[str(cls)]
+        # Robustly handle float inputs (e.g., 0.0) by casting to int
+        cls_int = int(cls)
+        return self._CLS_TO_CATEGORIES.get(str(cls_int), "TYPE_UNDEFINED")
 
     def get_semantic_class(self, instance_map, semantic_map, instance_id):
         mask = instance_map == instance_id
@@ -1675,13 +1734,14 @@ class WaymoDataset_seg(ImageDataset):
             results = []
             for i in instance_id:
                 semantic_id = self.get_semantic_class(instance_masks, semantic_masks, i)
-                class_id = semantic_id[
-                    0
-                ]  # see: https://github.com/waymo-research/waymo-open-dataset/issues/570 and page 6 of the original waymo paper: https://www.ecva.net/papers/eccv_2022/papers_ECCV/papers/136890052.pdf
+                if len(semantic_id) == 0:
+                    # Skip if semantic class could not be determined
+                    continue
+                class_id = int(semantic_id[0])
                 instance_mask = instance_masks == i
                 result = InstanceSegmentationResultI(
                     score=1.0,
-                    cls=int(class_id),
+                    cls=class_id,
                     label=self.cls_to_category(class_id),
                     instance_id=i,
                     image_hw=image.shape,
@@ -1718,9 +1778,13 @@ class WaymoDataset_seg(ImageDataset):
         # Decode the image
         image = transforms.ToTensor()(Image.open(io.BytesIO(img_bytes)))
 
-        # Apply transformations if any
+        # Apply transformations if any (may operate on both image and labels)
         if self.transform:
-            image = self.transform(image)
+            try:
+                image, labels = self.transform(image, labels)
+            except TypeError:
+                image = self.transform(image)
+
         if self.target_transform:
             labels = self.target_transform(labels)
         if self.merge_transform:
