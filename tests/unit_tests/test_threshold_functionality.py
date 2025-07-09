@@ -114,7 +114,8 @@ def test_threshold_functionality():
         and isinstance(detections_default[0], list)
     ):
         detections_default = detections_default[0]
-    print(f"YOLO with default threshold (0.0): {len(detections_default)} detections")
+    print(
+        f"YOLO with default threshold (0.0): {len(detections_default)} detections")
 
     # Test with low threshold
     yolo_model.set_threshold(0.1)
@@ -154,10 +155,12 @@ def test_threshold_functionality():
     else:
         detections_to_check = detections_high
 
+    # Check that all detections are above threshold
     for det in detections_to_check:
         if hasattr(det, "score") and det.score < 0.8:
-            print(f"❌ Found detection with score {det.score} below threshold 0.8")
-            return False
+            print(
+                f"❌ Found detection with score {det.score} below threshold 0.8")
+            assert False, f"Detection with score {det.score} below threshold 0.8"
 
     print("✅ All confidence scores are above threshold!")
 

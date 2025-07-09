@@ -1,19 +1,18 @@
 [project]
 name = "graid"
 version = "0.1.0"
-description = "GRAID: Generating Reasoning questions from Analysis of Images via Discriminative artificial intelligence - A framework for VLM scene understanding in robotics and autonomous driving"
+description = "GRAID: Generating Reasoning questions from Analysis of Images via Discriminative artificial intelligence - A framework for VQA generation from real world images"
 authors = [
     { name = "Karim Elmaaroufi", email = "elmaaroufi@berkeley.edu" },
     { name = "Liheng Lai", email = "liheng@berkeley.edu" },
 ]
 requires-python = ">=3.9"
 readme = "README.md"
-license = "Apache 2.0"
+license = "Apache-2.0"
 keywords = [
     "vision-language-models",
     "VLM",
     "robotics",
-    "autonomous-driving",
     "scene-understanding",
     "depth-estimation",
     "object-detection",
@@ -40,7 +39,7 @@ dependencies = [
     "tenacity>=9.1.2,<10",
     "anthropic>=0.51.0,<0.52",
     "pick>=2.4.0,<3",
-    "typer[all]>=0.16.0,<0.17",
+    "typer>=0.16.0,<0.17",
     "rich>=13.0.0,<14",
     "clip",
     "wandb>=0.20.1,<0.21",
@@ -74,6 +73,7 @@ dev = [
     "ipykernel>=6.29.5,<7",
     "gdown>=5.2.0,<6",
     "pytest>=8.4.0,<9",
+    "pytest-xdist>=3.8.0",
 ]
 mmdetection = ["openmim>=0.3.9,<0.4"]
 

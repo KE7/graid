@@ -15,13 +15,12 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Install Poetry
+      - name: Install uv
         run: |
-          curl -sSL https://install.python-poetry.org | python3 -
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          curl -LsSf https://astral.sh/uv/install.sh | sh
 
       - name: Install Dependencies
-        run: poetry install
+        run: uv sync && uv sync --group dev
 
       - name: Ensure check.sh exists and is executable
         run: |

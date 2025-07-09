@@ -4,6 +4,11 @@ Unit tests for generate_db module.
 Tests the import fixes and functionality of the database generation system.
 """
 
+from graid.data.generate_db import (
+    create_model,
+    generate_db,
+    list_available_models,
+)
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
@@ -15,13 +20,6 @@ import torch
 # Add the project root to Python path for imports
 project_root = Path(__file__).parent.parent / "graid"
 sys.path.insert(0, str(project_root))
-
-from graid.data.generate_db import (
-    MODEL_CONFIGS,
-    create_model,
-    generate_db,
-    list_available_models,
-)
 
 
 class TestGenerateDbImportFix:
@@ -112,27 +110,6 @@ class TestGenerateDbImportFix:
             assert isinstance(models[backend], list)
             assert len(models[backend]) > 0
 
-    def test_model_configs_structure(self):
-        """Test that MODEL_CONFIGS has proper structure."""
-        # Test structure
-        assert isinstance(MODEL_CONFIGS, dict)
-
-        for backend, models in MODEL_CONFIGS.items():
-            assert isinstance(models, dict)
-            for model_name, config in models.items():
-                # Different backends have different config structures
-                if backend == "detectron":
-                    # Should have config and weights
-                    assert "config" in config
-                    assert "weights" in config
-                elif backend == "mmdetection":
-                    # Should have config and checkpoint
-                    assert "config" in config
-                    assert "checkpoint" in config
-                elif backend == "ultralytics":
-                    # Should be a string path to model file
-                    assert isinstance(config, str)
-
     def test_create_model_function_exists(self):
         """Test that create_model function can be imported and called."""
         # Mock dependencies for create_model
@@ -141,8 +118,13 @@ class TestGenerateDbImportFix:
                 mock_model = Mock()
                 mock_detectron.return_value = mock_model
 
-                # Test create_model
-                result = create_model("detectron", "faster_rcnn_R_50_FPN_3x", "cpu")
+                # Test create_model with custom_config
+                custom_config = {
+                    "config": "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml",
+                    "weights": "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
+                }
+                result = create_model(
+                    "detectron", "faster_rcnn_R_50_FPN_3x", "cpu", custom_config=custom_config)
                 assert result == mock_model
 
 
@@ -167,7 +149,8 @@ class TestIntegrationBugFixes:
         mock_builder_class.return_value = mock_builder
 
         # Test database generation
-        result = generate_db(dataset_name="bdd", split="val", conf=0.2, batch_size=50)
+        result = generate_db(dataset_name="bdd", split="val",
+                             conf=0.2, batch_size=50)
 
         # Verify successful completion
         assert result == "bdd_val_gt"

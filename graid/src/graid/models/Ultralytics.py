@@ -24,6 +24,7 @@ class Yolo(ObjectDetectionModelI):
     def __init__(self, model: Union[str, Path]) -> None:
         self.model_name = model
         self._model = YOLO(model)
+        self.threshold = 0.25  # Default YOLO confidence threshold
 
     def identify_for_image(
         self,
@@ -64,7 +65,9 @@ class Yolo(ObjectDetectionModelI):
         image = image[:, [2, 1, 0], ...]
         image = image / 255.0
         with torch.no_grad():
-            predictions = self._model.predict(image, verbose, **kwargs)
+            predictions = self._model.predict(
+                image, verbose, conf=self.threshold, **kwargs
+            )
         # undo the conversion
         image = image[:, [2, 1, 0], ...]
         image = image * 255.0
@@ -160,7 +163,7 @@ class Yolo(ObjectDetectionModelI):
                 break
 
             images = torch.stack([torch.tensor(np.array(img)) for img in batch])
-            batch_results = self._model(images)
+            batch_results = self._model(images, conf=self.threshold)
 
             boxes_across_frames = []
 
@@ -225,6 +228,7 @@ class Yolo_seg(InstanceSegmentationModelI):
         super().__init__()
         self._model = YOLO(model)
         self._instance_count = {}
+        self.threshold = 0.25  # Default YOLO confidence threshold
 
     def identify_for_image(
         self,
@@ -416,3 +420,6 @@ class Yolo_seg(InstanceSegmentationModelI):
 
     def to(self, device: Union[str, torch.device]):
         self._model.to(device)
+
+    def set_threshold(self, threshold: float):
+        self.threshold = threshold

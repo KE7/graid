@@ -5,32 +5,49 @@ An interactive command-line tool for generating object detection databases
 using various models and datasets.
 """
 
-import os
+import logging
 import sys
+import warnings
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Optional
 
 import typer
 
-# Add the project root to Python path for imports
-project_root = Path(__file__).parent.parent.parent.parent
-sys.path.insert(0, str(project_root))
-
+from graid.data.config_support import load_config_from_file
+from graid.data.generate_dataset import (
+    generate_dataset,
+    interactive_question_selection,
+    list_available_models,
+    list_available_questions,
+)
 from graid.data.generate_db import (
     DATASET_TRANSFORMS,
-    MODEL_CONFIGS,
     generate_db,
     list_available_models,
 )
+from graid.data.interactive_mode import create_interactive_config
 from graid.evaluator.eval_vlms import (
     METRIC_CONFIGS,
     PROMPT_CONFIGS,
     VLM_CONFIGS,
     evaluate_vlm,
-    list_available_metrics,
-    list_available_prompts,
-    list_available_vlms,
 )
+from graid.utilities.coco import get_valid_coco_objects
+
+# Suppress common warnings for better user experience
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings(
+    "ignore", message=".*TorchScript.*functional optimizers.*deprecated.*"
+)
+
+# Suppress mmengine info messages
+logging.getLogger("mmengine").setLevel(logging.WARNING)
+
+
+# Add the project root to Python path for imports
+project_root = Path(__file__).parent.parent.parent.parent
+sys.path.insert(0, str(project_root))
+
 
 app = typer.Typer(
     name="graid",
@@ -47,14 +64,26 @@ def print_welcome():
         "   Generating Reasoning questions from Analysis of Images via Discriminative artificial intelligence"
     )
     typer.echo()
-    typer.echo("GRAID provides two main capabilities:")
+    typer.echo("GRAID provides three main capabilities:")
     typer.echo()
-    typer.secho("📁 Database Generation (generate):", fg=typer.colors.BLUE, bold=True)
+    typer.secho("📁 Database Generation (generate):",
+                fg=typer.colors.BLUE, bold=True)
     typer.echo("• Multiple datasets: BDD100K, NuImages, Waymo")
     typer.echo("• Various model backends: Detectron, MMDetection, Ultralytics")
     typer.echo("• Ground truth data or custom model predictions")
     typer.echo()
-    typer.secho("🧠 VLM Evaluation (eval-vlms):", fg=typer.colors.BLUE, bold=True)
+    typer.secho(
+        "🤗 HuggingFace Dataset Generation (generate-dataset):",
+        fg=typer.colors.BLUE,
+        bold=True,
+    )
+    typer.echo("• Generate HuggingFace datasets with VQA pairs")
+    typer.echo("• Support for WBF multi-model ensembles")
+    typer.echo("• Allowable set filtering for COCO objects")
+    typer.echo("• Interactive mode with config file support")
+    typer.echo()
+    typer.secho("🧠 VLM Evaluation (eval-vlms):",
+                fg=typer.colors.BLUE, bold=True)
     typer.echo("• Evaluate Vision Language Models: GPT, Gemini, Llama")
     typer.echo("• Multiple evaluation metrics: LLMJudge, ExactMatch, Contains")
     typer.echo(
@@ -80,14 +109,23 @@ def get_dataset_choice() -> str:
         )
 
     typer.echo()
+    typer.secho("💡 Custom Dataset Support:", fg=typer.colors.YELLOW, bold=True)
+    typer.echo(
+        "   GRAID supports any PyTorch-compatible dataset. Only images are required for VQA."
+    )
+    typer.echo("   Annotations are optional (only needed for mAP/mAR evaluation).")
+    typer.echo()
+
     while True:
         choice = typer.prompt("Select dataset (1-3)")
         if choice in datasets:
             dataset_name = datasets[choice][0]
-            typer.secho(f"✓ Selected: {dataset_name.upper()}", fg=typer.colors.GREEN)
+            typer.secho(
+                f"✓ Selected: {dataset_name.upper()}", fg=typer.colors.GREEN)
             typer.echo()
             return dataset_name
-        typer.secho("Invalid choice. Please enter 1, 2, or 3.", fg=typer.colors.RED)
+        typer.secho("Invalid choice. Please enter 1, 2, or 3.",
+                    fg=typer.colors.RED)
 
 
 def get_split_choice() -> str:
@@ -110,20 +148,24 @@ def get_split_choice() -> str:
         choice = typer.prompt("Select split (1-2)")
         if choice in splits:
             split_name = splits[choice][0]
-            typer.secho(f"✓ Selected: {split_name.upper()}", fg=typer.colors.GREEN)
+            typer.secho(
+                f"✓ Selected: {split_name.upper()}", fg=typer.colors.GREEN)
             typer.echo()
             return split_name
         typer.secho("Invalid choice. Please enter 1 or 2.", fg=typer.colors.RED)
 
 
-def get_model_choice() -> tuple[Optional[str], Optional[str], Optional[Dict]]:
+def get_model_choice() -> tuple[Optional[str], Optional[str], Optional[dict]]:
     """Interactive model selection with custom model support."""
     typer.secho("🧠 Step 3: Choose model type", fg=typer.colors.BLUE, bold=True)
     typer.echo()
 
     typer.echo("  1. Ground Truth - Use original dataset annotations (fastest)")
-    typer.echo("  2. Pre-configured Models - Choose from built-in model configurations")
-    typer.echo("  3. Custom Model - Bring your own Detectron/MMDetection model")
+    typer.echo(
+        "  2. Pre-configured Models - Choose from built-in model configurations")
+    typer.echo(
+        "  3. Custom Model - Bring your own Detectron/MMDetection/Ultralytics model"
+    )
     typer.echo()
 
     while True:
@@ -140,7 +182,8 @@ def get_model_choice() -> tuple[Optional[str], Optional[str], Optional[Dict]]:
         elif choice == "3":
             return get_custom_model()
 
-        typer.secho("Invalid choice. Please enter 1, 2, or 3.", fg=typer.colors.RED)
+        typer.secho("Invalid choice. Please enter 1, 2, or 3.",
+                    fg=typer.colors.RED)
 
 
 def get_preconfigured_model() -> tuple[str, str, None]:
@@ -154,7 +197,8 @@ def get_preconfigured_model() -> tuple[str, str, None]:
     backends = list(available_models.keys())
     typer.echo("Available backends:")
     for i, backend in enumerate(backends, 1):
-        typer.echo(f"  {i}. {typer.style(backend.upper(), fg=typer.colors.GREEN)}")
+        typer.echo(
+            f"  {i}. {typer.style(backend.upper(), fg=typer.colors.GREEN)}")
 
     typer.echo()
     while True:
@@ -165,7 +209,8 @@ def get_preconfigured_model() -> tuple[str, str, None]:
                 break
         except ValueError:
             pass
-        typer.secho("Invalid choice. Please enter a valid number.", fg=typer.colors.RED)
+        typer.secho("Invalid choice. Please enter a valid number.",
+                    fg=typer.colors.RED)
 
     typer.echo()
     models = available_models[backend]
@@ -182,33 +227,41 @@ def get_preconfigured_model() -> tuple[str, str, None]:
                 break
         except ValueError:
             pass
-        typer.secho("Invalid choice. Please enter a valid number.", fg=typer.colors.RED)
+        typer.secho("Invalid choice. Please enter a valid number.",
+                    fg=typer.colors.RED)
 
-    typer.secho(f"✓ Selected: {backend.upper()} - {model_name}", fg=typer.colors.GREEN)
+    typer.secho(
+        f"✓ Selected: {backend.upper()} - {model_name}", fg=typer.colors.GREEN)
     typer.echo()
     return backend, model_name, None
 
 
-def get_custom_model() -> tuple[str, str, Dict]:
+def get_custom_model() -> tuple[str, str, dict]:
     """Interactive custom model configuration."""
     typer.echo()
-    typer.secho("🛠️ Custom Model Configuration", fg=typer.colors.BLUE, bold=True)
+    typer.secho("🛠️ Custom Model Configuration",
+                fg=typer.colors.BLUE, bold=True)
     typer.echo()
 
     typer.echo("Supported backends for custom models:")
     typer.echo("  1. Detectron2 - Facebook's object detection framework")
     typer.echo("  2. MMDetection - OpenMMLab's detection toolbox")
+    typer.echo("  3. Ultralytics - YOLO and RT-DETR models")
     typer.echo()
 
     while True:
-        choice = typer.prompt("Select backend (1-2)")
+        choice = typer.prompt("Select backend (1-3)")
         if choice == "1":
             backend = "detectron"
             break
         elif choice == "2":
             backend = "mmdetection"
             break
-        typer.secho("Invalid choice. Please enter 1 or 2.", fg=typer.colors.RED)
+        elif choice == "3":
+            backend = "ultralytics"
+            break
+        typer.secho("Invalid choice. Please enter 1, 2, or 3.",
+                    fg=typer.colors.RED)
 
     typer.echo()
     custom_config = {}
@@ -221,13 +274,15 @@ def get_custom_model() -> tuple[str, str, Dict]:
         config_file = typer.prompt(
             "Config file path (e.g., 'COCO-Detection/retinanet_R_50_FPN_3x.yaml')"
         )
-        weights_file = typer.prompt("Weights file path (e.g., 'path/to/model.pth')")
+        weights_file = typer.prompt(
+            "Weights file path (e.g., 'path/to/model.pth')")
 
         custom_config = {"config": config_file, "weights": weights_file}
 
     elif backend == "mmdetection":
         typer.echo("MMDetection Configuration:")
-        typer.echo("You need to provide paths to configuration and checkpoint files.")
+        typer.echo(
+            "You need to provide paths to configuration and checkpoint files.")
         typer.echo()
 
         config_file = typer.prompt(
@@ -237,17 +292,29 @@ def get_custom_model() -> tuple[str, str, Dict]:
 
         custom_config = {"config": config_file, "checkpoint": checkpoint}
 
-    # Generate a custom model name
-    model_name = f"custom_{Path(custom_config.get('config', 'model')).stem}"
+    elif backend == "ultralytics":
+        typer.echo("Ultralytics Configuration:")
+        typer.echo("You need to provide the path to a custom trained model file.")
+        typer.echo()
 
-    typer.secho(f"✓ Custom model configured: {backend.upper()}", fg=typer.colors.GREEN)
+        model_path = typer.prompt(
+            "Model file path (e.g., 'path/to/custom_model.pt')")
+
+        custom_config = {"model_path": model_path}
+
+    # Generate a custom model name
+    model_name = f"custom_{Path(custom_config.get('config', custom_config.get('model_path', 'model'))).stem}"
+
+    typer.secho(
+        f"✓ Custom model configured: {backend.upper()}", fg=typer.colors.GREEN)
     typer.echo()
     return backend, model_name, custom_config
 
 
 def get_confidence_threshold() -> float:
     """Interactive confidence threshold selection."""
-    typer.secho("🎯 Step 4: Set confidence threshold", fg=typer.colors.BLUE, bold=True)
+    typer.secho("🎯 Step 4: Set confidence threshold",
+                fg=typer.colors.BLUE, bold=True)
     typer.echo()
     typer.echo("Confidence threshold filters out low-confidence detections.")
     typer.echo("• Lower values (0.1-0.3): More detections, some false positives")
@@ -256,9 +323,11 @@ def get_confidence_threshold() -> float:
 
     while True:
         try:
-            conf = float(typer.prompt("Enter confidence threshold", default="0.2"))
+            conf = float(typer.prompt(
+                "Enter confidence threshold", default="0.2"))
             if 0.0 <= conf <= 1.0:
-                typer.secho(f"✓ Confidence threshold: {conf}", fg=typer.colors.GREEN)
+                typer.secho(
+                    f"✓ Confidence threshold: {conf}", fg=typer.colors.GREEN)
                 typer.echo()
                 return conf
             typer.secho(
@@ -340,13 +409,12 @@ def generate(
 
     # Handle custom model configuration
     if "custom_config" in locals() and custom_config:
-        # Add custom model to MODEL_CONFIGS temporarily
-        if backend not in MODEL_CONFIGS:
-            MODEL_CONFIGS[backend] = {}
-        MODEL_CONFIGS[backend][model] = custom_config
+        # Custom model configuration is handled directly by create_model
+        pass
 
     # Start generation
-    typer.secho("🚀 Starting database generation...", fg=typer.colors.BLUE, bold=True)
+    typer.secho("🚀 Starting database generation...",
+                fg=typer.colors.BLUE, bold=True)
     typer.echo()
     typer.echo(f"Dataset: {dataset}")
     typer.echo(f"Split: {split}")
@@ -376,7 +444,182 @@ def generate(
 
     except Exception as e:
         typer.echo()
-        typer.secho(f"❌ Error during generation: {e}", fg=typer.colors.RED, bold=True)
+        typer.secho(
+            f"❌ Error during generation: {e}", fg=typer.colors.RED, bold=True)
+        raise typer.Exit(1)
+
+
+@app.command("generate-dataset")
+def generate_dataset_cmd(
+    config_file: Optional[str] = typer.Option(
+        None, "--config", "-c", help="Path to configuration file"
+    ),
+    dataset: Optional[str] = typer.Option(
+        None,
+        help="Dataset name (bdd, nuimage, waymo) - supports custom PyTorch datasets",
+    ),
+    split: Optional[str] = typer.Option(
+        None, help="Data split (train, val, test)"),
+    allowable_set: Optional[str] = typer.Option(
+        None, help="Comma-separated list of allowed COCO objects"
+    ),
+    save_path: Optional[str] = typer.Option(
+        None, help="Path to save the generated dataset"
+    ),
+    upload_to_hub: bool = typer.Option(
+        False, help="Upload dataset to HuggingFace Hub"),
+    hub_repo_id: Optional[str] = typer.Option(
+        None, help="HuggingFace Hub repository ID"
+    ),
+    hub_private: bool = typer.Option(
+        False, help="Make HuggingFace Hub repository private"
+    ),
+    interactive: bool = typer.Option(True, help="Use interactive mode"),
+    list_valid_objects: bool = typer.Option(
+        False, "--list-objects", help="List valid COCO objects and exit"
+    ),
+    list_questions: bool = typer.Option(
+        False, "--list-questions", help="List available questions and exit"
+    ),
+    interactive_questions: bool = typer.Option(
+        False, "--interactive-questions", help="Use interactive question selection"
+    ),
+):
+    """
+    Generate HuggingFace datasets for object detection question-answering.
+
+    Supports built-in datasets (BDD100K, NuImages, Waymo) and custom PyTorch datasets
+    with COCO-style annotations. Use interactive mode or config files for easy setup.
+    """
+
+    # Handle special flags
+    if list_valid_objects:
+        typer.echo("Valid COCO objects:")
+        valid_objects = get_valid_coco_objects()
+        for i, obj in enumerate(valid_objects, 1):
+            typer.echo(f"  {i:2d}. {obj}")
+        typer.echo(f"\nTotal: {len(valid_objects)} objects")
+        return
+
+    if list_questions:
+        typer.secho("📋 Available Questions:", fg=typer.colors.BLUE, bold=True)
+        typer.echo()
+        questions = list_available_questions()
+        for i, (name, info) in enumerate(questions.items(), 1):
+            typer.secho(f"{i:2d}. {name}", fg=typer.colors.GREEN, bold=True)
+            typer.echo(f"    {info['question']}")
+            if info["parameters"]:
+                typer.echo("    Parameters:")
+                for param_name, param_info in info["parameters"].items():
+                    typer.echo(
+                        f"      • {param_name}: {param_info['description']} (default: {param_info['default']})"
+                    )
+            typer.echo()
+        return
+
+    print_welcome()
+
+    try:
+        if config_file:
+            # Load configuration from file
+            typer.secho(
+                "📄 Loading configuration from file...", fg=typer.colors.BLUE, bold=True
+            )
+            config = load_config_from_file(config_file)
+            typer.secho(
+                f"✓ Configuration loaded from: {config_file}", fg=typer.colors.GREEN
+            )
+        elif interactive:
+            # Interactive mode
+            typer.secho("🎮 Interactive Mode", fg=typer.colors.BLUE, bold=True)
+            typer.echo(
+                "Let's configure your HuggingFace dataset generation step by step."
+            )
+            typer.echo()
+            config = create_interactive_config()
+        else:
+            # Command line parameters mode
+            typer.secho("⚙️  Command Line Mode",
+                        fg=typer.colors.BLUE, bold=True)
+
+            # Parse allowable_set if provided
+            allowable_set_list = None
+            if allowable_set:
+                allowable_set_list = [obj.strip()
+                                      for obj in allowable_set.split(",")]
+                # Validate COCO objects
+                from graid.utilities.coco import validate_coco_objects
+
+                is_valid, error_msg = validate_coco_objects(allowable_set_list)
+                if not is_valid:
+                    typer.secho(f"❌ {error_msg}", fg=typer.colors.RED)
+                    raise typer.Exit(1)
+
+            # For now, require interactive mode or config file
+            typer.secho(
+                "❌ Command line mode is not yet implemented. Please use --interactive or --config.",
+                fg=typer.colors.RED,
+            )
+            typer.echo(
+                "Use 'graid generate-dataset --help' for more information.")
+            raise typer.Exit(1)
+
+        # Generate the dataset
+        typer.echo()
+        typer.secho(
+            "🚀 Starting dataset generation...", fg=typer.colors.BLUE, bold=True
+        )
+
+        # Handle interactive question selection
+        question_configs = None
+        if interactive_questions:
+            question_configs = interactive_question_selection()
+            if not question_configs:
+                typer.secho("No questions selected. Exiting.",
+                            fg=typer.colors.YELLOW)
+                return
+
+        # Create models from configuration
+        models = config.create_models()
+
+        # Generate the dataset
+        dataset_dict = generate_dataset(
+            dataset_name=config.dataset_name,
+            split=config.split,
+            models=models,
+            use_wbf=config.use_wbf,
+            wbf_config=config.wbf_config.to_dict() if config.wbf_config else None,
+            conf_threshold=config.confidence_threshold,
+            batch_size=config.batch_size,
+            device=config.device,
+            allowable_set=config.allowable_set,
+            question_configs=question_configs,
+            save_path=config.save_path,
+            upload_to_hub=config.upload_to_hub,
+            hub_repo_id=config.hub_repo_id,
+            hub_private=config.hub_private,
+        )
+
+        # Success message
+        typer.echo()
+        typer.secho(
+            "✅ Dataset generation completed successfully!",
+            fg=typer.colors.GREEN,
+            bold=True,
+        )
+
+        # Show summary
+        split_dataset = dataset_dict[config.split]
+        typer.echo(f"📊 Generated {len(split_dataset)} question-answer pairs")
+
+        if config.save_path:
+            typer.echo(f"💾 Saved to: {config.save_path}")
+
+        if config.upload_to_hub:
+            typer.echo(f"🤗 Uploaded to HuggingFace Hub: {config.hub_repo_id}")
+
+    except Exception as e:
+        typer.secho(f"❌ Error: {str(e)}", fg=typer.colors.RED)
         raise typer.Exit(1)
 
 
@@ -451,7 +694,8 @@ def eval_vlms(
     if interactive and not db_path:
         typer.secho("🔍 VLM Evaluation", fg=typer.colors.CYAN, bold=True)
         typer.echo()
-        typer.echo("This tool evaluates Vision Language Models using SQLite databases")
+        typer.echo(
+            "This tool evaluates Vision Language Models using SQLite databases")
         typer.echo("containing questions and answers about images.")
         typer.echo()
 
@@ -472,7 +716,8 @@ def eval_vlms(
         raise typer.Exit(1)
 
     if vlm_config["requires_model_selection"] and not model:
-        typer.secho(f"Error: Model selection required for {vlm}.", fg=typer.colors.RED)
+        typer.secho(
+            f"Error: Model selection required for {vlm}.", fg=typer.colors.RED)
         typer.echo(f"Available models: {', '.join(vlm_config['models'])}")
         typer.echo("Use --model to specify a model.")
         raise typer.Exit(1)
@@ -511,7 +756,8 @@ def eval_vlms(
 
     except Exception as e:
         typer.echo()
-        typer.secho(f"❌ Error during evaluation: {e}", fg=typer.colors.RED, bold=True)
+        typer.secho(
+            f"❌ Error during evaluation: {e}", fg=typer.colors.RED, bold=True)
         raise typer.Exit(1)
 
 
@@ -530,6 +776,30 @@ def list_models():
 
 
 @app.command()
+def list_questions():
+    """List available questions with their parameters."""
+    typer.secho("📋 Available Questions:", fg=typer.colors.BLUE, bold=True)
+    typer.echo()
+    questions = list_available_questions()
+    for i, (name, info) in enumerate(questions.items(), 1):
+        typer.secho(f"{i:2d}. {name}", fg=typer.colors.GREEN, bold=True)
+        typer.echo(f"    {info['question']}")
+        if info["parameters"]:
+            typer.echo("    Parameters:")
+            for param_name, param_info in info["parameters"].items():
+                typer.echo(
+                    f"      • {param_name}: {param_info['description']} (default: {param_info['default']})"
+                )
+        typer.echo()
+
+    typer.secho("💡 Usage:", fg=typer.colors.YELLOW, bold=True)
+    typer.echo(
+        "Use --interactive-questions flag with generate-dataset for interactive selection"
+    )
+    typer.echo("Or configure questions in a config file")
+
+
+@app.command()
 def info():
     """Show information about GRAID and supported datasets/models."""
     print_welcome()
@@ -540,7 +810,7 @@ def info():
     typer.echo()
 
     typer.secho("🧠 Supported Model Backends:", fg=typer.colors.BLUE, bold=True)
-    for backend in MODEL_CONFIGS.keys():
+    for backend in ["detectron", "mmdetection", "ultralytics"]:
         typer.echo(f"  • {backend.upper()}")
     typer.echo()
 

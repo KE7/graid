@@ -957,7 +957,7 @@ class NuImagesDataset(ImageDataset):
             )
 
         return {
-            "name": data["name"],
+            "name": img_filename,
             "path": img_path,
             "image": image,
             "labels": labels,
@@ -1281,6 +1281,8 @@ class WaymoDataset(ImageDataset):
     }
 
     _CATEGORIES_R = {v: k for k, v in _CATEGORIES.items()}
+
+    _CLS_TO_CATEGORIES = {str(v): k for k, v in _CATEGORIES.items()}
 
     _CLS_TO_COCO_CLS = {
         "TYPE_UNKNOWN": "undefined",

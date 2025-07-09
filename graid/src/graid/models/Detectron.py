@@ -1,3 +1,6 @@
+import os
+import tempfile
+import urllib.request
 from itertools import islice
 from pathlib import Path
 from typing import Iterator, List, Optional, Union
@@ -7,7 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from detectron2 import model_zoo
-from detectron2.config import get_cfg
+from detectron2.config import LazyConfig, get_cfg
 from detectron2.data import MetadataCatalog
 from detectron2.engine import DefaultPredictor
 from detectron2.structures import BitMasks
@@ -34,6 +37,27 @@ from graid.utilities.common import (
 setup_logger()
 
 
+def _resolve_cfg_file(path_or_url: str) -> str:
+    """Resolve config file path, downloading if it's a URL."""
+    if path_or_url.startswith("http://") or path_or_url.startswith("https://"):
+        # Download to a temporary file
+        local_path = tempfile.NamedTemporaryFile(
+            delete=False, suffix=".py" if path_or_url.endswith(".py") else ".yaml"
+        ).name
+        try:
+            urllib.request.urlretrieve(path_or_url, local_path)
+            return local_path
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to download Detectron2 config from {path_or_url}: {e}"
+            )
+    elif os.path.isfile(path_or_url):
+        return path_or_url
+    else:
+        # Treat as model_zoo shorthand
+        return model_zoo.get_config_file(path_or_url)
+
+
 class DetectronBase:
     """Base class for Detectron2 models with shared functionality."""
 
@@ -41,20 +65,100 @@ class DetectronBase:
         self,
         config_file: str,
         weights_file: str,
-        threshold: float = 0.1,
+        threshold: float = 0.5,
         device: Optional[Union[str, torch.device]] = None,
     ):
-        # Input Detectron2 config file and weights file
-        cfg = get_cfg()
-        cfg.MODEL.DEVICE = str(get_default_device()) if device is None else str(device)
-        cfg.merge_from_file(model_zoo.get_config_file(config_file))
-        cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = threshold
-        cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url(weights_file)
+        # ------------------------------------------------------------------
+        # Input Detectron2 config & weights – support either:
+        #   1) Built-in model_zoo shorthand (e.g. "COCO-InstanceSegmentation/...yaml")
+        #   2) Local absolute/relative file path
+        #   3) Remote HTTP(S) URL (auto-download to a temp file)
+        # ------------------------------------------------------------------
+
+        cfg_path = _resolve_cfg_file(config_file)
+
+        # ---- setup config -----------------------------------------------
+        if cfg_path.endswith(".py"):
+            # Use LazyConfig for .py files
+            cfg = LazyConfig.load_file(cfg_path)
+            cfg.model.device = (
+                str(get_default_device()) if device is None else str(device)
+            )
+            cfg.model.roi_heads.box_predictor.test_score_thresh = threshold
+        else:
+            # Use traditional config for .yaml files
+            cfg = get_cfg()
+            # allow config files to introduce new keys (e.g. custom backbones)
+            if hasattr(cfg, "set_new_allowed"):
+                cfg.set_new_allowed(True)
+            else:
+                cfg.new_allowed = True
+            cfg.MODEL.DEVICE = (
+                str(get_default_device()) if device is None else str(device)
+            )
+            cfg.merge_from_file(cfg_path)
+            cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = threshold
+
+        # ---- resolve weights ---------------------------------------------
+        if weights_file.startswith("http://") or weights_file.startswith("https://"):
+            if cfg_path.endswith(".py"):
+                cfg.model.weights = weights_file  # LazyConfig
+            else:
+                cfg.MODEL.WEIGHTS = weights_file  # traditional config
+        elif os.path.isfile(weights_file):
+            if cfg_path.endswith(".py"):
+                cfg.model.weights = weights_file  # LazyConfig
+            else:
+                cfg.MODEL.WEIGHTS = weights_file  # traditional config
+        else:
+            # treat as model_zoo shorthand (will raise if unavailable)
+            weights_url = model_zoo.get_checkpoint_url(weights_file)
+            if cfg_path.endswith(".py"):
+                cfg.model.weights = weights_url  # LazyConfig
+            else:
+                cfg.MODEL.WEIGHTS = weights_url  # traditional config
+
+        # ---- create predictor --------------------------------------------
+        if cfg_path.endswith(".py"):
+            # For LazyConfig, create a traditional config for DefaultPredictor
+            # DefaultPredictor expects a traditional CfgNode, not LazyConfig
+            traditional_cfg = get_cfg()
+            traditional_cfg.MODEL.DEVICE = (
+                str(get_default_device()) if device is None else str(device)
+            )
+            traditional_cfg.MODEL.WEIGHTS = cfg.model.weights
+            traditional_cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = threshold
+            # Copy other essential config values
+            traditional_cfg.MODEL.META_ARCHITECTURE = "GeneralizedRCNN"
+            traditional_cfg.MODEL.BACKBONE.NAME = "RegNet"
+            traditional_cfg.MODEL.ROI_HEADS.NAME = "StandardROIHeads"
+            traditional_cfg.MODEL.ROI_HEADS.NUM_CLASSES = 80  # COCO classes
+            traditional_cfg.INPUT.FORMAT = "BGR"
+            self._predictor = DefaultPredictor(traditional_cfg)
+        else:
+            self._predictor = DefaultPredictor(cfg)
+
+        # ---- metadata ----------------------------------------------------
+        if cfg_path.endswith(".py"):
+            # For LazyConfig, we need to handle metadata differently
+            try:
+                self._metadata = MetadataCatalog.get(
+                    cfg.dataloader.train.dataset.names[0]
+                )
+            except:
+                # Fallback to COCO metadata
+                self._metadata = MetadataCatalog.get("coco_2017_train")
+        else:
+            self._metadata = MetadataCatalog.get(cfg.DATASETS.TRAIN[0])
+
+        # Store config and other attributes
         self.cfg = cfg
-        self._predictor = DefaultPredictor(cfg)
-        self._metadata = MetadataCatalog.get(cfg.DATASETS.TRAIN[0])
         self.model_name = config_file
-        self.threshold = threshold  # Store threshold for reference
+        self.threshold = threshold
+
+        # Store config for cleanup
+        self._cfg_path = cfg_path
+        self._config_file = config_file
 
     def to(self, device: Union[str, torch.device]):
         """Move model to specified device."""

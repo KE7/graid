@@ -1,13 +1,4 @@
-#!/usr/bin/env python3
-"""
-Manual test for Mask2Former instance/panoptic segmentation with visual output.
-This test loads images, runs segmentation, and displays results with overlaid masks
-showing class names and confidence scores. Automatically uses panoptic segmentation
-if available, otherwise falls back to instance segmentation.
-"""
-
 import sys
-from itertools import islice
 from pathlib import Path
 
 import cv2
@@ -15,9 +6,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-from graid.data.ImageLoader import Bdd100kDataset
+from graid.data.ImageLoader import Bdd10kDataset
 from graid.models.MMDetection import MMdetection_seg
-from graid.utilities.common import yolo_bdd_transform
+from graid.utilities.common import yolo_bdd_seg_transform
 
 sys.path.append("/work/ke/research/scenic-reasoning/graid/src")
 
@@ -81,7 +72,8 @@ def draw_masks_with_labels(image, results, alpha=0.5):
             text_y = max(20, y_min)
 
             # Draw text background
-            text_size = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)[0]
+            text_size = cv2.getTextSize(
+                label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)[0]
             cv2.rectangle(
                 overlay,
                 (text_x, text_y - text_size[1] - 5),
@@ -118,12 +110,10 @@ def main():
     SHOW_PLOTS = True
 
     # Initialize dataset
-    print("Loading BDD100K dataset...")
-    dataset = Bdd100kDataset(
+    print("Loading BDD10K dataset...")
+    dataset = Bdd10kDataset(
         split="val",
-        transform=lambda i, l: yolo_bdd_transform(i, l, new_shape=(768, 1280)),
-        use_original_categories=False,
-        use_extended_annotations=False,
+        # transform=lambda i, l: yolo_bdd_seg_transform(i, l, new_shape=(768, 1280)),
     )
 
     # Initialize model with Mask2Former Swin-L
@@ -241,7 +231,8 @@ def main():
                     plt.tight_layout()
 
                     if SAVE_RESULTS:
-                        save_path = output_dir / f"mask2former_{i+1}_{image_name}.png"
+                        save_path = output_dir / \
+                            f"mask2former_{i+1}_{image_name}.png"
                         plt.savefig(save_path, dpi=150, bbox_inches="tight")
                         print(f"Saved: {save_path}")
 
