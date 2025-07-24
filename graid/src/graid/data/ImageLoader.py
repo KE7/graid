@@ -6,7 +6,7 @@ import os
 import pickle
 import re
 from datetime import datetime, time, timezone
-from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Callable, Literal, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -39,7 +39,7 @@ class ImageDataset(Dataset):
         target_transform: Union[Callable, None] = None,
         merge_transform: Union[Callable, None] = None,
         use_extended_annotations: bool = False,
-        img_labels: Optional[List[Dict]] = None,
+        img_labels: Optional[list[dict]] = None,
     ):
         self.img_dir = img_dir
         self.transform = transform
@@ -54,7 +54,7 @@ class ImageDataset(Dataset):
         if annotations_file:
             self.img_labels = self.load_annotations(annotations_file)
 
-    def load_annotations(self, annotations_file: str) -> List[Dict]:
+    def load_annotations(self, annotations_file: str) -> list[dict]:
         """Load annotations from a JSON file."""
         with open(annotations_file, "r") as file:
             return json.load(file)
@@ -172,7 +172,7 @@ class Bdd10kDataset(ImageDataset):
             **kwargs,
         )
 
-    def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
+    def __getitem__(self, idx: int) -> Union[Any, tuple[Tensor, dict, dict, str]]:
         data = self.img_labels["frames"][idx]
         img_path = os.path.join(self.img_dir, data["name"])
         labels = data["labels"]
@@ -190,7 +190,8 @@ class Bdd10kDataset(ImageDataset):
         if self.target_transform:
             labels = self.target_transform(labels)
         if self.merge_transform:
-            image, labels, timestamp = self.merge_transform(image, labels, timestamp)
+            image, labels, timestamp = self.merge_transform(
+                image, labels, timestamp)
 
         return {
             "name": data["name"],
@@ -327,22 +328,24 @@ class Bdd100kDataset(ImageDataset):
 
         def merge_transform(
             image: Tensor,
-            labels: List[Dict[str, Any]],
+            labels: list[dict[str, Any]],
             timestamp: str,
         ) -> Union[
-            Tuple[
-                Tensor, List[Union[ObjectDetectionResultI, InstanceSegmentationResultI]]
+            tuple[
+                Tensor, list[Union[ObjectDetectionResultI,
+                                   InstanceSegmentationResultI]]
             ],
-            Tuple[
+            tuple[
                 Tensor,
-                List[
-                    Tuple[
-                        Union[ObjectDetectionResultI, InstanceSegmentationResultI],
-                        Dict[str, Any],
+                list[
+                    tuple[
+                        Union[ObjectDetectionResultI,
+                              InstanceSegmentationResultI],
+                        dict[str, Any],
                         str,
                     ]
                 ],
-                Dict[str, Any],
+                dict[str, Any],
                 str,
             ],
         ]:
@@ -463,7 +466,7 @@ class Bdd100kDataset(ImageDataset):
             # Fallback to original dataset size if no mapping exists
             return len(self.img_labels)
 
-    def _meets_filtering_criteria(self, label: Dict[str, Any]) -> bool:
+    def _meets_filtering_criteria(self, label: dict[str, Any]) -> bool:
         """
         Check if an image meets the filtering criteria:
         - timeofday must be 'daytime'
@@ -490,7 +493,7 @@ class Bdd100kDataset(ImageDataset):
 
         return True
 
-    def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
+    def __getitem__(self, idx: int) -> Union[Any, tuple[Tensor, dict, dict, str]]:
         # If we're using filtered dataset and have a mapping
         if self.use_time_filtered and hasattr(self, "filtered_to_orig_mapping"):
             if not self.filtered_to_orig_mapping and os.path.exists(self.mapping_file):
@@ -550,7 +553,8 @@ class Bdd100kDataset(ImageDataset):
         if self.target_transform:
             labels = self.target_transform(labels)
         if self.merge_transform:
-            image, labels, timestamp = self.merge_transform(image, labels, timestamp)
+            image, labels, timestamp = self.merge_transform(
+                image, labels, timestamp)
 
         return {
             "name": data["name"],
@@ -692,8 +696,8 @@ class NuImagesDataset(ImageDataset):
         return self._CATEGORIES_TO_COCO[category]
 
     def filter_by_token(
-        self, data: List[Dict[str, Any]], field: str, match_value: str
-    ) -> List[Dict[str, Any]]:
+        self, data: list[dict[str, Any]], field: str, match_value: str
+    ) -> list[dict[str, Any]]:
         filtered_list = []
         for item in data:
             if item.get(field) == match_value:
@@ -863,11 +867,11 @@ class NuImagesDataset(ImageDataset):
             )
 
         def merge_transform(
-            image: Tensor, labels: List[Dict[str, Any]], timestamp: str
-        ) -> Tuple[
+            image: Tensor, labels: list[dict[str, Any]], timestamp: str
+        ) -> tuple[
             Tensor,
-            List[Tuple[ObjectDetectionResultI, Dict[str, Any], str]],
-            List[Dict[str, Any]],
+            list[tuple[ObjectDetectionResultI, dict[str, Any], str]],
+            list[dict[str, Any]],
             str,
         ]:
             results = []
@@ -913,7 +917,7 @@ class NuImagesDataset(ImageDataset):
         )
         return len(os.listdir(save_path))
 
-    def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
+    def __getitem__(self, idx: int) -> Union[Any, tuple[Tensor, dict, dict, str]]:
         # if isinstance(idx, slice):
         #     img_filename = self.img_labels[idx][0]["filename"]
         #     labels = self.img_labels[idx][0]["labels"]
@@ -1094,8 +1098,8 @@ class NuImagesDataset_seg(ImageDataset):
         return self._CATEGORIES[category]
 
     def filter_by_token(
-        self, data: List[Dict[str, Any]], field: str, match_value: str
-    ) -> List[Dict[str, Any]]:
+        self, data: list[dict[str, Any]], field: str, match_value: str
+    ) -> list[dict[str, Any]]:
         filtered_list = []
         for item in data:
             if item.get(field) == match_value:
@@ -1115,7 +1119,8 @@ class NuImagesDataset_seg(ImageDataset):
         img_dir = root_dir
         mask_annotations_file = root_dir / f"v1.0-{split}" / "object_ann.json"
         categories_file = root_dir / f"v1.0-{split}" / "category.json"
-        sample_data_labels_file = root_dir / f"v1.0-{split}" / "sample_data.json"
+        sample_data_labels_file = root_dir / \
+            f"v1.0-{split}" / "sample_data.json"
         attributes_file = root_dir / f"v1.0-{split}" / "attribute.json"
 
         self.nuim = NuImages(
@@ -1166,11 +1171,11 @@ class NuImagesDataset_seg(ImageDataset):
             )
 
         def merge_transform(
-            image: Tensor, labels: List[Dict[str, Any]], timestamp: str
-        ) -> Tuple[
+            image: Tensor, labels: list[dict[str, Any]], timestamp: str
+        ) -> tuple[
             Tensor,
-            List[Tuple[InstanceSegmentationResultI, Dict[str, Any], str]],
-            Dict[str, Any],
+            list[tuple[InstanceSegmentationResultI, dict[str, Any], str]],
+            dict[str, Any],
             str,
         ]:
             results = []
@@ -1206,7 +1211,7 @@ class NuImagesDataset_seg(ImageDataset):
             **kwargs,
         )
 
-    def __getitem__(self, idx: int) -> Union[Any, Tuple[Tensor, Dict, Dict, str]]:
+    def __getitem__(self, idx: int) -> Union[Any, tuple[Tensor, dict, dict, str]]:
         img_filename = self.img_labels[idx]["filename"]
         labels = self.img_labels[idx]["labels"]
         timestamp = self.img_labels[idx]["timestamp"]
@@ -1504,7 +1509,7 @@ class WaymoDataset(ImageDataset):
         )
         return len(os.listdir(save_path))
 
-    def __getitem__(self, idx: int) -> Dict:
+    def __getitem__(self, idx: int) -> dict:
         """Retrieve an image and its annotations."""
         if idx >= self.__len__():
             raise IndexError(
@@ -1765,7 +1770,7 @@ class WaymoDataset_seg(ImageDataset):
     def __len__(self) -> int:
         return len(self.img_labels)
 
-    def __getitem__(self, idx: int) -> Dict:
+    def __getitem__(self, idx: int) -> dict:
         """Retrieve an image and its annotations."""
         if idx >= len(self.img_labels):
             raise IndexError(

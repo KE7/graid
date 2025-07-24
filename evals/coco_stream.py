@@ -12,9 +12,6 @@ from graid.data.ImageLoader import (
     NuImagesDataset,
     WaymoDataset,
 )
-from graid.models.Detectron import Detectron_obj
-from graid.models.MMDetection import MMdetection_obj
-from graid.models.Ultralytics import RT_DETR, Yolo
 from graid.utilities.common import (
     project_root_dir,
     yolo_bdd_transform,
@@ -43,17 +40,18 @@ args.add_argument(
     "--model",
     "-m",
     type=str,
-    default="yolo11x",
+    default="yolov8x-world",
     choices=[
         "DINO",
         "Co_DETR",
         "yolov10x",
-        "yolo11x",
+        "yolov8x-world",
         "rtdetr",
         "retinanet_R_101_FPN_3x",
         "faster_rcnn_R_50_FPN_3x",
         "X101_FPN",
         "faster_rcnn_R_101_FPN_3x",
+        "vitdet",
     ],
     help="Model to use",
 )
@@ -81,9 +79,15 @@ torch.cuda.set_device(device)
 
 dataset = args.dataset
 if dataset == "bdd":
+    # For vitdet, we don't apply a transform here because the model's
+    # preprocessing is handled inside its class. For others, we might.
+    transform = None
+    if args.model != "vitdet":
+        transform = lambda i, l: yolo_bdd_transform(i, l, new_shape=(768, 1280))
+
     dataset = Bdd100kDataset(
-        split="train",
-        transform=lambda i, l: yolo_bdd_transform(i, l, new_shape=(768, 1280)),
+        split="val",  # Use validation set for evaluation
+        transform=transform,
         use_original_categories=False,
         use_extended_annotations=False,
     )
@@ -111,7 +115,7 @@ data_loader = DataLoader(
 
 # Initialize the model
 """
-Yolo(model="yolo11n.pt")"
+Yolo(model="yolov8x-world.pt")"
  Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.094
  Average Precision  (AP) @[ IoU=0.50      | area=   all | maxDets=100 ] = 0.161
  Average Precision  (AP) @[ IoU=0.75      | area=   all | maxDets=100 ] = 0.093
@@ -127,10 +131,16 @@ Yolo(model="yolo11n.pt")"
 """
 model = args.model
 if "yolov6" in model:
+    from graid.models.Ultralytics import Yolo
+
     model = Yolo(model=f"{model}.yaml")
 elif "yolo" in model:
+    from graid.models.Ultralytics import Yolo
+
     model = Yolo(model=f"{model}.pt")
 elif model == "DINO":
+    from graid.models.MMDetection import MMdetection_obj
+
     MMDETECTION_PATH = project_root_dir() / "install" / "mmdetection"
     DINO_config = str(
         MMDETECTION_PATH / "configs/dino/dino-5scale_swin-l_8xb2-12e_coco.py"
@@ -141,6 +151,8 @@ elif model == "DINO":
     model = MMdetection_obj(DINO_config, DINO_checkpoint)
     BATCH_SIZE = 1  # MMDetection does not support batch size > 1
 elif model == "Co_DETR":
+    from graid.models.MMDetection import MMdetection_obj
+
     MMDETECTION_PATH = project_root_dir() / "install" / "mmdetection"
     Co_DETR_config = str(
         MMDETECTION_PATH
@@ -152,6 +164,8 @@ elif model == "Co_DETR":
     model = MMdetection_obj(Co_DETR_config, Co_DETR_checkpoint)
     BATCH_SIZE = 1  # MMDetection does not support batch size > 1
 elif model == "retinanet_R_101_FPN_3x":
+    from graid.models.Detectron import Detectron_obj
+
     retinanet_R_101_FPN_3x_config = (
         "COCO-Detection/retinanet_R_101_FPN_3x.yaml"  # 228MB
     )
@@ -161,6 +175,8 @@ elif model == "retinanet_R_101_FPN_3x":
         weights_file=retinanet_R_101_FPN_3x_weights,
     )
 elif model == "faster_rcnn_R_50_FPN_3x":
+    from graid.models.Detectron import Detectron_obj
+
     faster_rcnn_R_50_FPN_3x_config = (
         "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"  # 167MB
     )
@@ -170,9 +186,13 @@ elif model == "faster_rcnn_R_50_FPN_3x":
         weights_file=faster_rcnn_R_50_FPN_3x_weights,
     )
 elif model == "rtdetr":
+    from graid.models.Ultralytics import RT_DETR
+
     model = RT_DETR("rtdetr-x.pt")
 
 elif model == "X101_FPN":
+    from graid.models.Detectron import Detectron_obj
+
     X101_FPN_config = "COCO-Detection/faster_rcnn_X_101_32x8d_FPN_3x.yaml"  # 167MB
     X101_FPN_weights = "COCO-Detection/faster_rcnn_X_101_32x8d_FPN_3x.yaml"
     model = Detectron_obj(
@@ -180,11 +200,24 @@ elif model == "X101_FPN":
         weights_file=X101_FPN_weights,
     )
 elif model == "faster_rcnn_R_101_FPN_3x":
+    from graid.models.Detectron import Detectron_obj
+
     faster_rcnn_R_101_FPN_3x_config = "COCO-Detection/faster_rcnn_R_101_FPN_3x.yaml"
     faster_rcnn_R_101_FPN_3x_weights = "COCO-Detection/faster_rcnn_R_101_FPN_3x.yaml"
     model = Detectron_obj(
         config_file=faster_rcnn_R_101_FPN_3x_config,
         weights_file=faster_rcnn_R_101_FPN_3x_weights,
+    )
+elif model == "vitdet":
+    from graid.models.Detectron import DetectronLazy
+
+    CONFIG_FILE = "install/detectron2/projects/ViTDet/configs/COCO/cascade_mask_rcnn_vitdet_h_75ep.py"
+    CHECKPOINT_FILE = "checkpoints/detectron2/model_final_f05665.pkl"
+    model = DetectronLazy(
+        config_file=CONFIG_FILE,
+        weights_file=CHECKPOINT_FILE,
+        threshold=args.conf,
+        device=device,
     )
 
 model.to(device)
@@ -304,7 +337,15 @@ pred_file.close()
 
 # Now, we build the final COCO ground-truth file by streaming through the temporary files with ijson.
 with open(coco_gt_path, "w") as f_out:
-    f_out.write('{"images": ')
+    info_record = {
+        "description": f"COCO-style dataset generated for {args.dataset} evaluation",
+        "version": "1.0",
+        "year": 2024,
+    }
+    f_out.write('{"info": ')
+    f_out.write(json.dumps(info_record))
+    f_out.write(', "images": ')
+
     # Stream images from the temporary images file.
     with open(gt_images_temp_path, "r") as f_images:
         f_out.write("[")

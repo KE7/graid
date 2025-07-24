@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 import supervision as sv
 import torch
+from numpy.typing import NDArray
 
 from graid.utilities.common import get_default_device
 
@@ -29,13 +30,16 @@ class ZeroShotPrompt(PromptingStrategy):
         )
 
     def generate_prompt(self, image, question):
-        prompt = f"""\
-            Answer the following question related to the image. If this question involves object naming, you may only identify objects from the COCO dataset (80 labels).{self.ans_format_str}
-
-            Here's the question: {question}. 
+        system_prompt = f"""\
+            Answer the following question related to the image. If this question involves object naming, you may only identify objects that are specified from the question or if none are specified, you may only identify objects from the COCO dataset (80 labels).{self.ans_format_str}
         """
 
-        return image, dedent(prompt)
+        messages = [
+            {"role": "system", "content": dedent(system_prompt)},
+            {"role": "user", "content": question},
+        ]
+
+        return image, messages
 
     def __str__(self):
         return "ZeroShotPrompt"
@@ -45,12 +49,14 @@ class ZeroShotPrompt_batch(PromptingStrategy):
     """Zero-shot prompting method."""
 
     def generate_prompt(self, image, question):
-        prompt = f"""\
-        Answer the following questions related to the image. Provide your answers to each question, separated by commas. Here are the questions:
-        {question}
+        system_prompt = """\
+        Answer the following questions related to the image. Provide your answers to each question, separated by commas.
         """
-
-        return image, dedent(prompt)
+        messages = [
+            {"role": "system", "content": dedent(system_prompt)},
+            {"role": "user", "content": question},
+        ]
+        return image, messages
 
     def __str__(self):
         return "ZeroShotPrompt_batch"
@@ -60,62 +66,80 @@ class CoT(PromptingStrategy):
     """CoT prompting method."""
 
     def generate_prompt(self, image, question):
-        prompt = f"""\
-        Look at the image carefully and think through each question step by step. Use the process below to guide your reasoning and arrive at the correct answer. Here are some examples of how to answer the question:
-
-        Question: Are there any motorcyclists to the right of any pedestrians? 
-
-        Steps:
-        1. I see three pedestrians walking on the left sidewalk, roughly in the left third of the image.
-        2. I also see a single motorcyclist riding away from the camera, positioned nearer the center of the road and center of the camera frame but clearly to the right of those pedestrians.
-        3. Comparing their horizontal positions, the motorcyclist's x‑coordinate is larger (further to the right) than either pedestrian's.
-
-        Conclusion: The motorcyclist is to the right of the pedestrians.
-        Final_Answer: Yes.
-
-
-        Question: What group of objects are most clustered together?
-
-        Steps:
-        1. Scanning for COCO categories only, I identify the following objects
-        2. Person:
-            I spot three pedestrians on the left sidewalk: one nearest the foreground, one a few meters behind, and a third just past the white box truck.
-            They are spaced roughly 2–3 m apart along the sidewalk.
-
-        3. Motorcycle
-            A single motorcyclist is riding down the center of the road, about midway up the frame.
-            Only one instance, so no clustering.
-
-        4. Truck
-            A single white box truck is parked on the left curb beyond the first two pedestrians.
-            Again only one, so no cluster.
-
-        5. Car
-            At least six cars parked behind the french on the right and at least four cars in the distance near the center of the image
-            Both clusters of cars, especially the parked ones behind the fence occupy a small contiguous area, tightly packed together.
-
-
-        Conclusion: We can compare the densities of the groups we found.
-            The three people, while grouped, are separated by a few meters each.    
-            The six-plus cars are parked immediately adjacent in a compact line.
-
-        Final_Answer: The cars are the most clustered together.
-
-
-        Question: Does the leftmost object in the image appear to be wider than it is tall?
-
-        Steps:
-        1. Among the COCO categories present, the object farthest to the left is the bench under the bus‐stop canopy.
-        2. That bench's bounding area is much broader horizontally than it is tall vertically.
-
-        Conclusion: The bench is wider than it is tall.
-        Final_Answer: Yes.
-
-        Now that you have seen the examples, answer only the following question in the same step-by-step reasoning format as the examples:
-        Question: {question}
-
+        system_prompt = dedent(
+            """\
+            Look at the image carefully and think through each question step by step. Use the provided examples to guide your reasoning and arrive at the correct answer. Answer in the same step-by-step reasoning format as the examples.
         """
-        return image, dedent(prompt)
+        )
+
+        example_1_q = "Are there any motorcyclists to the right of any pedestrians?"
+        example_1_a = dedent(
+            """\
+            Steps:
+            1. I see three pedestrians walking on the left sidewalk, roughly in the left third of the image.
+            2. I also see a single motorcyclist riding away from the camera, positioned nearer the center of the road and center of the camera frame but clearly to the right of those pedestrians.
+            3. Comparing their horizontal positions, the motorcyclist's x‑coordinate is larger (further to the right) than either pedestrian's.
+
+            Conclusion: The motorcyclist is to the right of the pedestrians.
+            Final_Answer: Yes.
+        """
+        )
+
+        example_2_q = "What group of objects are most clustered together?"
+        example_2_a = dedent(
+            """\
+            Steps:
+            1. Scanning for COCO categories only, I identify the following objects
+            2. Person:
+                I spot three pedestrians on the left sidewalk: one nearest the foreground, one a few meters behind, and a third just past the white box truck.
+                They are spaced roughly 2-3 m apart along the sidewalk.
+
+            3. Motorcycle
+                A single motorcyclist is riding down the center of the road, about midway up the frame.
+                Only one instance, so no clustering.
+
+            4. Truck
+                A single white box truck is parked on the left curb beyond the first two pedestrians.
+                Again only one, so no cluster.
+
+            5. Car
+                At least six cars parked behind the french on the right and at least four cars in the distance near the center of the image
+                Both clusters of cars, especially the parked ones behind the fence occupy a small contiguous area, tightly packed together.
+
+
+            Conclusion: We can compare the densities of the groups we found.
+                The three people, while grouped, are separated by a few meters each.
+                The six-plus cars are parked immediately adjacent in a compact line.
+
+            Final_Answer: The cars are the most clustered together.
+        """
+        )
+
+        example_3_q = (
+            "Does the leftmost object in the image appear to be wider than it is tall?"
+        )
+        example_3_a = dedent(
+            """\
+            Steps:
+            1. Among the COCO categories present, the object farthest to the left is the bench under the bus‐stop canopy.
+            2. That bench's bounding area is much broader horizontally than it is tall vertically.
+
+            Conclusion: The bench is wider than it is tall.
+            Final_Answer: Yes.
+        """
+        )
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": example_1_q},
+            {"role": "assistant", "content": example_1_a},
+            {"role": "user", "content": example_2_q},
+            {"role": "assistant", "content": example_2_a},
+            {"role": "user", "content": example_3_q},
+            {"role": "assistant", "content": example_3_a},
+            {"role": "user", "content": question},
+        ]
+        return image, messages
 
     def __str__(self):
         return "CoT"
@@ -135,12 +159,18 @@ class FewShotPrompt(PromptingStrategy):
         if not self.examples:
             raise ValueError("Few-shot examples are required but not provided.")
 
-        prompt = "Here are some examples:\n"
-        for i, (inp, out) in enumerate(self.examples):
-            prompt += f"Example {i+1}:\nInput: {inp}\nOutput: {out}\n\n"
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a helpful assistant that provides answers to questions.",
+            }
+        ]
+        for inp, out in self.examples:
+            messages.append({"role": "user", "content": inp})
+            messages.append({"role": "assistant", "content": out})
 
-        prompt += f"Now, answer the following question:\n{question}"
-        return prompt
+        messages.append({"role": "user", "content": question})
+        return image, messages
 
     def __str__(self):
         return "FewShotPrompt"
@@ -168,12 +198,17 @@ class SetOfMarkPrompt(PromptingStrategy):
         self.MAX_AREA_PERCENTAGE = 0.05
 
     def generate_prompt(self, image, question):
-        prompt = f"""Answer the following question related to the image. If this question involves object naming, you may only identify objects from the COCO dataset (80 labels). Make sure to wrap the answer in triple backticks. "```"
-        Here's the question: {question}. 
+        system_prompt = f"""Answer the following question related to the image. If this question involves object naming, you may only identify objects that are specified from the question or if none are specified, you may only identify objects from the COCO dataset (80 labels). Make sure to wrap the answer in triple backticks. "```"
         """
+        messages = [
+            {"role": "system", "content": dedent(system_prompt)},
+            {"role": "user", "content": question},
+        ]
 
         if isinstance(image, str):
             image_bgr = cv2.imread(image)
+            if image_bgr is None:
+                raise ValueError(f"Could not read image from path: {image}")
         elif isinstance(image, torch.Tensor):
             image_bgr = image.mul(255).permute(1, 2, 0).numpy().astype(np.uint8)
         else:
@@ -193,7 +228,7 @@ class SetOfMarkPrompt(PromptingStrategy):
         max_area_mask = (detections.area / image_area) < self.MAX_AREA_PERCENTAGE
         detections = detections[min_area_mask & max_area_mask]
 
-        def Find_Center(mask: np.ndarray) -> tuple[int, int]:
+        def Find_Center(mask: NDArray[np.uint8]) -> tuple[int, int]:
             mask_8u = mask.astype(np.uint8)
 
             # Distance transform
@@ -233,7 +268,7 @@ class SetOfMarkPrompt(PromptingStrategy):
         all_masks = [detections[i].mask for i in range(len(detections))]
 
         if not all_masks:
-            return image, prompt
+            return image, messages
 
         centers = Mark_Allocation(all_masks)
 
@@ -247,7 +282,7 @@ class SetOfMarkPrompt(PromptingStrategy):
         annotated_image = image_bgr.copy()
 
         annotated_image = mask_annotator.annotate(
-            scene=annotated_image, detections=detections
+            scene=annotated_image, detections=sorted_detections
         )
 
         for idx, (x, y) in enumerate(centers, start=1):
@@ -263,7 +298,7 @@ class SetOfMarkPrompt(PromptingStrategy):
                 cv2.LINE_AA,
             )
 
-        return annotated_image, prompt
+        return annotated_image, messages
 
     def __str__(self):
         return "SetOfMarkPrompt"
