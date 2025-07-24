@@ -5,8 +5,8 @@
 ## 🚀 Quick Start
 
 ### Installation
-1. Create a conda environment: `conda create -n scenic_reason python=3.9`
-2. Activate it: `conda activate scenic_reason`
+1. Create a virtual environment: `uv venv`
+2. Activate it: `source .venv/bin/activate` (or use direnv with the provided .envrc)
 3. Install dependencies: `uv sync`
 4. Install all backends: `uv run install_all`
 
