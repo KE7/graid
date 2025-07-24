@@ -8,7 +8,7 @@ authors = [
 ]
 requires-python = ">=3.9"
 readme = "README.md"
-license = "Apache 2.0"
+license = "Apache-2.0"
 keywords = [
     "vision-language-models",
     "VLM",
@@ -40,12 +40,17 @@ dependencies = [
     "tenacity>=9.1.2,<10",
     "anthropic>=0.51.0,<0.52",
     "pick>=2.4.0,<3",
-    "typer[all]>=0.16.0,<0.17",
+    "typer>=0.16.0,<0.17",
     "rich>=13.0.0,<14",
     "clip",
     "wandb>=0.20.1,<0.21",
     "sentence-transformers>=4.1.0,<5",
+    "pycocotools>=2.0.10",
 ]
+
+[tool.setuptools.packages.find]
+where = ["graid/src"]
+include = ["graid*"]
 
 [project.scripts]
 install_depth_pro = "graid.setup:install_depth_pro"

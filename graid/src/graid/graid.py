@@ -5,10 +5,9 @@ An interactive command-line tool for generating object detection databases
 using various models and datasets.
 """
 
-import os
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import dict, Optional
 
 import typer
 
@@ -16,21 +15,6 @@ import typer
 project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from graid.data.generate_db import (
-    DATASET_TRANSFORMS,
-    MODEL_CONFIGS,
-    generate_db,
-    list_available_models,
-)
-from graid.evaluator.eval_vlms import (
-    METRIC_CONFIGS,
-    PROMPT_CONFIGS,
-    VLM_CONFIGS,
-    evaluate_vlm,
-    list_available_metrics,
-    list_available_prompts,
-    list_available_vlms,
-)
 
 app = typer.Typer(
     name="graid",
@@ -68,6 +52,7 @@ def get_dataset_choice() -> str:
     typer.secho("📊 Step 1: Choose a dataset", fg=typer.colors.BLUE, bold=True)
     typer.echo()
 
+    from graid.data.generate_db import DATASET_TRANSFORMS
     datasets = {
         "1": ("bdd", "BDD100K - Berkeley DeepDrive autonomous driving dataset"),
         "2": ("nuimage", "NuImages - Large-scale autonomous driving dataset"),
@@ -116,7 +101,7 @@ def get_split_choice() -> str:
         typer.secho("Invalid choice. Please enter 1 or 2.", fg=typer.colors.RED)
 
 
-def get_model_choice() -> tuple[Optional[str], Optional[str], Optional[Dict]]:
+def get_model_choice() -> tuple[Optional[str], Optional[str], Optional[dict]]:
     """Interactive model selection with custom model support."""
     typer.secho("🧠 Step 3: Choose model type", fg=typer.colors.BLUE, bold=True)
     typer.echo()
@@ -149,6 +134,7 @@ def get_preconfigured_model() -> tuple[str, str, None]:
     typer.secho("🔧 Pre-configured Models", fg=typer.colors.BLUE, bold=True)
     typer.echo()
 
+    from graid.data.generate_db import list_available_models
     available_models = list_available_models()
 
     backends = list(available_models.keys())
@@ -189,7 +175,7 @@ def get_preconfigured_model() -> tuple[str, str, None]:
     return backend, model_name, None
 
 
-def get_custom_model() -> tuple[str, str, Dict]:
+def get_custom_model() -> tuple[str, str, dict]:
     """Interactive custom model configuration."""
     typer.echo()
     typer.secho("🛠️ Custom Model Configuration", fg=typer.colors.BLUE, bold=True)
@@ -288,6 +274,12 @@ def generate(
 
     Run without arguments for interactive mode, or specify all parameters for batch mode.
     """
+
+    from graid.data.generate_db import (
+        DATASET_TRANSFORMS,
+        MODEL_CONFIGS,
+        generate_db,
+    )
 
     if interactive and not all([dataset, split]):
         print_welcome()
@@ -421,6 +413,7 @@ def eval_vlms(
     if list_vlms:
         typer.secho("🤖 Available VLM Types:", fg=typer.colors.BLUE, bold=True)
         typer.echo()
+        from graid.evaluator.eval_vlms import VLM_CONFIGS
         for vlm_type, config in VLM_CONFIGS.items():
             typer.secho(f"{vlm_type}:", fg=typer.colors.GREEN, bold=True)
             typer.echo(f"  {config['description']}")
@@ -432,6 +425,7 @@ def eval_vlms(
     if list_metrics:
         typer.secho("📊 Available Metrics:", fg=typer.colors.BLUE, bold=True)
         typer.echo()
+        from graid.evaluator.eval_vlms import METRIC_CONFIGS
         for metric_type, config in METRIC_CONFIGS.items():
             typer.secho(f"{metric_type}:", fg=typer.colors.GREEN, bold=True)
             typer.echo(f"  {config['description']}")
@@ -441,6 +435,7 @@ def eval_vlms(
     if list_prompts:
         typer.secho("💬 Available Prompts:", fg=typer.colors.BLUE, bold=True)
         typer.echo()
+        from graid.evaluator.eval_vlms import PROMPT_CONFIGS
         for prompt_type, config in PROMPT_CONFIGS.items():
             typer.secho(f"{prompt_type}:", fg=typer.colors.GREEN, bold=True)
             typer.echo(f"  {config['description']}")
@@ -463,6 +458,7 @@ def eval_vlms(
         raise typer.Exit(1)
 
     # Check if model name is required
+    from graid.evaluator.eval_vlms import VLM_CONFIGS
     vlm_config = VLM_CONFIGS.get(vlm)
     if not vlm_config:
         typer.secho(
@@ -488,6 +484,7 @@ def eval_vlms(
     typer.echo()
 
     try:
+        from graid.evaluator.eval_vlms import evaluate_vlm
         accuracy = evaluate_vlm(
             db_path=db_path,
             vlm_type=vlm,
@@ -521,6 +518,7 @@ def list_models():
     typer.secho("📋 Available Models", fg=typer.colors.BLUE, bold=True)
     typer.echo()
 
+    from graid.data.generate_db import list_available_models
     models = list_available_models()
     for backend, model_list in models.items():
         typer.secho(f"{backend.upper()}:", fg=typer.colors.GREEN, bold=True)
@@ -534,6 +532,7 @@ def info():
     """Show information about GRAID and supported datasets/models."""
     print_welcome()
 
+    from graid.data.generate_db import DATASET_TRANSFORMS, MODEL_CONFIGS
     typer.secho("📊 Supported Datasets:", fg=typer.colors.BLUE, bold=True)
     for dataset in DATASET_TRANSFORMS.keys():
         typer.echo(f"  • {dataset.upper()}")
