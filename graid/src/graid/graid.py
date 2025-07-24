@@ -7,7 +7,7 @@ using various models and datasets.
 
 import sys
 from pathlib import Path
-from typing import dict, Optional
+from typing import Optional
 
 import typer
 
