@@ -1,0 +1,19 @@
+path: /work/ke/research/scenic-reasoning/data/bdd100k
+train: images/100k/train
+val: images/100k/val
+test: # optional
+
+# classes
+names:
+  0: pedestrian
+  1: person
+  2: rider
+  3: car
+  4: truck
+  5: bus
+  6: train
+  7: motorcycle
+  8: bicycle
+  9: traffic light
+  10: traffic sign
+  11: sidewalk
