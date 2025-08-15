@@ -1,223 +1,220 @@
+"""
+GRAID HuggingFace Dataset Generation
+
+Complete rewrite for generating HuggingFace datasets with proper COCO bbox format,
+path-based Image columns, and simplified architecture.
+"""
+
 import json
 import logging
+import os
+import random
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import torch
-from datasets import Dataset, DatasetDict
 from PIL import Image
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from graid.data.generate_db import DATASET_TRANSFORMS, create_model
-from graid.data.ImageLoader import Bdd100kDataset, NuImagesDataset, WaymoDataset
-from graid.models.Detectron import Detectron_obj
-from graid.models.MMDetection import MMdetection_obj
-from graid.models.Ultralytics import RT_DETR, Yolo
-from graid.models.WBF import WBF
-from graid.questions.ObjectDetectionQ import (
-    ALL_QUESTIONS,
-    AreMore,
-    HowMany,
-    IsObjectCentered,
-    LargestAppearance,
-    LeastAppearance,
-    LeftMost,
-    LeftMostWidthVsHeight,
-    LeftOf,
-    MostAppearance,
-    MostClusteredObjects,
-    Quadrants,
-    RightMost,
-    RightMostWidthVsHeight,
-    RightOf,
-    WhichMore,
-    WidthVsHeight,
-)
-from graid.utilities.coco import validate_coco_objects
-from graid.utilities.common import (
-    get_default_device,
-    yolo_bdd_transform,
-    yolo_nuscene_transform,
-    yolo_waymo_transform,
-)
+from graid.utilities.common import get_default_device
 
 logger = logging.getLogger(__name__)
 
 
-def bdd_transform(i, l):
-    return yolo_bdd_transform(i, l, new_shape=(768, 1280))
-
-
-def nuimage_transform(i, l):
-    return yolo_nuscene_transform(i, l, new_shape=(896, 1600))
-
-
-def waymo_transform(i, l):
-    return yolo_waymo_transform(i, l, (1280, 1920))
-
-
-DATASET_TRANSFORMS = {
-    "bdd": bdd_transform,
-    "nuimage": nuimage_transform,
-    "waymo": waymo_transform,
-}
-
-# GRAID supports any model from the supported backends
-# Users can provide custom configurations for detectron and mmdetection
-# or use any available model file for ultralytics
-
-
 class HuggingFaceDatasetBuilder:
-    """Builder class for generating HuggingFace datasets from object detection models."""
+    """
+    Complete rewrite of the dataset builder for generating HuggingFace datasets.
+    
+    Features:
+    - Proper COCO bbox format with category strings
+    - Path-based Image columns (no byte duplication)
+    - Clean directory structure: {split}/images/ for images
+    - Support for original filenames vs generated filenames
+    - Simplified architecture without complex checkpointing
+    """
 
     def __init__(
         self,
         dataset_name: str,
         split: str,
-        models: Optional[list[Any]] = None,
-        model_configs: Optional[list[dict[str, Any]]] = None,
+        models: Optional[List[Any]] = None,
         use_wbf: bool = False,
-        wbf_config: Optional[dict[str, Any]] = None,
+        wbf_config: Optional[Dict[str, Any]] = None,
         conf_threshold: float = 0.2,
         batch_size: int = 1,
         device: Optional[Union[str, torch.device]] = None,
-        allowable_set: Optional[list[str]] = None,
-        selected_questions: Optional[list[str]] = None,
-        question_configs: Optional[list[dict[str, Any]]] = None,
-        custom_transforms: Optional[dict[str, Any]] = None,
+        allowable_set: Optional[List[str]] = None,
+        question_configs: Optional[List[Dict[str, Any]]] = None,
+        num_workers: int = 4,
+        qa_workers: int = 4,
+        num_samples: Optional[int] = None,
+        save_steps: int = 50,
+        save_path: Optional[str] = None,
+        use_original_filenames: bool = True,
+        filename_prefix: str = "img",
+        force: bool = False,
     ):
-        """Initialize the HuggingFace dataset builder."""
+        """
+        Initialize the HuggingFace dataset builder.
+        
+        Args:
+            dataset_name: Name of the dataset ("bdd", "nuimage", "waymo")
+            split: Dataset split ("train", "val", "test")
+            models: List of model objects for inference (optional)
+            use_wbf: Whether to use Weighted Box Fusion ensemble
+            wbf_config: Configuration for WBF ensemble (optional)
+            conf_threshold: Confidence threshold for filtering detections
+            batch_size: Batch size for processing
+            device: Device to use for inference (optional)
+            allowable_set: List of allowed object classes (optional)
+            question_configs: List of question configuration dictionaries (optional)
+            num_workers: Number of data loading workers
+            qa_workers: Number of QA generation workers
+            num_samples: Maximum number of samples to process (0 or None = process all)
+            save_steps: Save checkpoint every N batches for crash recovery
+            save_path: Path to save dataset (optional)
+            use_original_filenames: Whether to keep original filenames
+            filename_prefix: Prefix for generated filenames if not using originals
+            force: Force restart from scratch, ignoring existing checkpoints
+        """
         self.dataset_name = dataset_name
         self.split = split
         self.models = models or []
-        self.model_configs = model_configs or []
         self.use_wbf = use_wbf
         self.wbf_config = wbf_config or {}
         self.conf_threshold = conf_threshold
         self.batch_size = batch_size
         self.device = device if device is not None else get_default_device()
-
-        # Validate and set allowable_set
+        self.allowable_set = allowable_set
+        self.num_workers = num_workers
+        self.qa_workers = qa_workers
+        self.num_samples = num_samples
+        self.save_steps = save_steps
+        self.save_path = Path(save_path) if save_path else Path("./graid_dataset")
+        self.use_original_filenames = use_original_filenames
+        self.filename_prefix = filename_prefix
+        self.force = force
+        
+        # Question profiling (timings)
+        self.profile_questions: bool = bool(os.getenv("GRAID_PROFILE_QUESTIONS"))
+        self._question_timings: Dict[str, tuple[float, int]] = {}
+        self._question_counts: Dict[str, int] = {}
+        
+        # Checkpointing support
+        self.checkpoint_dir = self.save_path / "checkpoints"
+        self.checkpoint_file = self.checkpoint_dir / f"checkpoint_{self.split}.json"
+        
+        # Validate allowable_set
         if allowable_set is not None:
+            from graid.utilities.coco import validate_coco_objects
             is_valid, error_msg = validate_coco_objects(allowable_set)
             if not is_valid:
                 raise ValueError(f"Invalid allowable_set: {error_msg}")
-        self.allowable_set = allowable_set
-
-        # Initialize wbf_ensemble to None
-        self.wbf_ensemble = None
-
-        # Handle custom transforms
-        if custom_transforms:
-            self.transform = self._create_custom_transform(custom_transforms)
-        else:
-            if dataset_name not in DATASET_TRANSFORMS:
-                raise ValueError(f"Unsupported dataset: {dataset_name}")
-            self.transform = DATASET_TRANSFORMS[dataset_name]
-
-        # Handle question configuration
-        if question_configs is not None:
-            self.questions = self._create_questions_from_config(question_configs)
-        elif selected_questions is not None:
-            # Map question names to actual question objects
-            available_questions = {q.__class__.__name__: q for q in ALL_QUESTIONS}
-            self.questions = []
-            for question_name in selected_questions:
-                if question_name in available_questions:
-                    self.questions.append(available_questions[question_name])
-                else:
-                    logger.warning(f"Unknown question type: {question_name}")
-
-            if not self.questions:
-                raise ValueError("No valid questions selected")
-        else:
-            self.questions = ALL_QUESTIONS
+        
+        # Initialize dataset transforms
+        self.transform = self._get_dataset_transform()
+        
+        # Initialize questions
+        self.questions = self._initialize_questions(question_configs)
 
         # Initialize dataset loader
         self._init_dataset_loader()
 
-        # Prepare model ensemble if using WBF
+        # Create directory structure
+        self.images_dir = self.save_path / self.split / "images"
+        self.images_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Prepare WBF ensemble if needed
+        self.wbf_ensemble = None
         if self.use_wbf and self.models:
             self._prepare_wbf_ensemble()
 
-    def _create_custom_transform(self, custom_transforms: dict[str, Any]) -> Any:
-        """Create a custom transform function from configuration."""
-        transform_type = custom_transforms.get("type", "yolo")
-        new_shape = custom_transforms.get("new_shape", (640, 640))
-
-        if transform_type == "yolo_bdd":
-
-            def custom_transform(i, l):
-                return yolo_bdd_transform(i, l, new_shape=new_shape)
-
-        elif transform_type == "yolo_nuscene":
-
-            def custom_transform(i, l):
-                return yolo_nuscene_transform(i, l, new_shape=new_shape)
-
-        elif transform_type == "yolo_waymo":
-
-            def custom_transform(i, l):
-                return yolo_waymo_transform(i, l, new_shape=new_shape)
-
+    def _get_dataset_transform(self):
+        """Get the appropriate transform for the dataset."""
+        from graid.utilities.common import (
+            yolo_bdd_transform,
+            yolo_nuscene_transform,
+            yolo_waymo_transform,
+        )
+        
+        if self.dataset_name == "bdd":
+            return lambda i, l: yolo_bdd_transform(i, l, new_shape=(768, 1280))
+        elif self.dataset_name == "nuimage":
+            return lambda i, l: yolo_nuscene_transform(i, l, new_shape=(896, 1600))
+        elif self.dataset_name == "waymo":
+            return lambda i, l: yolo_waymo_transform(i, l, (1280, 1920))
         else:
-            raise ValueError(f"Unsupported transform type: {transform_type}")
-
-        return custom_transform
-
-    def _create_questions_from_config(
-        self, question_configs: list[dict[str, Any]]
-    ) -> list[Any]:
-        """Create question objects from configuration."""
+            raise ValueError(f"Unsupported dataset: {self.dataset_name}")
+    
+    def _initialize_questions(self, question_configs: Optional[List[Dict[str, Any]]]) -> List[Any]:
+        """Initialize question objects from configuration."""
+        if question_configs is None:
+            # Use all available questions
+            from graid.questions.ObjectDetectionQ import ALL_QUESTION_CLASSES
+            return list(ALL_QUESTION_CLASSES.values())
+        
         questions = []
+        from graid.questions.ObjectDetectionQ import (
+            IsObjectCentered, WidthVsHeight, LargestAppearance, RankLargestK,
+            MostAppearance, LeastAppearance, LeftOf, RightOf, LeftMost, RightMost,
+            HowMany, MostClusteredObjects, WhichMore, AreMore, Quadrants,
+            LeftMostWidthVsHeight, RightMostWidthVsHeight, ObjectsInRow, ObjectsInLine,
+            MoreThanThresholdHowMany, LessThanThresholdHowMany, MultiChoiceHowMany
+        )
+        
+        # Map question names to classes
+        question_class_map = {
+            "IsObjectCentered": IsObjectCentered,
+            "WidthVsHeight": WidthVsHeight,
+            "LargestAppearance": LargestAppearance,
+            "RankLargestK": RankLargestK,
+            "MostAppearance": MostAppearance,
+            "LeastAppearance": LeastAppearance,
+            "LeftOf": LeftOf,
+            "RightOf": RightOf,
+            "LeftMost": LeftMost,
+            "RightMost": RightMost,
+            "HowMany": HowMany,
+            "MostClusteredObjects": MostClusteredObjects,
+            "WhichMore": WhichMore,
+            "AreMore": AreMore,
+            "Quadrants": Quadrants,
+            "LeftMostWidthVsHeight": LeftMostWidthVsHeight,
+            "RightMostWidthVsHeight": RightMostWidthVsHeight,
+            "ObjectsInRow": ObjectsInRow,
+            "ObjectsInLine": ObjectsInLine,
+            "MoreThanThresholdHowMany": MoreThanThresholdHowMany,
+            "LessThanThresholdHowMany": LessThanThresholdHowMany,
+            "MultiChoiceHowMany": MultiChoiceHowMany,
+        }
 
         for config in question_configs:
             question_name = config.get("name")
             question_params = config.get("params", {})
 
-            if question_name == "IsObjectCentered":
-                questions.append(IsObjectCentered())
-            elif question_name == "WidthVsHeight":
-                threshold = question_params.get("threshold", 0.30)
-                questions.append(WidthVsHeight(threshold=threshold))
-            elif question_name == "LargestAppearance":
-                threshold = question_params.get("threshold", 0.3)
-                questions.append(LargestAppearance(threshold=threshold))
-            elif question_name == "MostAppearance":
-                questions.append(MostAppearance())
-            elif question_name == "LeastAppearance":
-                questions.append(LeastAppearance())
-            elif question_name == "LeftOf":
-                questions.append(LeftOf())
-            elif question_name == "RightOf":
-                questions.append(RightOf())
-            elif question_name == "LeftMost":
-                questions.append(LeftMost())
-            elif question_name == "RightMost":
-                questions.append(RightMost())
-            elif question_name == "HowMany":
-                questions.append(HowMany())
-            elif question_name == "MostClusteredObjects":
-                threshold = question_params.get("threshold", 100)
-                questions.append(MostClusteredObjects(threshold=threshold))
-            elif question_name == "WhichMore":
-                questions.append(WhichMore())
-            elif question_name == "AreMore":
-                questions.append(AreMore())
-            elif question_name == "Quadrants":
-                N = question_params.get("N", 2)
-                M = question_params.get("M", 2)
-                questions.append(Quadrants(N, M))
-            elif question_name == "LeftMostWidthVsHeight":
-                threshold = question_params.get("threshold", 0.3)
-                questions.append(LeftMostWidthVsHeight(threshold=threshold))
-            elif question_name == "RightMostWidthVsHeight":
-                threshold = question_params.get("threshold", 0.3)
-                questions.append(RightMostWidthVsHeight(threshold=threshold))
-            else:
+            if question_name not in question_class_map:
                 logger.warning(f"Unknown question type: {question_name}")
+                continue
+            
+            question_class = question_class_map[question_name]
+            
+            # Handle questions that require parameters
+            if question_params:
+                try:
+                    question_instance = question_class(**question_params)
+                except Exception as e:
+                    logger.error(f"Failed to initialize {question_name} with params {question_params}: {e}")
+                    # Fall back to default initialization
+                    question_instance = question_class()
+            else:
+                question_instance = question_class()
+            
+            questions.append(question_instance)
 
         if not questions:
             raise ValueError("No valid questions configured")
@@ -226,20 +223,30 @@ class HuggingFaceDatasetBuilder:
 
     def _init_dataset_loader(self):
         """Initialize the appropriate dataset loader."""
+        from graid.data.ImageLoader import Bdd100kDataset, NuImagesDataset, WaymoDataset
+        
         try:
             if self.dataset_name == "bdd":
+                pkl_root = Path("data") / f"bdd_{self.split}"
+                rebuild_needed = not (pkl_root / "0.pkl").exists()
                 self.dataset_loader = Bdd100kDataset(
-                    split=self.split, transform=self.transform
-                )  # type: ignore
+                    split=self.split,  # type: ignore
+                    transform=self.transform,
+                    use_time_filtered=False,
+                    rebuild=rebuild_needed,
+                )
             elif self.dataset_name == "nuimage":
                 self.dataset_loader = NuImagesDataset(
-                    split=self.split, size="all", transform=self.transform
-                )  # type: ignore
+                    split=self.split,  # type: ignore
+                    size="all",
+                    transform=self.transform
+                )
             elif self.dataset_name == "waymo":
                 split_name = "validation" if self.split == "val" else self.split + "ing"
                 self.dataset_loader = WaymoDataset(
-                    split=split_name, transform=self.transform
-                )  # type: ignore
+                    split=split_name,  # type: ignore
+                    transform=self.transform
+                )
             else:
                 raise ValueError(f"Unsupported dataset: {self.dataset_name}")
         except Exception as e:
@@ -248,10 +255,7 @@ class HuggingFaceDatasetBuilder:
 
     def _prepare_wbf_ensemble(self):
         """Prepare WBF ensemble from individual models."""
-        if not self.models:
-            return
-
-        # Import WBF here to avoid circular imports
+        # Import WBF classes locally
         from graid.models.Detectron import Detectron_obj
         from graid.models.MMDetection import MMdetection_obj
         from graid.models.Ultralytics import RT_DETR, Yolo
@@ -278,18 +282,30 @@ class HuggingFaceDatasetBuilder:
             **self.wbf_config,
         )
 
-    def _convert_image_to_pil(
-        self, image: Union[torch.Tensor, np.ndarray]
-    ) -> Image.Image:
+    def _infer_source_name(self, example: Dict[str, Any]) -> Optional[str]:
+        """Extract source filename from dataset example."""
+        if isinstance(example, dict) and "name" in example:
+            return example["name"]
+        return None
+    
+    def _generate_filename(self, index: int, source_name: Optional[str]) -> str:
+        """Generate filename based on configuration."""
+        if self.use_original_filenames and source_name:
+            return Path(source_name).name
+        return f"{self.filename_prefix}{index:06d}.jpg"
+    
+    def _convert_image_to_pil(self, image: Union[torch.Tensor, np.ndarray]) -> Image.Image:
         """Convert tensor or numpy array to PIL Image."""
         if isinstance(image, torch.Tensor):
-            # Convert tensor to numpy array
             if image.dim() == 3:  # (C, H, W)
                 image = image.permute(1, 2, 0).cpu().numpy()
             elif image.dim() == 4:  # (B, C, H, W)
                 image = image[0].permute(1, 2, 0).cpu().numpy()
 
         # Ensure proper data type and range
+        if not isinstance(image, np.ndarray):
+            image = np.array(image)
+        
         if image.dtype in [np.float32, np.float64]:
             image = (image * 255).astype(np.uint8)
         elif image.dtype != np.uint8:
@@ -297,65 +313,258 @@ class HuggingFaceDatasetBuilder:
 
         return Image.fromarray(image)
 
-    def _create_metadata(self) -> dict[str, Any]:
-        """Create metadata dictionary for the dataset."""
-        metadata = {
+    def _build_coco_annotations(
+        self, 
+        detections: List[Any], 
+        image_width: int, 
+        image_height: int
+    ) -> List[Dict[str, Any]]:
+        """
+        Build COCO-style annotations from detections.
+        
+        Args:
+            detections: List of detection objects
+            image_width: Image width in pixels
+            image_height: Image height in pixels
+            
+        Returns:
+            List of COCO annotation dictionaries
+        """
+        annotations = []
+        
+        for detection in detections:
+            # Get bounding box in XYWH format
+            xywh = detection.as_xywh()[0]
+            x, y, w, h = float(xywh[0]), float(xywh[1]), float(xywh[2]), float(xywh[3])
+            
+            # Build COCO annotation
+            annotation = {
+                "bbox": [x, y, w, h],  # COCO format: [x, y, width, height]
+                "category_id": 1,  # Default category ID
+                "category": detection.label,  # Add category string
+                "iscrowd": 0,
+                "area": float(w * h),
+                "score": float(detection.score) if hasattr(detection, 'score') else 1.0,
+            }
+            annotations.append(annotation)
+        
+        return annotations
+    
+    def _qa_for_image(
+        self, 
+        pil_image: Image.Image, 
+        detections: List[Any], 
+        source_id: str, 
+        image_index: int
+    ) -> Union[List[Dict[str, Any]], tuple[List[Dict[str, Any]], Dict[str, tuple[float, int]]]]:
+        """Generate question-answer pairs for a single image."""
+        qa_pairs = []
+        local_timings: Dict[str, tuple[float, int]] = {} if self.profile_questions else {}
+        
+        # Generate filename and save image
+        source_name = self._infer_source_name({"name": source_id}) if hasattr(self, '_current_example') else None
+        filename = self._generate_filename(image_index, source_name)
+        image_path = self.images_dir / filename
+        
+        # Save image if it doesn't exist
+        if not image_path.exists():
+            try:
+                rgb_img = pil_image if pil_image.mode in ("RGB", "L") else pil_image.convert("RGB")
+                rgb_img.save(image_path, format="JPEG", quality=95, optimize=True)
+                except Exception as e:
+                logger.error(f"Failed to save image to '{image_path}': {e}")
+                return []
+        
+        # Generate COCO annotations
+        annotations = self._build_coco_annotations(
+            detections, 
+            pil_image.width, 
+            pil_image.height
+        )
+        
+        # Generate relative path for HuggingFace dataset
+        relative_image_path = f"{self.split}/images/{filename}"
+        
+        # Generate questions and answers
+        for question in self.questions:
+            if detections and question.is_applicable(pil_image, detections):
+                t0 = time.perf_counter() if self.profile_questions else None
+                try:
+                qa_results = question.apply(pil_image, detections)
+                if self.profile_questions and t0 is not None:
+                    dt = time.perf_counter() - t0
+                    qname = question.__class__.__name__
+                    t_total, t_cnt = local_timings.get(qname, (0.0, 0))
+                    local_timings[qname] = (t_total + dt, t_cnt + 1)
+                    
+                    for qa_item in qa_results:
+                    if not isinstance(qa_item, (tuple, list)) or len(qa_item) != 2:
+                            logger.warning(
+                                f"{question.__class__.__name__}.apply() returned malformed item: {qa_item!r}"
+                        )
+                            continue
+                        
+                    question_text, answer_text = qa_item
+                        
+                        # Build the final QA pair
+                        qa_pair = {
+                            "image": relative_image_path,
+                            "annotations": annotations,
+                        "question": question_text,
+                        "answer": answer_text,
+                            "question_type": question.__class__.__name__,
+                        "source_id": source_id,
+                        }
+                        
+                        # Add source_filename if using generated filenames
+                        if not self.use_original_filenames and source_name:
+                            qa_pair["source_filename"] = source_name
+                        
+                        qa_pairs.append(qa_pair)
+                        
+                except Exception as e:
+                    logger.warning(f"Question {question.__class__.__name__} failed on image {source_id}: {e}")
+                    continue
+        
+        if self.profile_questions:
+            return (qa_pairs, local_timings)
+        return qa_pairs
+
+    def _qa_for_image_threadsafe(self, batch_args: tuple) -> Union[List[Dict[str, Any]], tuple[List[Dict[str, Any]], Dict[str, tuple[float, int]]]]:
+        """Thread-safe wrapper for _qa_for_image with unique image indexing."""
+        pil_image, detections, source_id, base_image_index, batch_j = batch_args
+        
+        # Create thread-safe unique image index
+        thread_id = threading.get_ident()
+        unique_image_index = base_image_index + (thread_id % 1000000) * 10000 + batch_j
+        
+        try:
+            return self._qa_for_image(pil_image, detections, source_id, unique_image_index)
+        except Exception as e:
+            logger.error(f"Error in threaded QA generation for {source_id}: {e}")
+            # Return empty results that match expected format
+            if self.profile_questions:
+                return ([], {})
+        else:
+                return []
+    
+    def _save_checkpoint(self, batch_idx: int, results: List[Dict[str, Any]], processed_images: int):
+        """Save checkpoint to resume from crash."""
+        self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        
+        checkpoint_data = {
+            "batch_idx": batch_idx,
+            "processed_images": processed_images,
+            "num_results": len(results),
             "dataset_name": self.dataset_name,
             "split": self.split,
-            "confidence_threshold": self.conf_threshold,
-            "batch_size": self.batch_size,
-            "use_wbf": self.use_wbf,
-            "questions": [str(q.__class__.__name__) for q in self.questions],
-            "models": [],
+            "timestamp": time.time(),
         }
-
-        # Only include device info when not using WBF (single device usage)
-        if not self.use_wbf:
-            metadata["device"] = str(self.device)
-        else:
-            metadata["device_info"] = "Multiple devices may be used in WBF ensemble"
-
-        # Add model information
-        if self.models:
-            for i, model in enumerate(self.models):
-                model_info = {
-                    "backend": model.__class__.__module__.split(".")[-1],
-                    "model_name": getattr(
-                        model, "model_name", str(model.__class__.__name__)
-                    ),
-                    "config": (
-                        self.model_configs[i] if i < len(self.model_configs) else None
-                    ),
-                }
-                metadata["models"].append(model_info)
-        else:
-            metadata["models"] = [{"type": "ground_truth"}]
-
-        return metadata
-
-    def build(self) -> DatasetDict:
+        
+        # Save checkpoint metadata
+        with open(self.checkpoint_file, 'w') as f:
+            json.dump(checkpoint_data, f, indent=2)
+        
+        # Save results so far
+        results_file = self.checkpoint_dir / f"results_{self.split}.json"
+        with open(results_file, 'w') as f:
+            json.dump(results, f)
+        
+        logger.info(f"Checkpoint saved at batch {batch_idx} ({processed_images} images processed)")
+    
+    def _load_checkpoint(self) -> tuple[int, List[Dict[str, Any]], int]:
+        """Load checkpoint to resume from crash. Returns (start_batch_idx, results, processed_images)."""
+        if not self.checkpoint_file.exists():
+            return 0, [], 0
+        
+        try:
+            with open(self.checkpoint_file, 'r') as f:
+                checkpoint_data = json.load(f)
+            
+            results_file = self.checkpoint_dir / f"results_{self.split}.json"
+            if not results_file.exists():
+                logger.warning("Checkpoint metadata found but results file missing. Starting from scratch.")
+                return 0, [], 0
+            
+            with open(results_file, 'r') as f:
+                results = json.load(f)
+            
+            start_batch = checkpoint_data["batch_idx"] + 1  # Resume from next batch
+            processed_images = checkpoint_data["processed_images"]
+            
+            logger.info(f"Resuming from checkpoint: batch {start_batch}, {processed_images} images processed, {len(results)} QA pairs")
+            return start_batch, results, processed_images
+            
+                except Exception as e:
+            logger.warning(f"Failed to load checkpoint: {e}. Starting from scratch.")
+            return 0, [], 0
+    
+    def _cleanup_checkpoint(self):
+        """Clean up checkpoint files after successful completion."""
+        try:
+            if self.checkpoint_file.exists():
+                self.checkpoint_file.unlink()
+            results_file = self.checkpoint_dir / f"results_{self.split}.json"
+            if results_file.exists():
+                results_file.unlink()
+            # Remove checkpoint dir if empty
+            if self.checkpoint_dir.exists() and not any(self.checkpoint_dir.iterdir()):
+                self.checkpoint_dir.rmdir()
+            logger.debug("Checkpoint files cleaned up")
+            except Exception as e:
+            logger.debug(f"Failed to cleanup checkpoint files: {e}")
+    
+    def build(self):
         """Build the HuggingFace dataset."""
-        logger.info(
-            f"Building HuggingFace dataset for {self.dataset_name} {self.split}"
-        )
-
-        # For now, create a simple placeholder dataset
-        # This will be expanded with full functionality
-        results = []
-
-        # Process a small subset to demonstrate structure
+        from datasets import Dataset, DatasetDict, Features, Value, Sequence, Image as HFImage
+        
+        logger.info(f"Building HuggingFace dataset for {self.dataset_name} {self.split}")
+        
+        # Create data loader
         data_loader = DataLoader(
             self.dataset_loader,
             batch_size=self.batch_size,
             shuffle=False,
             collate_fn=lambda x: x,
-            num_workers=1,
+            num_workers=self.num_workers,
+            prefetch_factor=1,
+            persistent_workers=False,
         )
 
-        for base_idx, batch in enumerate(tqdm(data_loader, desc="Processing batches")):
-            if base_idx >= 10:  # Limit to 10 batches for demonstration
+        # Load checkpoint if available (unless force restart)
+        force_restart = bool(os.getenv("GRAID_FORCE_RESTART")) or self.force
+        if force_restart:
+            logger.info("Force restart requested - removing existing checkpoints and starting from scratch")
+            self._cleanup_checkpoint()  # Remove existing checkpoints first
+            start_batch_idx, results, processed_images = 0, [], 0
+        else:
+            start_batch_idx, results, processed_images = self._load_checkpoint()
+        
+        # Skip already processed batches if resuming
+        if start_batch_idx > 0:
+            logger.info(f"Skipping first {start_batch_idx} batches (already processed)")
+        
+        # Track starting state for this run  
+        results_at_start = len(results)
+        
+        # Check for early stopping via environment variable
+        max_batches = None
+        try:
+            max_batches_env = os.getenv("GRAID_MAX_BATCHES")
+                max_batches = int(max_batches_env) if max_batches_env else None
+            except Exception:
+            pass
+        
+        for batch_idx, batch in enumerate(tqdm(data_loader, desc="Processing batches")):
+            # Skip batches that were already processed (resuming from checkpoint)
+            if batch_idx < start_batch_idx:
+                continue
+                
+            # Early stopping for testing
+            if max_batches is not None and batch_idx >= max_batches:
+                logger.info(f"Stopping early after {batch_idx} batches (GRAID_MAX_BATCHES={max_batches})")
                 break
-
+            
             # Handle different dataset return formats
             if isinstance(batch[0], tuple):
                 # Tuple format (BDD dataset)
@@ -367,7 +576,7 @@ class HuggingFaceDatasetBuilder:
                 ground_truth_labels = [sample["labels"] for sample in batch]
 
             # Get predictions from model(s)
-            if self.use_wbf and hasattr(self, "wbf_ensemble"):
+            if self.use_wbf and self.wbf_ensemble is not None:
                 batch_images = batch_images.to(self.device)
                 labels = self.wbf_ensemble.identify_for_image_batch(batch_images)
             elif self.models:
@@ -380,15 +589,18 @@ class HuggingFaceDatasetBuilder:
                 labels = ground_truth_labels
 
             # Process each image in the batch
+            batch_results: List[Dict[str, Any]] = []
+            batch_timings: Dict[str, tuple[float, int]] = {} if self.profile_questions else {}
+            
+            # Prepare batch data for parallel processing
+            batch_data = []
             for j, (image_tensor, detections) in enumerate(zip(batch_images, labels)):
                 # Convert to PIL Image
                 pil_image = self._convert_image_to_pil(image_tensor)
 
                 # Filter detections by confidence threshold
                 if detections:
-                    detections = [
-                        d for d in detections if d.score >= self.conf_threshold
-                    ]
+                    detections = [d for d in detections if d.score >= self.conf_threshold]
 
                 # Filter detections by allowable set if specified
                 if detections and self.allowable_set:
@@ -397,115 +609,282 @@ class HuggingFaceDatasetBuilder:
                         if detection.label in self.allowable_set:
                             filtered_detections.append(detection)
                         else:
-                            logger.debug(
-                                f"Filtered out detection of class '{detection.label}' (not in allowable set)"
-                            )
+                            logger.debug(f"Filtered out detection of class '{detection.label}' (not in allowable set)")
                     detections = filtered_detections
 
-                # Extract bounding boxes
-                bboxes = []
-                if detections:
-                    for detection in detections:
-                        bbox = detection.as_xyxy().squeeze().tolist()
-                        bboxes.append(
-                            {
-                                "bbox": bbox,
-                                "label": detection.label,
-                                "score": float(detection.score),
-                                "class_id": int(detection.cls),
-                            }
-                        )
+                # Extract source_id from batch sample
+                if isinstance(batch[j], dict) and "name" in batch[j]:
+                    source_id = batch[j]["name"]
+                else:
+                    source_id = f"{self.dataset_name}_{batch_idx}_{j}"
+                
+                # Store current example for filename inference
+                self._current_example = batch[j] if isinstance(batch[j], dict) else {"name": source_id}
+                
+                # Prepare data for processing (parallel or sequential)
+                base_image_index = batch_idx * self.batch_size
+                batch_data.append((pil_image, detections, source_id, base_image_index, j))
+            
+            # Process batch data (parallel or sequential)
+            if self.qa_workers > 1 and len(batch_data) > 1:
+                logger.debug(f"Processing batch with {self.qa_workers} workers")
+                # Parallel processing with order preservation
+                with ThreadPoolExecutor(max_workers=self.qa_workers) as executor:
+                    batch_results_raw = list(executor.map(self._qa_for_image_threadsafe, batch_data))
+            else:
+                logger.debug("Processing batch sequentially")
+                # Sequential processing 
+                batch_results_raw = []
+                for args in batch_data:
+                    pil_image, detections, source_id, base_image_index, j = args
+                    image_index = base_image_index + j
+                    self._current_example = batch[j] if isinstance(batch[j], dict) else {"name": source_id}
+                    try:
+                        ret = self._qa_for_image(pil_image, detections, source_id, image_index)
+                        batch_results_raw.append(ret)
+                    except Exception as e:
+                        logger.error(f"Error processing image {source_id}: {e}")
+                        # Add empty result to maintain order
+                    if self.profile_questions:
+                            batch_results_raw.append(([], {}))
+                    else:
+                            batch_results_raw.append([])
+            
+            # Process results and collect timings
+            for ret in batch_results_raw:
+                if self.profile_questions and isinstance(ret, tuple) and len(ret) == 2:
+                    qa_pairs, local_timings = ret
+                    if isinstance(qa_pairs, list):
+                            batch_results.extend(qa_pairs)
+                    if isinstance(local_timings, dict):
+                            for k, (t, n) in local_timings.items():
+                                T, N = batch_timings.get(k, (0.0, 0))
+                                batch_timings[k] = (T + t, N + n)
+                elif isinstance(ret, list):
+                    batch_results.extend(ret)
+                        else:
+                    logger.warning(f"Unexpected return type from QA processing: {type(ret)}")
 
-                # Generate questions and answers
-                for question in self.questions:
-                    if detections and question.is_applicable(pil_image, detections):
-                        qa_pairs = question.apply(pil_image, detections)
+            # Add batch results to main results
+            results.extend(batch_results)
+            processed_images += len(batch)
+            
+            # Update per-question counts
+            for item in batch_results:
+                try:
+                    qtype = item.get("question_type")
+                        if qtype:
+                            self._question_counts[qtype] = self._question_counts.get(qtype, 0) + 1
+                except Exception:
+                    pass
+            
+            # Merge batch timings into builder-level aggregation
+            if self.profile_questions and batch_timings:
+                for k, (t, n) in batch_timings.items():
+                    T, N = self._question_timings.get(k, (0.0, 0))
+                    self._question_timings[k] = (T + t, N + n)
 
-                        for question_text, answer_text in qa_pairs:
-                            results.append(
-                                {
-                                    "image": pil_image,
-                                    "question": question_text,
-                                    "answer": answer_text,
-                                    "bboxes": bboxes,
-                                    "image_id": f"{base_idx + j}",
-                                    "question_type": str(question.__class__.__name__),
-                                    "num_detections": (
-                                        len(detections) if detections else 0
-                                    ),
-                                }
-                            )
+            # Periodic progress log
+            if batch_idx % 10 == 0:
+                logger.info(f"Processed {processed_images} images, generated {len(results)} QA pairs")
+            
+            # Save checkpoint every save_steps batches
+            if self.save_steps > 0 and (batch_idx + 1) % self.save_steps == 0:
+                self._save_checkpoint(batch_idx, results, processed_images)
+            
+            # Early stop on num_samples (0 or None means process all)
+            if self.num_samples is not None and self.num_samples > 0 and processed_images >= int(self.num_samples):
+                logger.info(f"Reached num_samples={self.num_samples}. Stopping further processing.")
+                break
 
+        # Create final dataset
         if not results:
             logger.warning("No question-answer pairs generated!")
-            # Create a minimal example
-            results = [
-                {
-                    "image": Image.new("RGB", (224, 224)),
-                    "question": "How many objects are there?",
-                    "answer": "0",
-                    "bboxes": [],
-                    "image_id": "0",
-                    "question_type": "HowMany",
-                    "num_detections": 0,
-                }
-            ]
+            raise RuntimeError("Dataset generation failed - no QA pairs were generated")
+        
+        # Debug: Check the structure of the first few results
+        logger.debug(f"Total results: {len(results)}")
+        if results:
+            logger.debug(f"First result keys: {list(results[0].keys())}")
+            logger.debug(f"First result annotations type: {type(results[0].get('annotations', None))}")
+            if results[0].get('annotations'):
+                ann = results[0]['annotations'][0] if results[0]['annotations'] else None
+                if ann:
+                    logger.debug(f"First annotation keys: {list(ann.keys())}")
+                    logger.debug(f"First annotation bbox: {ann.get('bbox')} (type: {type(ann.get('bbox'))})")
+        
+        # Validate results structure
+        for i, result in enumerate(results[:5]):  # Check first 5 results
+            if not isinstance(result, dict):
+                logger.error(f"Result {i} is not a dict: {type(result)}")
+                continue
+            
+            required_keys = ["image", "annotations", "question", "answer", "question_type", "source_id"]
+            for key in required_keys:
+                if key not in result:
+                    logger.error(f"Result {i} missing key: {key}")
+                    
+            # Validate annotations structure
+            annotations = result.get('annotations', [])
+            if not isinstance(annotations, list):
+                logger.error(f"Result {i} annotations is not a list: {type(annotations)}")
+            else:
+                for j, ann in enumerate(annotations):
+                    if not isinstance(ann, dict):
+                        logger.error(f"Result {i} annotation {j} is not a dict: {type(ann)}")
+                    else:
+                        bbox = ann.get('bbox')
+                        if bbox is not None and not isinstance(bbox, list):
+                            logger.error(f"Result {i} annotation {j} bbox is not a list: {type(bbox)}")
+        
+        # Simplified approach - let HuggingFace infer the features automatically
+        try:
+            # First create without explicit features to let HF infer
+                dataset = Dataset.from_list(results)
+            # Then cast the image column to HFImage with decode=False
+            dataset = dataset.cast_column("image", HFImage(decode=False))
+            except Exception as e:
+                logger.error(f"Failed to create dataset from results: {e}")
+                raise
 
-        # Create HuggingFace dataset
-        dataset = Dataset.from_list(results)
-
-        # Add metadata info
+        # Add metadata
         metadata = self._create_metadata()
-        dataset.info.description = (
-            f"Object detection QA dataset for {self.dataset_name}"
-        )
+        dataset.info.description = f"Object detection QA dataset for {self.dataset_name}"
         dataset.info.features = dataset.features
-        # Store metadata in the dataset info
-        dataset.info.version = metadata
+        dataset.info.version = "1.0.0"
+        dataset.info.config_name = json.dumps(metadata)
 
         # Create DatasetDict
         dataset_dict = DatasetDict({self.split: dataset})
 
         logger.info(f"Generated {len(dataset)} question-answer pairs")
+
+        # Clean up checkpoint files on successful completion
+        self._cleanup_checkpoint()
+        
+        # Log profiling information
+        if self.profile_questions and self._question_timings:
+            items = [(k, t / max(n, 1), n) for k, (t, n) in self._question_timings.items()]
+            items.sort(key=lambda x: x[1], reverse=True)
+            top = ", ".join([f"{k}: avg {avg:.4f}s over {n}" for k, avg, n in items[:5]])
+            logger.info(f"[PROFILE] Top slow questions (avg): {top}")
+
+        # Log per-question counts
+        if self._question_counts:
+                pairs = sorted(self._question_counts.items(), key=lambda kv: kv[1], reverse=True)
+                summary = ", ".join([f"{k}={v}" for k, v in pairs])
+                logger.info(f"Per-question counts: {summary}")
+
         return dataset_dict
+
+    def _create_metadata(self) -> Dict[str, Any]:
+        """Create metadata dictionary for the dataset."""
+        metadata = {
+            "dataset_name": self.dataset_name,
+            "split": self.split,
+            "confidence_threshold": self.conf_threshold,
+            "batch_size": self.batch_size,
+            "use_wbf": self.use_wbf,
+            "questions": [str(q.__class__.__name__) for q in self.questions],
+            "use_original_filenames": self.use_original_filenames,
+            "filename_prefix": self.filename_prefix,
+            "models": [],
+        }
+        
+        # Add device info
+        if not self.use_wbf:
+            metadata["device"] = str(self.device)
+        else:
+            metadata["device_info"] = "Multiple devices may be used in WBF ensemble"
+        
+        # Add model information
+        if self.models:
+            for model in self.models:
+                model_info = {
+                    "backend": model.__class__.__module__.split(".")[-1],
+                    "model_name": getattr(model, "model_name", str(model.__class__.__name__)),
+                }
+                metadata["models"].append(model_info)
+        else:
+            metadata["models"] = [{"type": "ground_truth"}]
+        
+        return metadata
 
 
 def generate_dataset(
     dataset_name: str,
     split: str,
-    models: Optional[list[Any]] = None,
-    model_configs: Optional[list[dict[str, Any]]] = None,
+    models: Optional[List[Any]] = None,
     use_wbf: bool = False,
-    wbf_config: Optional[dict[str, Any]] = None,
+    wbf_config: Optional[Dict[str, Any]] = None,
     conf_threshold: float = 0.2,
     batch_size: int = 1,
     device: Optional[Union[str, torch.device]] = None,
-    allowable_set: Optional[list[str]] = None,
-    selected_questions: Optional[list[str]] = None,
-    question_configs: Optional[list[dict[str, Any]]] = None,
-    custom_transforms: Optional[dict[str, Any]] = None,
+    allowable_set: Optional[List[str]] = None,
+    question_configs: Optional[List[Dict[str, Any]]] = None,
+    num_workers: int = 4,
+    qa_workers: int = 4,
+    save_steps: int = 50,
     save_path: Optional[str] = None,
     upload_to_hub: bool = False,
     hub_repo_id: Optional[str] = None,
     hub_private: bool = False,
-) -> DatasetDict:
-    """Generate a HuggingFace dataset for object detection question-answering."""
+    num_samples: Optional[int] = None,
+    use_original_filenames: bool = True,
+    filename_prefix: str = "img",
+    force: bool = False,
+):
+    """
+    Generate a HuggingFace dataset for object detection question-answering.
+    
+    Args:
+        dataset_name: Name of the dataset ("bdd", "nuimage", "waymo")
+        split: Dataset split ("train", "val", "test")
+        models: List of model objects for inference (optional, uses ground truth if None)
+        use_wbf: Whether to use Weighted Box Fusion ensemble (default: False)
+        wbf_config: Configuration for WBF ensemble (optional)
+        conf_threshold: Confidence threshold for filtering detections (default: 0.2)
+        batch_size: Batch size for processing (default: 1)
+        device: Device to use for inference (optional, auto-detected if None)
+        allowable_set: List of allowed object classes (optional, uses all if None)
+        question_configs: List of question configuration dictionaries (optional)
+        num_workers: Number of data loading workers (default: 4)
+        qa_workers: Number of QA generation workers (default: 4)
+        save_steps: Save checkpoint every N batches for crash recovery (default: 50)
+        save_path: Path to save dataset (optional)
+        upload_to_hub: Whether to upload to HuggingFace Hub (default: False)
+        hub_repo_id: HuggingFace Hub repository ID (required if upload_to_hub=True)
+        hub_private: Whether to make Hub repository private (default: False)
+        num_samples: Maximum number of samples to process (0 or None = process all)
+        use_original_filenames: Whether to keep original filenames (default: True)
+        filename_prefix: Prefix for generated filenames if not using originals (default: "img")
+        force: Force restart from scratch, ignoring existing checkpoints (default: False)
+        
+    Returns:
+        DatasetDict: Generated HuggingFace dataset
+    """
+    from datasets import DatasetDict
 
     # Create dataset builder
     builder = HuggingFaceDatasetBuilder(
         dataset_name=dataset_name,
         split=split,
         models=models,
-        model_configs=model_configs,
         use_wbf=use_wbf,
         wbf_config=wbf_config,
         conf_threshold=conf_threshold,
         batch_size=batch_size,
         device=device,
         allowable_set=allowable_set,
-        selected_questions=selected_questions,
         question_configs=question_configs,
-        custom_transforms=custom_transforms,
+        num_workers=num_workers,
+        qa_workers=qa_workers,
+        num_samples=num_samples,
+        save_steps=save_steps,
+        save_path=save_path,
+        use_original_filenames=use_original_filenames,
+        filename_prefix=filename_prefix,
+        force=force,
     )
 
     # Build the dataset
@@ -513,298 +892,89 @@ def generate_dataset(
 
     # Save locally if requested
     if save_path:
-        dataset_dict.save_to_disk(save_path)
-        logger.info(f"Dataset saved to {save_path}")
+        save_path_obj = Path(save_path)
+        data_dir = save_path_obj / "data"
+        data_dir.mkdir(parents=True, exist_ok=True)
+        
+        for split_name, dataset in dataset_dict.items():
+            parquet_file = data_dir / f"{split_name}-00000-of-00001.parquet"
+            dataset.to_parquet(str(parquet_file))
+            logger.info(f"Dataset {split_name} split saved to {parquet_file}")
 
     # Upload to HuggingFace Hub if requested
     if upload_to_hub:
         if not hub_repo_id:
             raise ValueError("hub_repo_id is required when upload_to_hub=True")
 
+        # Import Hub utilities locally
+        from huggingface_hub import create_repo, upload_large_folder
+        
+        logger.info(f"Uploading to HuggingFace Hub: {hub_repo_id}")
+        
+        # Create repository
+        create_repo(hub_repo_id, repo_type="dataset", private=hub_private, exist_ok=True)
+        
+        # Upload images and directory structure using upload_large_folder
+        if save_path:
+            logger.info(f"Uploading dataset files from {save_path} to Hub repository...")
+            try:
+                upload_large_folder(
+                        repo_id=hub_repo_id,
+                        repo_type="dataset",
+                    folder_path=str(save_path),
+                    )
+                logger.info("Image and directory upload completed successfully")
+                except Exception as e:
+                logger.error(f"Failed to upload files to Hub: {e}")
+                    raise
+        
+        # Cast image column and push dataset
+        try:
+            from datasets import Image as HFImage
+            for split_name in dataset_dict.keys():
+                dataset_dict[split_name] = dataset_dict[split_name].cast_column("image", HFImage(decode=False))
+        except Exception as e:
+            logger.warning(f"Failed to cast image column before push_to_hub: {e}")
+
+        # Push dataset with proper settings
         dataset_dict.push_to_hub(
             repo_id=hub_repo_id,
             private=hub_private,
+            embed_external_files=False,  # Critical: no byte duplication
             commit_message=f"Upload {dataset_name} {split} dataset",
+            max_shard_size="100MB",
         )
-        logger.info(f"Dataset uploaded to HuggingFace Hub: {hub_repo_id}")
+        logger.info(f"Dataset pushed to HuggingFace Hub: {hub_repo_id}")
 
     return dataset_dict
 
 
-def validate_model_config(
-    backend: str,
-    model_name: str,
-    config: Optional[dict[str, Any]] = None,
-    device: Optional[Union[str, torch.device]] = None,
-) -> tuple[bool, Optional[str]]:
-    """
-    Validate that a model configuration can be loaded and used.
-
-    Args:
-        backend: Model backend (detectron, mmdetection, ultralytics)
-        model_name: Name of the model
-        config: Optional custom configuration
-        device: Device to test on
-
-    Returns:
-        Tuple of (is_valid, error_message)
-    """
-    try:
-        # Set device
-        if device is None:
-            device = get_default_device()
-
-        logger.info(f"Validating {backend} model: {model_name}")
-
-        # Create and test the model
-        model = create_model(backend, model_name, device, 0.2)
-
-        # Basic validation - check if model can be moved to device
-        model.to(device)
-
-        # Test with a dummy input to ensure model is functional
-        if hasattr(model, "identify_for_image_batch"):
-            try:
-                # Create a dummy batch of images (batch_size=1, channels=3, height=224, width=224)
-                dummy_images = torch.rand(1, 3, 224, 224, device=device)
-
-                # Test inference
-                _ = model.identify_for_image_batch(dummy_images)
-                logger.info(f"✓ {backend} model {model_name} validated successfully")
-                return True, None
-
-            except Exception as inference_error:
-                error_msg = f"Model inference test failed: {str(inference_error)}"
-                logger.error(error_msg)
-                return False, error_msg
-        else:
-            # If no identify_for_image_batch method, assume basic validation passed
-            logger.info(f"✓ {backend} model {model_name} basic validation passed")
-            return True, None
-
-    except ImportError as e:
-        error_msg = f"Import error for {backend}: {str(e)}. Make sure the required dependencies are installed."
-        logger.error(error_msg)
-        return False, error_msg
-    except FileNotFoundError as e:
-        error_msg = f"Model file not found: {str(e)}. Check the model path or download the model."
-        logger.error(error_msg)
-        return False, error_msg
-    except Exception as e:
-        error_msg = f"Model validation failed: {str(e)}"
-        logger.error(error_msg)
-        return False, error_msg
-
-
-def validate_models_batch(
-    model_configs: list[dict[str, Any]],
-    device: Optional[Union[str, torch.device]] = None,
-) -> dict[str, tuple[bool, Optional[str]]]:
-    """
-    Validate multiple model configurations in batch.
-
-    Args:
-        model_configs: List of model configuration dictionaries
-        device: Device to test on
-
-    Returns:
-        Dictionary mapping model identifiers to (is_valid, error_message) tuples
-    """
-    results = {}
-
-    for i, config in enumerate(model_configs):
-        model_id = f"{config['backend']}_{config['model_name']}_{i}"
-
-        try:
-            is_valid, error_msg = validate_model_config(
-                backend=config["backend"],
-                model_name=config["model_name"],
-                config=config.get("custom_config"),
-                device=device,
-            )
-            results[model_id] = (is_valid, error_msg)
-
-        except Exception as e:
-            results[model_id] = (False, f"Validation error: {str(e)}")
-
-    return results
-
-
-def validate_wbf_compatibility(
-    model_configs: list[dict[str, Any]],
-    device: Optional[Union[str, torch.device]] = None,
-) -> tuple[bool, Optional[str]]:
-    """
-    Validate that models are compatible for WBF ensemble.
-
-    Args:
-        model_configs: List of model configuration dictionaries
-        device: Device to test on
-
-    Returns:
-        Tuple of (is_valid, error_message)
-    """
-    if len(model_configs) < 2:
-        return False, "WBF requires at least 2 models"
-
-    # Validate individual models first
-    validation_results = validate_models_batch(model_configs, device)
-
-    failed_models = []
-    for model_id, (is_valid, error_msg) in validation_results.items():
-        if not is_valid:
-            failed_models.append(f"{model_id}: {error_msg}")
-
-    if failed_models:
-        return False, f"Some models failed validation: {'; '.join(failed_models)}"
-
-    # Check backend compatibility
-    supported_backends = {"detectron", "mmdetection", "ultralytics"}
-    model_backends = set(config["backend"] for config in model_configs)
-
-    unsupported_backends = model_backends - supported_backends
-    if unsupported_backends:
-        return False, f"Unsupported backends for WBF: {unsupported_backends}"
-
-    # Test that models can be grouped properly
-    try:
-        # Create temporary models to test grouping
-        models = []
-        for config in model_configs:
-            model = create_model(
-                config["backend"],
-                config["model_name"],
-                device,
-                config.get("confidence_threshold", 0.2),
-            )
-            models.append(model)
-
-        # Test WBF ensemble creation
-        detectron_models = [m for m in models if isinstance(m, Detectron_obj)]
-        mmdet_models = [m for m in models if isinstance(m, MMdetection_obj)]
-        ultralytics_models = [m for m in models if isinstance(m, (Yolo, RT_DETR))]
-
-        # Create WBF ensemble
-        wbf_ensemble = WBF(
-            detectron2_models=detectron_models if detectron_models else None,
-            mmdet_models=mmdet_models if mmdet_models else None,
-            ultralytics_models=ultralytics_models if ultralytics_models else None,
-        )
-
-        # Test with dummy input
-        dummy_images = torch.rand(1, 3, 224, 224, device=device)
-        _ = wbf_ensemble.identify_for_image_batch(dummy_images)
-
-        logger.info("✓ WBF ensemble validation passed")
-        return True, None
-
-    except Exception as e:
-        error_msg = f"WBF ensemble validation failed: {str(e)}"
-        logger.error(error_msg)
-        return False, error_msg
-
-
-def load_config_file(config_path: str) -> dict[str, Any]:
-    """Load model configuration from JSON file."""
-    config_path = Path(config_path)
-    if not config_path.exists():
-        raise FileNotFoundError(f"Configuration file not found: {config_path}")
-
-    with open(config_path, "r") as f:
-        config = json.load(f)
-
-    return config
-
-
-def list_available_models() -> dict[str, list[str]]:
-    """List supported backends and example models."""
-    return {
-        "detectron": [
-            "Custom models via config file - provide config and weights paths"
-        ],
-        "mmdetection": [
-            "Custom models via config file - provide config and checkpoint paths"
-        ],
-        "ultralytics": [
-            "yolov8x.pt",
-            "yolov10x.pt",
-            "yolo11x.pt",
-            "rtdetr-x.pt",
-            "Any YOLOv8/YOLOv10/YOLOv11/RT-DETR model file or custom trained model",
-        ],
-    }
-
-
-def list_available_questions() -> dict[str, dict[str, Any]]:
+# Compatibility functions for existing code
+def list_available_questions() -> Dict[str, Dict[str, Any]]:
     """List available question types, their descriptions, and parameters."""
+    # Local import to avoid heavy dependencies
+    from graid.questions.ObjectDetectionQ import ALL_QUESTION_CLASSES
+    
     question_info = {}
-
-    for q in ALL_QUESTIONS:
-        question_name = q.__class__.__name__
-        question_text = getattr(q, "question", str(q.__class__.__name__))
-
-        # Determine parameters for each question type
-        params = {}
-        if question_name == "WidthVsHeight":
-            params = {
-                "threshold": {
-                    "type": "float",
-                    "default": 0.30,
-                    "description": "Threshold for width vs height comparison",
-                }
-            }
-        elif question_name == "LargestAppearance":
-            params = {
-                "threshold": {
-                    "type": "float",
-                    "default": 0.3,
-                    "description": "Threshold for largest appearance comparison",
-                }
-            }
-        elif question_name == "MostClusteredObjects":
-            params = {
-                "threshold": {
-                    "type": "int",
-                    "default": 100,
-                    "description": "Distance threshold for clustering",
-                }
-            }
-        elif question_name == "Quadrants":
-            params = {
-                "N": {
-                    "type": "int",
-                    "default": 2,
-                    "description": "Number of rows in grid",
-                },
-                "M": {
-                    "type": "int",
-                    "default": 2,
-                    "description": "Number of columns in grid",
-                },
-            }
-        elif question_name == "LeftMostWidthVsHeight":
-            params = {
-                "threshold": {
-                    "type": "float",
-                    "default": 0.3,
-                    "description": "Threshold for width vs height comparison",
-                }
-            }
-        elif question_name == "RightMostWidthVsHeight":
-            params = {
-                "threshold": {
-                    "type": "float",
-                    "default": 0.3,
-                    "description": "Threshold for width vs height comparison",
-                }
-            }
-
-        question_info[question_name] = {"question": question_text, "parameters": params}
-
+    
+    for question_name, question_class in ALL_QUESTION_CLASSES.items():
+        try:
+            # Create a temporary instance to get the question text
+            temp_instance = question_class()
+            question_text = getattr(temp_instance, "question", question_name)
+        except Exception:
+            question_text = question_name
+        
+        # For now, return basic info - can be extended later
+        question_info[question_name] = {
+            "question": question_text,
+            "parameters": {}  # Would need to be populated based on inspection
+        }
+    
     return question_info
 
 
-def interactive_question_selection() -> list[dict[str, Any]]:
+def interactive_question_selection() -> List[Dict[str, Any]]:
     """Interactive question selection with parameter configuration."""
     print("\n📋 Question Selection")
     print("=" * 50)
@@ -818,11 +988,6 @@ def interactive_question_selection() -> list[dict[str, Any]]:
         info = available_questions[name]
         print(f"  {i}. {name}")
         print(f"     {info['question']}")
-        if info["parameters"]:
-            params_str = ", ".join(
-                f"{k}={v['default']}" for k, v in info["parameters"].items()
-            )
-            print(f"     Parameters: {params_str}")
         print()
 
     print("Enter question numbers (comma-separated) or 'all' for all questions:")
@@ -833,11 +998,8 @@ def interactive_question_selection() -> list[dict[str, Any]]:
 
             if selection.lower() == "all":
                 # Add all questions with default parameters
-                for name, info in available_questions.items():
-                    params = {}
-                    for param_name, param_info in info["parameters"].items():
-                        params[param_name] = param_info["default"]
-                    question_configs.append({"name": name, "params": params})
+                for name in available_questions.keys():
+                    question_configs.append({"name": name, "params": {}})
                 break
 
             # Parse comma-separated numbers
@@ -859,49 +1021,14 @@ def interactive_question_selection() -> list[dict[str, Any]]:
             # Configure selected questions
             for idx in selected_indices:
                 name = question_names[idx]
-                info = available_questions[name]
-                params = {}
-
-                print(f"\n⚙️  Configuring {name}")
-                print(f"Question: {info['question']}")
-
-                # Configure parameters
-                for param_name, param_info in info["parameters"].items():
-                    while True:
-                        try:
-                            default_val = param_info["default"]
-                            param_type = param_info["type"]
-                            description = param_info["description"]
-
-                            user_input = input(
-                                f"{param_name} ({description}, default: {default_val}): "
-                            ).strip()
-
-                            if not user_input:
-                                # Use default
-                                params[param_name] = default_val
-                                break
-
-                            if param_type == "int":
-                                params[param_name] = int(user_input)
-                            elif param_type == "float":
-                                params[param_name] = float(user_input)
-                            else:
-                                params[param_name] = user_input
-                            break
-                        except ValueError:
-                            print(
-                                f"Invalid input for {param_name}. Expected {param_type}."
-                            )
-
-                question_configs.append({"name": name, "params": params})
-
+                question_configs.append({"name": name, "params": {}})
+            
             break
 
         except ValueError:
             print("Invalid input. Please enter numbers separated by commas or 'all'.")
         except KeyboardInterrupt:
             print("\nOperation cancelled.")
-            return []
+            raise KeyboardInterrupt()
 
     return question_configs

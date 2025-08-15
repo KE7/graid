@@ -171,10 +171,18 @@ class DatasetGenerationConfig:
         batch_size: int = 1,
         device: Optional[str] = None,
         allowable_set: Optional[list[str]] = None,
+        question_configs: Optional[list[dict[str, Any]]] = None,
+        num_workers: int = 4,
+        qa_workers: int = 4,
         save_path: Optional[str] = None,
         upload_to_hub: bool = False,
         hub_repo_id: Optional[str] = None,
         hub_private: bool = False,
+        num_samples: Optional[int] = None,
+        save_steps: int = 50,
+        force: bool = False,
+        use_original_filenames: bool = True,
+        filename_prefix: str = "img",
     ):
         self.dataset_name = dataset_name
         self.split = split
@@ -185,10 +193,18 @@ class DatasetGenerationConfig:
         self.batch_size = batch_size
         self.device = device
         self.allowable_set = allowable_set
+        self.question_configs = question_configs
+        self.num_workers = num_workers
+        self.qa_workers = qa_workers
         self.save_path = save_path
         self.upload_to_hub = upload_to_hub
         self.hub_repo_id = hub_repo_id
         self.hub_private = hub_private
+        self.num_samples = num_samples
+        self.save_steps = save_steps
+        self.force = force
+        self.use_original_filenames = use_original_filenames
+        self.filename_prefix = filename_prefix
 
         # Validate configuration
         self._validate()
@@ -200,9 +216,18 @@ class DatasetGenerationConfig:
         if self.dataset_name not in supported_datasets:
             raise ConfigurationError(f"Unsupported dataset: {self.dataset_name}")
 
-        # Validate split
-        if self.split not in ["train", "val", "test"]:
-            raise ConfigurationError(f"Invalid split: {self.split}")
+        # Validate split - support individual splits and combined splits like "train+val"
+        valid_individual_splits = ["train", "val", "test"]
+        if "+" in self.split:
+            # Handle combined splits like "train+val"
+            split_parts = [s.strip() for s in self.split.split("+")]
+            for part in split_parts:
+                if part not in valid_individual_splits:
+                    raise ConfigurationError(f"Invalid split part: {part}. Valid splits: {valid_individual_splits}")
+        else:
+            # Handle individual splits
+            if self.split not in valid_individual_splits:
+                raise ConfigurationError(f"Invalid split: {self.split}. Valid splits: {valid_individual_splits}")
 
         # Validate models
         if not self.models:
@@ -264,6 +289,14 @@ class DatasetGenerationConfig:
             "upload_to_hub": self.upload_to_hub,
             "hub_repo_id": self.hub_repo_id,
             "hub_private": self.hub_private,
+            "question_configs": self.question_configs,
+            "num_workers": self.num_workers,
+            "qa_workers": self.qa_workers,
+            "num_samples": self.num_samples,
+            "save_steps": self.save_steps,
+            "force": self.force,
+            "use_original_filenames": self.use_original_filenames,
+            "filename_prefix": self.filename_prefix,
         }
 
 
@@ -341,10 +374,18 @@ def load_config_from_dict(config_data: dict[str, Any]) -> DatasetGenerationConfi
             batch_size=config_data.get("batch_size", 1),
             device=config_data.get("device"),
             allowable_set=config_data.get("allowable_set"),
+            question_configs=config_data.get("question_configs"),
+            num_workers=config_data.get("num_workers", 4),
+            qa_workers=config_data.get("qa_workers", 4),
             save_path=config_data.get("save_path"),
             upload_to_hub=config_data.get("upload_to_hub", False),
             hub_repo_id=config_data.get("hub_repo_id"),
             hub_private=config_data.get("hub_private", False),
+            num_samples=config_data.get("num_samples"),
+            save_steps=config_data.get("save_steps", 50),
+            force=config_data.get("force", False),
+            use_original_filenames=config_data.get("use_original_filenames", True),
+            filename_prefix=config_data.get("filename_prefix", "img"),
         )
 
     except KeyError as e:
@@ -419,3 +460,4 @@ def validate_config_file(config_path: Union[str, Path]) -> tuple[bool, Optional[
         return False, str(e)
     except Exception as e:
         return False, f"Unexpected error: {e}"
+
