@@ -269,16 +269,17 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False, sa
         if use_batch and image_path is not None:
             questions = ", ".join([item for i, item in enumerate(questions)])
             answers = ", ".join([item for i, item in enumerate(answers)])
-            _, prompt = my_prompt.generate_prompt(image_path, questions)
+            annotated_image, messages = my_prompt.generate_prompt(image_path, questions)
             if image_path is not None:
-                cache_key = f"{my_vlm}_{my_prompt}_{image_path}_{prompt}" + (
+                messages_str = str(messages)
+                cache_key = f"{my_vlm}_{my_prompt}_{image_path}_{messages_str}" + (
                     "_SoM" if "SetOfMarkPrompt" == str(my_prompt) else ""
                 ) + "_batch"
                 if cache_key in vlm_cache:
                     preds = vlm_cache[cache_key]
                 else:
-                    preds, prompt = my_vlm.generate_answer(
-                        image_path, questions, my_prompt
+                    preds, returned_messages = my_vlm.generate_answer(
+                        annotated_image, messages
                     )
                     vlm_cache[cache_key] = preds
             else:
@@ -292,15 +293,16 @@ def iterate_sqlite_db(db_path, my_vlm, my_metric, my_prompt, use_batch=False, sa
                 if len(q) < 5:  # check for "D" and "y"
                     raise ValueError(f"Question too short: {q}")
 
-                # the cache key should be image_path + prompt
-                _, prompt = my_prompt.generate_prompt(image, q)
-                cache_key = f"{my_vlm}_{my_prompt}_{image_path}_{prompt}" + (
+                # Generate prompt and unique cache key
+                annotated_image, messages = my_prompt.generate_prompt(image, q)
+                messages_str = str(messages)
+                cache_key = f"{my_vlm}_{my_prompt}_{image_path}_{messages_str}" + (
                     "_SoM" if "SetOfMarkPrompt" == str(my_prompt) else ""
                 )
                 if cache_key in vlm_cache:
                     pred = vlm_cache[cache_key]
                 else:
-                    pred, prompt = my_vlm.generate_answer(image_path, q, my_prompt)
+                    pred, returned_messages = my_vlm.generate_answer(annotated_image, messages)
                     vlm_cache[cache_key] = pred
                     vlm_cache.commit()
                 correct = my_metric.evaluate(pred, a)

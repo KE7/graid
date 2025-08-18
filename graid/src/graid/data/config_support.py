@@ -461,3 +461,11 @@ def validate_config_file(config_path: Union[str, Path]) -> tuple[bool, Optional[
     except Exception as e:
         return False, f"Unexpected error: {e}"
 
+
+        config = load_config_from_file(config_path)
+        return True, None
+    except ConfigurationError as e:
+        return False, str(e)
+    except Exception as e:
+        return False, f"Unexpected error: {e}"
+
