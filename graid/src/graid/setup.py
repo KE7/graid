@@ -33,7 +33,7 @@ def install_depth_pro() -> None:
     os.chdir("ml-depth-pro")
 
     # Install the package in editable mode
-    subprocess.run(["pip", "install", "-e", "."])
+    subprocess.run(["uv", "pip", "install", "-e", "."])
 
     # Change back to the original directory
     os.chdir("..")
@@ -93,6 +93,7 @@ def install_detectron2() -> None:
                 'CC=clang CXX=clang++ ARCHFLAGS="-arch x86_64" uv',
                 "pip",
                 "install",
+                "--no-build-isolation",
                 "-e",
                 ".",
                 "--no-build-isolation",
@@ -141,12 +142,12 @@ def install_mmdetection() -> None:
     # Change to the mmdetection directory
     os.chdir("mmdetection")
 
-    subprocess.run(["pip", "install", "-e", "."])
+    subprocess.run(["uv", "pip", "install", "--no-build-isolation", "-e", "."])
 
     # Change back to the original directory
     os.chdir("..")
 
-    subprocess.run(["pip", "install", "--upgrade", "openmim"])
+    subprocess.run(["uv", "pip", "install", "--upgrade", "openmim"])
     subprocess.run(["mim", "install", "mmengine"])
     subprocess.run(["mim", "install", "mmcv==2.1.0"])
     subprocess.run(["mim", "install", "mmdet"])
@@ -555,7 +556,7 @@ def download_nuimages(split: Optional[str] = None) -> None:
     else:
         raise ValueError(f"Unknown split {split}")
 
-    subprocess.run(["pip", "install", "nuscenes-devkit"])
+    subprocess.run(["uv", "pip", "install", "nuscenes-devkit"])
 
 
 def install_all() -> None:

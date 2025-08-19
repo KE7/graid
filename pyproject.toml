@@ -47,7 +47,12 @@ dependencies = [
     "datasets (>=4.0.0,<5.0.0)",
     "ensemble-boxes (>=1.0.9,<2.0.0)",
     "supervision (>=0.26.1,<0.27.0)",
+    "pycocotools>=2.0.10",
 ]
+
+[tool.setuptools.packages.find]
+where = ["graid/src"]
+include = ["graid*"]
 
 [project.scripts]
 install_depth_pro = "graid.setup:install_depth_pro"

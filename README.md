@@ -5,13 +5,13 @@
 ## 🚀 Quick Start
 
 ### Installation
-0. Install uv (optional if you already have it): `curl -LsSf https://astral.sh/uv/install.sh | sh` (or see [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/))
-1. Install dependencies: `uv sync`
-2. Install all backends: `install_all`
+0. 0. Install uv (optional if you already have it): `curl -LsSf https://astral.sh/uv/install.sh | sh` (or see [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/))
+1. Create a virtual environment: `uv venv`
+2. Activate it: `source .venv/bin/activate` (or use direnv with the provided .envrc)
+3. Install dependencies: `uv sync`
+4. Install all backends: `uv run install_all`
 
-**Note**: `uv` creates its own virtual environment automatically. All commands will be available after `uv sync` completes.
-
-### 🤗 HuggingFace Dataset Generation (Recommended)
+### 🤗 HuggingFace Dataset Generation
 
 **Generate high-quality VQA datasets for modern ML workflows:**
 ```bash

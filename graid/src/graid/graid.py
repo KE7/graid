@@ -162,6 +162,7 @@ def get_dataset_choice() -> str:
     typer.secho("📊 Step 1: Choose a dataset", fg=typer.colors.BLUE, bold=True)
     typer.echo()
 
+    from graid.data.generate_db import DATASET_TRANSFORMS
     datasets = {
         "1": ("bdd", "BDD100K - Berkeley DeepDrive autonomous driving dataset"),
         "2": ("nuimage", "NuImages - Large-scale autonomous driving dataset"),
@@ -424,6 +425,12 @@ def generate(
 
     Run without arguments for interactive mode, or specify all parameters for batch mode.
     """
+
+    from graid.data.generate_db import (
+        DATASET_TRANSFORMS,
+        MODEL_CONFIGS,
+        generate_db,
+    )
 
     if interactive and not all([dataset, split]):
         print_welcome()
@@ -981,6 +988,7 @@ def eval_vlms(
     typer.echo()
 
     try:
+        from graid.evaluator.eval_vlms import evaluate_vlm
         accuracy = evaluate_vlm(
             db_path=db_path,
             vlm_type=vlm,
@@ -1042,7 +1050,6 @@ def list_models():
     """List all available pre-configured models."""
     typer.secho("📋 Available Models", fg=typer.colors.BLUE, bold=True)
     typer.echo()
-
     # Local import to avoid heavy dependencies
     from graid.data.generate_db import list_available_models
     models = list_available_models()
@@ -1084,6 +1091,7 @@ def info():
     """Show information about GRAID and supported datasets/models."""
     print_welcome()
 
+    from graid.data.generate_db import DATASET_TRANSFORMS, MODEL_CONFIGS
     typer.secho("📊 Supported Datasets:", fg=typer.colors.BLUE, bold=True)
     # Local import to avoid heavy dependencies
     from graid.data.generate_db import DATASET_TRANSFORMS
