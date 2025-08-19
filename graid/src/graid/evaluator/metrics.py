@@ -29,7 +29,8 @@ class ExactMatch(EvaluationMetric):
         pred_as_json = None
         try:
             pred_as_json = json.loads(pred)
-        except:
+        except (json.JSONDecodeError, TypeError):
+            # Keep pred_as_json as None if JSON parsing fails
             pass
         try:
             if pred_as_json and "answer" in pred_as_json:
@@ -42,7 +43,8 @@ class ExactMatch(EvaluationMetric):
                     pred = match.group(1).strip()
                 else:
                     pred = pred.strip()
-        except:
+        except (AttributeError, TypeError, ValueError):
+            # Return 0.0 if string processing fails
             return 0.0
 
         return 1.0 if str(pred).lower() == gt.strip().lower() else 0.0
@@ -59,7 +61,8 @@ class Contains(EvaluationMetric):
         pred_as_json = None
         try:
             pred_as_json = json.loads(pred)
-        except:
+        except (json.JSONDecodeError, TypeError):
+            # Keep pred_as_json as None if JSON parsing fails
             pass
         try:
             if pred_as_json and "answer" in pred_as_json:
@@ -72,7 +75,8 @@ class Contains(EvaluationMetric):
                     pred = match.group(1).strip()
                 else:
                     pred = pred.strip()
-        except:
+        except (AttributeError, TypeError, ValueError):
+            # Return 0.0 if string processing fails
             return 0.0
 
         return 1.0 if gt.strip().lower() in pred.strip().lower() else 0.0

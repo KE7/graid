@@ -1,7 +1,7 @@
 [project]
 name = "graid"
 version = "0.1.0"
-description = "GRAID: Generating Reasoning questions from Analysis of Images via Discriminative artificial intelligence - A framework for VLM scene understanding in robotics and autonomous driving"
+description = "GRAID: Generating Reasoning questions from Analysis of Images via Discriminative artificial intelligence - A framework for VQA generation from real world images"
 authors = [
     { name = "Karim Elmaaroufi", email = "elmaaroufi@berkeley.edu" },
     { name = "Liheng Lai", email = "liheng@berkeley.edu" },
@@ -13,7 +13,6 @@ keywords = [
     "vision-language-models",
     "VLM",
     "robotics",
-    "autonomous-driving",
     "scene-understanding",
     "depth-estimation",
     "object-detection",
@@ -45,6 +44,9 @@ dependencies = [
     "clip",
     "wandb>=0.20.1,<0.21",
     "sentence-transformers>=4.1.0,<5",
+    "datasets (>=4.0.0,<5.0.0)",
+    "ensemble-boxes (>=1.0.9,<2.0.0)",
+    "supervision (>=0.26.1,<0.27.0)",
     "pycocotools>=2.0.10",
 ]
 
@@ -79,6 +81,7 @@ dev = [
     "ipykernel>=6.29.5,<7",
     "gdown>=5.2.0,<6",
     "pytest>=8.4.0,<9",
+    "pytest-xdist>=3.8.0",
 ]
 mmdetection = ["openmim>=0.3.9,<0.4"]
 
@@ -104,6 +107,12 @@ include = ["graid/src/graid"]
 [build-system]
 requires = [ "setuptools", "wheel", "torch"]
 build-backend = "setuptools.build_meta:__legacy__"
+
+[tool.setuptools.packages.find]
+where = ["graid/src"]
+
+[tool.setuptools.package-dir]
+"" = "graid/src"
 
 [tool.isort]
 profile = "black"

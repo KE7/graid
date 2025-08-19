@@ -1,6 +1,8 @@
 # Official COCO Panoptic Categories
 # Source: https://github.com/cocodataset/panopticapi/blob/master/panoptic_coco_categories.json
 
+from typing import Any, Optional
+
 # Standard COCO Detection classes (80 classes, 0-79)
 coco_labels = {
     -1: "undefined",
@@ -230,3 +232,79 @@ inverse_coco_panoptic_label = {v: k for k, v in coco_panoptic_labels.items()}
 # For backward compatibility, add undefined label
 coco_labels[-1] = "undefined"
 inverse_coco_label["undefined"] = -1
+
+
+def validate_coco_objects(objects: list[str]) -> tuple[bool, Optional[str]]:
+    """
+    Validate that all objects in the list are valid COCO object names.
+
+    Args:
+        objects: List of object names to validate
+
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    if not objects:
+        return True, None
+
+    valid_coco_objects = set(coco_labels.values())
+    # Remove 'undefined' from valid objects as it's not a real COCO class
+    valid_coco_objects.discard("undefined")
+
+    invalid_objects = []
+    for obj in objects:
+        if obj not in valid_coco_objects:
+            invalid_objects.append(obj)
+
+    if invalid_objects:
+        return (
+            False,
+            f"Invalid COCO objects: {invalid_objects}. Valid objects: {sorted(valid_coco_objects)}",
+        )
+
+    return True, None
+
+
+def get_valid_coco_objects() -> list[str]:
+    """
+    Get a list of valid COCO object names.
+
+    Returns:
+        List of valid COCO object names
+    """
+    valid_objects = list(coco_labels.values())
+    # Remove 'undefined' as it's not a real COCO class
+    if "undefined" in valid_objects:
+        valid_objects.remove("undefined")
+    return sorted(valid_objects)
+
+
+def filter_detections_by_allowable_set(
+    detections: list[dict[str, Any]], allowable_set: Optional[list[str]]
+) -> list[dict[str, Any]]:
+    """
+    Filter detections to only include objects in the allowable set.
+
+    Args:
+        detections: List of detection dictionaries with 'class' or 'label' field
+        allowable_set: List of allowed COCO object names, or None to allow all
+
+    Returns:
+        Filtered list of detections
+    """
+    if not allowable_set:
+        return detections
+
+    allowable_set_normalized = set(allowable_set)
+    filtered_detections = []
+
+    for detection in detections:
+        # Handle different possible keys for class name
+        class_name = (
+            detection.get("class") or detection.get("label") or detection.get("name")
+        )
+
+        if class_name and class_name in allowable_set_normalized:
+            filtered_detections.append(detection)
+
+    return filtered_detections

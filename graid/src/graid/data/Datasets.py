@@ -9,17 +9,14 @@ from typing import Optional
 import numpy as np
 import torch
 from PIL import Image
-from graid.data.ImageLoader import (
-    Bdd100kDataset,
-    NuImagesDataset,
-    WaymoDataset,
-)
-from graid.interfaces.ObjectDetectionI import ObjectDetectionModelI
-from graid.questions.ObjectDetectionQ import ALL_QUESTIONS
-from graid.utilities.common import project_root_dir
 from sqlitedict import SqliteDict
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
+
+from graid.data.ImageLoader import Bdd100kDataset, NuImagesDataset, WaymoDataset
+from graid.interfaces.ObjectDetectionI import ObjectDetectionModelI
+from graid.questions.ObjectDetectionQ import ALL_QUESTIONS
+from graid.utilities.common import project_root_dir
 
 lock = threading.Lock()
 

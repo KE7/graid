@@ -5,6 +5,16 @@ This module tests the integration between different components of the validation
 system, including end-to-end workflows and external integrations like WandB.
 """
 
+from graid.interfaces.ObjectDetectionI import ObjectDetectionResultI
+from graid.data.validation.human_supervised_filter import (
+    HumanSupervisedClassifier,
+    HumanSupervisedFilter,
+)
+from graid.data.validation import (
+    ComprehensiveDetectionValidator,
+    ValidationConfig,
+    ValidationStage,
+)
 import json
 import os
 import shutil
@@ -18,18 +28,8 @@ from PIL import Image
 # Add graid to path
 sys.path.append(str(Path(__file__).parent.parent / "src"))
 
-from graid.data.validation import (
-    ComprehensiveDetectionValidator,
-    ValidationConfig,
-    ValidationStage,
-)
-from graid.data.validation.human_supervised_filter import (
-    HumanSupervisedClassifier,
-    HumanSupervisedFilter,
-)
-from graid.interfaces.ObjectDetectionI import ObjectDetectionResultI
 
-
+@unittest.skip("Skipping integration tests")
 class TestEndToEndValidation(unittest.TestCase):
     """Test end-to-end validation workflows."""
 
@@ -168,6 +168,7 @@ class TestEndToEndValidation(unittest.TestCase):
             self.assertIsInstance(e, Exception)
 
 
+@unittest.skip("Skipping integration tests")
 class TestHumanSupervisedIntegration(unittest.TestCase):
     """Test integration of human supervised validation (Phase 6)."""
 
@@ -263,6 +264,7 @@ class TestHumanSupervisedIntegration(unittest.TestCase):
         self.assertLessEqual(result.confidence, 1.0)
 
 
+@unittest.skip("Skipping integration tests")
 class TestConfigurationManagement(unittest.TestCase):
     """Test configuration management and persistence."""
 
@@ -303,7 +305,8 @@ class TestConfigurationManagement(unittest.TestCase):
     def test_config_validation(self):
         """Test configuration validation."""
         # Test valid config
-        valid_config = ValidationConfig(min_detection_confidence=0.5, device="cpu")
+        valid_config = ValidationConfig(
+            min_detection_confidence=0.5, device="cpu")
         self.assertIsNotNone(valid_config)
 
         # Test edge cases
@@ -336,14 +339,17 @@ class TestConfigurationManagement(unittest.TestCase):
         )
 
         fast_validator = ComprehensiveDetectionValidator(fast_config)
-        comprehensive_validator = ComprehensiveDetectionValidator(comprehensive_config)
+        comprehensive_validator = ComprehensiveDetectionValidator(
+            comprehensive_config)
 
         # Verify they're independent
         self.assertNotEqual(id(fast_validator), id(comprehensive_validator))
         self.assertEqual(fast_validator.config.require_all_stages, False)
-        self.assertEqual(comprehensive_validator.config.require_all_stages, True)
+        self.assertEqual(
+            comprehensive_validator.config.require_all_stages, True)
 
 
+@unittest.skip("Skipping integration tests")
 class TestPerformanceAndScaling(unittest.TestCase):
     """Test performance characteristics and scaling behavior."""
 

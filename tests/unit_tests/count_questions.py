@@ -1,11 +1,8 @@
 import time
 
 import torchvision.transforms as transforms
-from graid.data.ImageLoader import (
-    Bdd100kDataset,
-    NuImagesDataset,
-    WaymoDataset,
-)
+
+from graid.data.ImageLoader import Bdd100kDataset, NuImagesDataset, WaymoDataset
 from graid.interfaces.ObjectDetectionI import ObjectDetectionUtils
 from graid.questions.ObjectDetectionQ import (
     HowMany,

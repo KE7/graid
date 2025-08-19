@@ -1,19 +1,24 @@
+import os
+import tempfile
+import urllib.request
 from itertools import islice
 from pathlib import Path
-from typing import Iterator, List, Optional, Union
+from collections.abc import Iterator
+from typing import Optional, Union
 
 import cv2
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from detectron2 import model_zoo
-from detectron2.config import get_cfg
+from detectron2.config import LazyConfig, get_cfg, instantiate
 from detectron2.data import MetadataCatalog
 from detectron2.engine import DefaultPredictor
 from detectron2.structures import BitMasks
 from detectron2.utils.logger import setup_logger
 from detectron2.utils.visualizer import Visualizer
 from PIL import Image
+from detectron2.checkpoint import DetectionCheckpointer
+from detectron2.data import transforms as T
 
 from graid.interfaces.InstanceSegmentationI import (
     InstanceSegmentationModelI,
@@ -26,12 +31,32 @@ from graid.interfaces.ObjectDetectionI import (
     ObjectDetectionResultI,
 )
 from graid.utilities.common import (
-    convert_batch_to_numpy,
     convert_image_to_numpy,
     get_default_device,
 )
 
 setup_logger()
+
+
+def _resolve_cfg_file(path_or_url: str) -> str:
+    """Resolve config file path, downloading if it's a URL."""
+    if path_or_url.startswith("http://") or path_or_url.startswith("https://"):
+        # Download to a temporary file
+        local_path = tempfile.NamedTemporaryFile(
+            delete=False, suffix=".py" if path_or_url.endswith(".py") else ".yaml"
+        ).name
+        try:
+            urllib.request.urlretrieve(path_or_url, local_path)
+            return local_path
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to download Detectron2 config from {path_or_url}: {e}"
+            )
+    elif os.path.isfile(path_or_url):
+        return path_or_url
+    else:
+        # Treat as model_zoo shorthand
+        return model_zoo.get_config_file(path_or_url)
 
 
 class DetectronBase:
@@ -41,20 +66,101 @@ class DetectronBase:
         self,
         config_file: str,
         weights_file: str,
-        threshold: float = 0.1,
+        threshold: float = 0.5,
         device: Optional[Union[str, torch.device]] = None,
     ):
-        # Input Detectron2 config file and weights file
-        cfg = get_cfg()
-        cfg.MODEL.DEVICE = str(get_default_device()) if device is None else str(device)
-        cfg.merge_from_file(model_zoo.get_config_file(config_file))
-        cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = threshold
-        cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url(weights_file)
+        # ------------------------------------------------------------------
+        # Input Detectron2 config & weights – support either:
+        #   1) Built-in model_zoo shorthand (e.g. "COCO-InstanceSegmentation/...yaml")
+        #   2) Local absolute/relative file path
+        #   3) Remote HTTP(S) URL (auto-download to a temp file)
+        # ------------------------------------------------------------------
+
+        cfg_path = _resolve_cfg_file(config_file)
+
+        # ---- setup config -----------------------------------------------
+        if cfg_path.endswith(".py"):
+            # Use LazyConfig for .py files
+            cfg = LazyConfig.load_file(cfg_path)
+            cfg.model.device = (
+                str(get_default_device()) if device is None else str(device)
+            )
+            cfg.model.roi_heads.box_predictor.test_score_thresh = threshold
+        else:
+            # Use traditional config for .yaml files
+            cfg = get_cfg()
+            # allow config files to introduce new keys (e.g. custom backbones)
+            if hasattr(cfg, "set_new_allowed"):
+                cfg.set_new_allowed(True)
+            else:
+                cfg.new_allowed = True
+            cfg.MODEL.DEVICE = (
+                str(get_default_device()) if device is None else str(device)
+            )
+            cfg.merge_from_file(cfg_path)
+            cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = threshold
+
+        # ---- resolve weights ---------------------------------------------
+        if weights_file.startswith("http://") or weights_file.startswith("https://"):
+            if cfg_path.endswith(".py"):
+                cfg.model.weights = weights_file  # LazyConfig
+            else:
+                cfg.MODEL.WEIGHTS = weights_file  # traditional config
+        elif os.path.isfile(weights_file):
+            if cfg_path.endswith(".py"):
+                cfg.model.weights = weights_file  # LazyConfig
+            else:
+                cfg.MODEL.WEIGHTS = weights_file  # traditional config
+        else:
+            # treat as model_zoo shorthand (will raise if unavailable)
+            weights_url = model_zoo.get_checkpoint_url(weights_file)
+            if cfg_path.endswith(".py"):
+                cfg.model.weights = weights_url  # LazyConfig
+            else:
+                cfg.MODEL.WEIGHTS = weights_url  # traditional config
+
+        # ---- create predictor --------------------------------------------
+        if cfg_path.endswith(".py"):
+            # For LazyConfig, create a traditional config for DefaultPredictor
+            # DefaultPredictor expects a traditional CfgNode, not LazyConfig
+            traditional_cfg = get_cfg()
+            traditional_cfg.MODEL.DEVICE = (
+                str(get_default_device()) if device is None else str(device)
+            )
+            traditional_cfg.MODEL.WEIGHTS = cfg.model.weights
+            traditional_cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = threshold
+            # Copy other essential config values
+            traditional_cfg.MODEL.META_ARCHITECTURE = "GeneralizedRCNN"
+            traditional_cfg.MODEL.BACKBONE.NAME = "RegNet"
+            traditional_cfg.MODEL.ROI_HEADS.NAME = "StandardROIHeads"
+            traditional_cfg.MODEL.ROI_HEADS.NUM_CLASSES = 80  # COCO classes
+            traditional_cfg.INPUT.FORMAT = "BGR"
+            self._predictor = DefaultPredictor(traditional_cfg)
+        else:
+            self._predictor = DefaultPredictor(cfg)
+
+        # ---- metadata ----------------------------------------------------
+        if cfg_path.endswith(".py"):
+            # For LazyConfig, we need to handle metadata differently
+            try:
+                self._metadata = MetadataCatalog.get(
+                    cfg.dataloader.train.dataset.names[0]
+                )
+            except (KeyError, IndexError, AttributeError) as e:
+                # Fallback to COCO metadata if dataset metadata not available
+                logger.warning(f"Could not get dataset metadata, using COCO fallback: {e}")
+                self._metadata = MetadataCatalog.get("coco_2017_train")
+        else:
+            self._metadata = MetadataCatalog.get(cfg.DATASETS.TRAIN[0])
+
+        # Store config and other attributes
         self.cfg = cfg
-        self._predictor = DefaultPredictor(cfg)
-        self._metadata = MetadataCatalog.get(cfg.DATASETS.TRAIN[0])
         self.model_name = config_file
-        self.threshold = threshold  # Store threshold for reference
+        self.threshold = threshold
+
+        # Store config for cleanup
+        self._cfg_path = cfg_path
+        self._config_file = config_file
 
     def to(self, device: Union[str, torch.device]):
         """Move model to specified device."""
@@ -84,7 +190,7 @@ class Detectron_obj(DetectronBase, ObjectDetectionModelI):
     ):
         super().__init__(config_file, weights_file, threshold, device)
 
-    def identify_for_image(self, image, **kwargs) -> List[ObjectDetectionResultI]:
+    def identify_for_image(self, image, **kwargs) -> list[ObjectDetectionResultI]:
         """
         Run object detection on an image or a batch of images.
         Args:
@@ -125,7 +231,7 @@ class Detectron_obj(DetectronBase, ObjectDetectionModelI):
         print(f"image should be HWC: {image.shape}")
         return self._process_single_image(image)
 
-    def _process_single_image(self, image: np.ndarray) -> List[ObjectDetectionResultI]:
+    def _process_single_image(self, image: np.ndarray) -> list[ObjectDetectionResultI]:
         predictions = self._predictor(image)
 
         if len(predictions) == 0:
@@ -164,7 +270,7 @@ class Detectron_obj(DetectronBase, ObjectDetectionModelI):
 
     def identify_for_image_batch(
         self, batched_images, debug: bool = False, **kwargs
-    ) -> List[ObjectDetectionResultI]:
+    ) -> list[ObjectDetectionResultI]:
         assert (
             batched_images.ndimension() == 4
         ), "Input tensor must be of shape (B, C, H, W) in RGB format"
@@ -217,9 +323,9 @@ class Detectron_obj(DetectronBase, ObjectDetectionModelI):
 
     def identify_for_video(
         self,
-        video: Union[Iterator[Image.Image], List[Image.Image]],
+        video: Union[Iterator[Image.Image], list[Image.Image]],
         batch_size: int = 1,
-    ) -> Iterator[List[List[ObjectDetectionResultI]]]:
+    ) -> Iterator[list[list[ObjectDetectionResultI]]]:
         """
         Run object detection on a video represented as an iterator or list of images.
         Args:
@@ -267,7 +373,7 @@ class Detectron_seg(DetectronBase, InstanceSegmentationModelI):
         ],
         debug: bool = False,
         **kwargs,
-    ) -> List[InstanceSegmentationResultI]:
+    ) -> list[InstanceSegmentationResultI]:
         """
         Run instance segmentation on an image.
         Args:
@@ -280,7 +386,7 @@ class Detectron_seg(DetectronBase, InstanceSegmentationModelI):
 
     def _process_single_image(
         self, image: np.ndarray
-    ) -> List[InstanceSegmentationResultI]:
+    ) -> list[InstanceSegmentationResultI]:
         """Process a single image for instance segmentation."""
         predictions = self._predictor(image)
 
@@ -331,7 +437,7 @@ class Detectron_seg(DetectronBase, InstanceSegmentationModelI):
         ],
         debug: bool = False,
         **kwargs,
-    ) -> List[List[InstanceSegmentationResultI]]:
+    ) -> list[list[InstanceSegmentationResultI]]:
         """
         Run instance segmentation on a batch of images.
         Args:
@@ -423,9 +529,9 @@ class Detectron_seg(DetectronBase, InstanceSegmentationModelI):
 
     def identify_for_video(
         self,
-        video: Union[Iterator[Image.Image], List[Image.Image]],
+        video: Union[Iterator[Image.Image], list[Image.Image]],
         batch_size: int = 1,
-    ) -> Iterator[List[InstanceSegmentationResultI]]:
+    ) -> Iterator[list[InstanceSegmentationResultI]]:
         """
         Run instance segmentation on a video represented as iterator/list of images.
         Args:
@@ -452,6 +558,9 @@ class Detectron_seg(DetectronBase, InstanceSegmentationModelI):
 
     def visualize(self, image: Union[np.ndarray, torch.Tensor]):
         """Visualize segmentation results on an image."""
+        # Local import to avoid loading matplotlib unless visualization is needed
+        import matplotlib.pyplot as plt
+        
         image = convert_image_to_numpy(image)
         outputs = self._predictor(image)
         v = Visualizer(image[:, :, ::-1], self._metadata, scale=1.2)
@@ -459,3 +568,208 @@ class Detectron_seg(DetectronBase, InstanceSegmentationModelI):
         plt.figure(figsize=(14, 10))
         plt.imshow(cv2.cvtColor(v.get_image()[:, :, ::-1], cv2.COLOR_BGR2RGB))
         plt.show()
+
+
+class DetectronLazy(ObjectDetectionModelI):
+    """
+    Detectron2 model using a Python-based 'lazy' config file.
+    This is common for newer models like ViTDet.
+    """
+
+    def __init__(
+        self,
+        config_file: str,
+        weights_file: str,
+        threshold: float = 0.5,
+        device: Optional[Union[str, torch.device]] = None,
+    ):
+        self.device = device if device is not None else get_default_device()
+        self.threshold = threshold
+
+        # Load lazy config
+        cfg = LazyConfig.load(config_file)
+
+        # Set score threshold for Cascade R-CNN, which has multiple roi_heads
+        if hasattr(cfg.model, "roi_heads") and hasattr(cfg.model.roi_heads, "box_head"):
+            # It's a cascade model, iterate through stages
+            if isinstance(cfg.model.roi_heads.box_head, list):
+                 for head in cfg.model.roi_heads.box_head:
+                    if hasattr(head, "test_score_thresh"):
+                        head.test_score_thresh = threshold
+            else: # It's a single head
+                if hasattr(cfg.model.roi_heads, "box_predictor"):
+                    if hasattr(cfg.model.roi_heads.box_predictor, "test_score_thresh"):
+                        cfg.model.roi_heads.box_predictor.test_score_thresh = threshold
+
+        # Build model
+        self.model = instantiate(cfg.model)
+        self.model.to(self.device)
+        self.model.eval()
+
+        # Load checkpoint
+        checkpointer = DetectionCheckpointer(self.model)
+        checkpointer.load(weights_file)
+
+        self.cfg = cfg
+        self.model_name = Path(config_file).stem
+
+        # Get preprocessing info from config, with defaults
+        self.short_edge_length = 800
+        self.max_size = 1333
+        try:
+            # This path might differ for other lazy configs
+            aug = cfg.dataloader.test.mapper.augmentations[0]
+            if aug.short_edge_length and aug.max_size:
+                self.short_edge_length = aug.short_edge_length
+                self.max_size = aug.max_size
+        except (AttributeError, IndexError, KeyError):
+            pass  # Use defaults
+
+        # Get metadata for class names
+        try:
+            # This path might differ for other lazy configs
+            dataset_names = cfg.dataloader.test.dataset.names
+            self.metadata = MetadataCatalog.get(dataset_names)
+        except (AttributeError, IndexError, KeyError):
+            print("Warning: Could not find dataset metadata in config. Fallback to COCO.")
+            self.metadata = MetadataCatalog.get("coco_2017_train")
+
+    def to(self, device: Union[str, torch.device]):
+        """Move model to specified device."""
+        self.device = device
+        self.model.to(self.device)
+
+    def set_threshold(self, threshold: float):
+        """Set confidence threshold for detections."""
+        self.threshold = threshold
+        # Also update the running model config
+        if hasattr(self.cfg.model, "roi_heads") and hasattr(self.cfg.model.roi_heads, "box_head"):
+             if isinstance(self.cfg.model.roi_heads.box_head, list):
+                 for head in self.cfg.model.roi_heads.box_head:
+                    if hasattr(head, "test_score_thresh"):
+                        head.test_score_thresh = threshold
+             else:
+                if hasattr(self.cfg.model.roi_heads, "box_predictor"):
+                    if hasattr(self.cfg.model.roi_heads.box_predictor, "test_score_thresh"):
+                        self.cfg.model.roi_heads.box_predictor.test_score_thresh = threshold
+
+    def __str__(self):
+        return self.model_name
+
+    def identify_for_image_batch(
+        self, batched_images, debug: bool = False, **kwargs
+    ) -> list[list[ObjectDetectionResultI]]:
+        assert (
+            batched_images.ndimension() == 4
+        ), "Input tensor must be of shape (B, C, H, W) in RGB format"
+
+        list_of_inputs = []
+        original_shapes = []
+
+        for i in range(batched_images.shape[0]):
+            image_tensor_chw_rgb = batched_images[i]
+
+            # Convert to numpy HWC RGB
+            image_np_hwc_rgb = image_tensor_chw_rgb.permute(1, 2, 0).cpu().numpy()
+
+            # Convert RGB to BGR for model
+            image_np_hwc_bgr = cv2.cvtColor(image_np_hwc_rgb, cv2.COLOR_RGB2BGR)
+
+            original_height, original_width = image_np_hwc_bgr.shape[:2]
+            original_shapes.append((original_height, original_width))
+
+            transform_gen = T.ResizeShortestEdge(
+                [self.short_edge_length, self.short_edge_length], self.max_size
+            )
+
+            transformed_image = transform_gen.get_transform(
+                image_np_hwc_bgr
+            ).apply_image(image_np_hwc_bgr)
+            transformed_image_tensor = torch.as_tensor(
+                transformed_image.astype("float32").transpose(2, 0, 1)
+            )
+
+            inputs = {
+                "image": transformed_image_tensor.to(self.device),
+                "height": original_height,
+                "width": original_width,
+            }
+            list_of_inputs.append(inputs)
+
+        with torch.no_grad():
+            predictions = self.model(list_of_inputs)
+
+        formatted_results = []
+        for i, prediction in enumerate(predictions):
+            img_result = []
+            instances = prediction["instances"]
+            image_hw = original_shapes[i]
+
+            if len(instances) > 0:
+                for j in range(len(instances)):
+                    box = instances.pred_boxes[j].tensor.cpu().numpy().tolist()[0]
+                    score = instances.scores[j].item()
+                    cls_id = int(instances.pred_classes[j].item())
+                    label = self.metadata.thing_classes[cls_id]
+
+                    odr = ObjectDetectionResultI(
+                        score=score,
+                        cls=cls_id,
+                        label=label,
+                        bbox=box,
+                        image_hw=image_hw,
+                        bbox_format=BBox_Format.XYXY,
+                    )
+                    img_result.append(odr)
+
+            formatted_results.append(img_result)
+
+        return formatted_results
+
+    def identify_for_image(self, image, **kwargs) -> list[ObjectDetectionResultI]:
+        """Runs detection on a single image."""
+        numpy_image = convert_image_to_numpy(image)  # This should be RGB HWC
+        # to tensor, CHW
+        image_tensor = torch.from_numpy(
+            np.ascontiguousarray(numpy_image.transpose(2, 0, 1))
+        )
+        if image_tensor.ndimension() == 3:
+            image_tensor = image_tensor.unsqueeze(0)
+
+        results_batch = self.identify_for_image_batch(image_tensor, **kwargs)
+        return results_batch[0] if results_batch else []
+
+    def identify_for_video(
+        self,
+        video: Union[Iterator[Image.Image], list[Image.Image]],
+        batch_size: int = 1,
+    ) -> Iterator[list[list[ObjectDetectionResultI]]]:
+        """
+        Run object detection on a video represented as an iterator or list of images.
+        Args:
+            video: An iterator or list of PIL images.
+            batch_size: Number of images to process at a time.
+        Returns:
+            An iterator of lists of lists of ObjectDetectionResultI, where the outer
+            list represents the batches, the middle list represents frames, and the
+            inner list represents detections within a frame.
+        """
+
+        def batch_iterator(iterable, n):
+            iterator = iter(iterable)
+            return iter(lambda: list(islice(iterator, n)), [])
+
+        video_iterator = batch_iterator(video, batch_size)
+
+        for batch in video_iterator:
+            if not batch:  # End of iterator
+                break
+
+            # Convert all images in batch to numpy arrays
+            numpy_batch = [convert_image_to_numpy(img) for img in batch]
+
+            # Convert to a tensor (B, H, W, C) -> (B, C, H, W)
+            tensor_batch = torch.from_numpy(np.array(numpy_batch)).permute(0, 3, 1, 2)
+
+            batch_results = self.identify_for_image_batch(tensor_batch)
+            yield batch_results

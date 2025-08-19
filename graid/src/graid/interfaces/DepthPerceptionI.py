@@ -5,7 +5,6 @@ from typing import Iterator
 import numpy as np
 import PIL
 import PIL.Image
-from matplotlib import pyplot as plt
 from PIL.Image import Image
 from torch import Tensor
 
@@ -59,6 +58,8 @@ class DepthPerceptionI:
         inverse_depth_normalized = (inverse_depth - min_invdepth_vizu) / (
             max_invdepth_vizu - min_invdepth_vizu
         )
+        # Local import to avoid loading matplotlib unless visualization is needed
+        from matplotlib import pyplot as plt
         cmap = plt.get_cmap("turbo")
         color_depth = (cmap(inverse_depth_normalized)[..., :3] * 255).astype(np.uint8)
 
