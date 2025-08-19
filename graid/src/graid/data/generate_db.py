@@ -18,9 +18,6 @@ from typing import Dict, List, Optional, Union
 import torch
 
 from graid.data.Datasets import ObjDectDatasetBuilder
-from graid.models.Detectron import Detectron_obj
-from graid.models.MMDetection import MMdetection_obj
-from graid.models.Ultralytics import RT_DETR, Yolo
 from graid.utilities.common import (
     get_default_device,
     project_root_dir,
@@ -100,6 +97,7 @@ def create_model(
         config_file = custom_config["config"]
         weights_file = custom_config["weights"]
 
+        from graid.models.Detectron import Detectron_obj
         model = Detectron_obj(
             config_file=config_file,
             weights_file=weights_file,
@@ -129,6 +127,7 @@ def create_model(
             mmdet_path = project_root_dir() / "install" / "mmdetection"
             config_path = str(mmdet_path / config_path)
 
+        from graid.models.MMDetection import MMdetection_obj
         model = MMdetection_obj(config_path, checkpoint, device=device)
         model.set_threshold(threshold)
 
@@ -136,6 +135,7 @@ def create_model(
         # For ultralytics, model_name is the model file path/name
         model_file = model_name
 
+        from graid.models.Ultralytics import RT_DETR, Yolo
         if "rtdetr" in model_name.lower():
             model = RT_DETR(model_file)
         else:

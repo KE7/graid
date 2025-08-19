@@ -14,6 +14,7 @@ from detectron2.structures.boxes import (
 from PIL import Image
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
 from ultralytics.engine.results import Boxes as UltralyticsBoxes
+import threading
 
 
 class BBox_Format(Enum):
@@ -267,6 +268,8 @@ class ObjectDetectionResultI:
 
 
 class ObjectDetectionUtils:
+    # Thread-local storage for per-image context
+    _ctx_local = threading.local()
     @staticmethod
     def pairwise_iou(
         boxes1: ObjectDetectionResultI, boxes2: ObjectDetectionResultI
@@ -437,6 +440,130 @@ class ObjectDetectionUtils:
         #         ].shape == torch.Size([0]):
         #             tn += 1
         #     return {"TN": tn}
+
+    @staticmethod
+    def normalize_detections(
+        detections: List[ObjectDetectionResultI],
+        bbox_format: BBox_Format = BBox_Format.XYXY,
+    ) -> Dict[str, Any]:
+        """
+        Normalize a mixed list of detection results into per-box, tensor-safe structures.
+
+        Returns a dictionary with:
+          - detections: List[ObjectDetectionResultI] (one per box)
+          - labels: List[str]
+          - bboxes_xyxy: torch.Tensor of shape (N, 4)
+          - bbox_list: List[Dict[str, float]] [{'x1','y1','x2','y2'}]
+          - counts: Dict[str, int] class → count
+        """
+        # Flatten into one detection per box
+        flattened: List[ObjectDetectionResultI] = []
+        for det in detections:
+            flattened.extend(det.flatten())
+
+        labels: List[str] = []
+        boxes_xyxy: List[torch.Tensor] = []
+        counts: Dict[str, int] = {}
+
+        for det in flattened:
+            # Label as string
+            lbl = det.label
+            lbl_str = str(lbl.item()) if isinstance(lbl, torch.Tensor) else str(lbl)
+            labels.append(lbl_str)
+            counts[lbl_str] = counts.get(lbl_str, 0) + 1
+
+            # Bbox in XYXY first 4 coords
+            if bbox_format == BBox_Format.XYXY:
+                xyxy = det.as_xyxy()
+            elif bbox_format == BBox_Format.XYWH:
+                xyxy = det.as_xywh()
+            elif bbox_format == BBox_Format.XYWHN:
+                xyxy = det.as_xywhn()
+            elif bbox_format == BBox_Format.XYXYN:
+                xyxy = det.as_xyxyn()
+            else:
+                # Default to xyxy
+                xyxy = det.as_xyxy()
+
+            # Ensure shape (4,) tensor for this single detection
+            if xyxy.dim() == 2:
+                # expected (1, 6) or (1, 4+) layout from UltralyticsBoxes
+                coords = xyxy[0][:4]
+            else:
+                coords = xyxy[:4]
+            boxes_xyxy.append(coords)
+
+        # Stack xyxy to (N, 4)
+        bxyxy = torch.stack(boxes_xyxy) if boxes_xyxy else torch.empty((0, 4), dtype=torch.float32)
+
+        # Generate list-of-dicts format commonly used when writing out
+        bbox_list: List[Dict[str, float]] = [
+            {"x1": float(b[0]), "y1": float(b[1]), "x2": float(b[2]), "y2": float(b[3])}
+            for b in bxyxy
+        ]
+
+        return {
+            "detections": flattened,
+            "labels": labels,
+            "bboxes_xyxy": bxyxy,
+            "bbox_list": bbox_list,
+            "counts": counts,
+        }
+
+    @staticmethod
+    def build_question_context(
+        image: Optional[Union[np.ndarray, torch.Tensor, Image.Image]],
+        detections: List[ObjectDetectionResultI],
+    ) -> Dict[str, Any]:
+        """Precompute per-image features for questions to avoid recomputation.
+
+        Returns a dictionary with:
+          - detections, labels, bboxes_xyxy, bbox_list, counts (from normalize_detections)
+          - centers: Tensor (N,2)
+          - areas: Tensor (N,)
+          - aspects: Tensor (N,) width/height
+          - class_to_indices: Dict[str, List[int]]
+        """
+        norm = ObjectDetectionUtils.normalize_detections(detections)
+        bxyxy: torch.Tensor = norm["bboxes_xyxy"]
+        if bxyxy.numel() > 0:
+            widths = (bxyxy[:, 2] - bxyxy[:, 0]).clamp(min=1.0)
+            heights = (bxyxy[:, 3] - bxyxy[:, 1]).clamp(min=1.0)
+            centers = torch.stack([(bxyxy[:, 0] + bxyxy[:, 2]) / 2.0, (bxyxy[:, 1] + bxyxy[:, 3]) / 2.0], dim=1)
+            areas = widths * heights
+            aspects = widths / heights
+        else:
+            centers = torch.empty((0, 2), dtype=torch.float32)
+            areas = torch.empty((0,), dtype=torch.float32)
+            aspects = torch.empty((0,), dtype=torch.float32)
+
+        class_to_indices: Dict[str, List[int]] = {}
+        for idx, lbl in enumerate(norm["labels"]):
+            class_to_indices.setdefault(lbl, []).append(idx)
+
+        ctx = {
+            **norm,
+            "centers": centers,
+            "areas": areas,
+            "aspects": aspects,
+            "class_to_indices": class_to_indices,
+            "image": image,
+        }
+        return ctx
+
+    @staticmethod
+    def set_current_context(ctx: Optional[Dict[str, Any]]) -> None:
+        ObjectDetectionUtils._ctx_local.value = ctx
+
+    @staticmethod
+    def get_current_context() -> Optional[Dict[str, Any]]:
+        return getattr(ObjectDetectionUtils._ctx_local, "value", None)
+
+    @staticmethod
+    def clear_current_context() -> None:
+        """Clear any previously set per-image QuestionContext."""
+        if hasattr(ObjectDetectionUtils._ctx_local, "value"):
+            ObjectDetectionUtils._ctx_local.value = None
 
     @staticmethod
     def show_image_with_detections(

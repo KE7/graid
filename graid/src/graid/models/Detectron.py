@@ -7,7 +7,6 @@ from collections.abc import Iterator
 from typing import Optional, Union
 
 import cv2
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from detectron2 import model_zoo
@@ -147,8 +146,9 @@ class DetectronBase:
                 self._metadata = MetadataCatalog.get(
                     cfg.dataloader.train.dataset.names[0]
                 )
-            except:
-                # Fallback to COCO metadata
+            except (KeyError, IndexError, AttributeError) as e:
+                # Fallback to COCO metadata if dataset metadata not available
+                logger.warning(f"Could not get dataset metadata, using COCO fallback: {e}")
                 self._metadata = MetadataCatalog.get("coco_2017_train")
         else:
             self._metadata = MetadataCatalog.get(cfg.DATASETS.TRAIN[0])
@@ -558,6 +558,9 @@ class Detectron_seg(DetectronBase, InstanceSegmentationModelI):
 
     def visualize(self, image: Union[np.ndarray, torch.Tensor]):
         """Visualize segmentation results on an image."""
+        # Local import to avoid loading matplotlib unless visualization is needed
+        import matplotlib.pyplot as plt
+        
         image = convert_image_to_numpy(image)
         outputs = self._predictor(image)
         v = Visualizer(image[:, :, ::-1], self._metadata, scale=1.2)

@@ -1,66 +1,78 @@
 import ast
 import logging
 from collections.abc import Sequence
-from typing import Callable, Optional
+from typing import Optional
 
 from PIL import Image
 
 from graid.evaluator.prompts import PromptingStrategy
+from graid.evaluator.vlms import VLM
 
 logger = logging.getLogger(__name__)
 
 
-class RegionVerifier:
-    """Orchestrates object detection verification using SetOfMarkPrompt and VLM responses.
-    
-    This class coordinates the verification process by generating prompts for suspicious
-    regions, querying the VLM with annotated images, and parsing the responses to 
-    determine if any objects were missed by the original detector.
+class RecallVerifier:
+    """Orchestrates object detection verification using a VLM and a prompting strategy.
+
+    This class coordinates the verification process by generating prompts for
+    suspicious regions, querying the VLM with annotated images, and parsing
+    the responses to determine if any objects were missed by the original
+    detector.
+
+    The prompting behavior can be controlled by providing different strategies
+    at instantiation. For example, use ``SetOfMarkPrompt`` to visually highlight
+    regions of interest, or ``PassthroughPrompt`` to send the image as-is.
 
     Parameters
     ----------
-    prompting_strategy : object
-        Must implement ``generate_prompt(image, question) -> (annotated_image, prompt)``.
-        We expect ``SetOfMarkPrompt`` from ``graid.evaluator.prompts`` but any drop-in
-        replacement (e.g. mock for tests) is fine.
-    vlm_client : Callable[[Image.Image, str], str]
-        Function that takes the *annotated, pre-cropped image* and the prompt string, and
-        returns the model's raw answer text.
+    prompting_strategy : PromptingStrategy
+        A prompting strategy, e.g., ``SetOfMarkPrompt`` or
+        ``PassthroughPrompt`` from ``graid.evaluator.prompts``.
+    vlm : VLM
+        Instance of a VLM class that adheres to the VLM interface.
     """
 
     def __init__(
         self,
         prompting_strategy: PromptingStrategy,
-        vlm_client: Callable[[Image.Image, str], str],
+        vlm: VLM,
     ) -> None:
         self.ps = prompting_strategy
-        self.vlm = vlm_client
+        self.vlm = vlm
 
     # ---------------------------------------------------------------------
     # public API
     # ---------------------------------------------------------------------
     def verify(
-        self, image: Image.Image, possible_classes: Optional[Sequence[str]] = None
+        self,
+        image: Image.Image,
+        possible_classes: Optional[Sequence[str]] = None,
     ) -> bool:
-        """Return **True** if *no* objects are detected in the given image.
+        """Return **True** if *no* objects are detected in the given region of suspicion.
 
-        The logic:
-        1. Takes a pre-cropped image representing the region of suspicion.
-        2. Ask the VLM which of the possible objects are present.
-        3. Parse VLM output (expects a Python list literal).
-        4. Succeed when the list of found labels is empty.
+        Parameters
+        ----------
+        image : PIL.Image.Image
+            *Pre-cropped* region of suspicion.
+        possible_classes : Sequence[str] | None, optional
+            Candidate classes to ask the VLM about. If ``None`` we let the
+            model answer freely.
         """
+        # STEP 1: build the textual question adapted to the chosen strategy
         question = self._build_question(possible_classes)
 
-        annotated, prompt = self.ps.generate_prompt(image, question)
-
-        answer_text = self.vlm(annotated, prompt)
+        # STEP 2: Generate the prompt, which may annotate the image
+        annotated_image, messages = self.ps.generate_prompt(image, question)
+        
+        # STEP 3: query the VLM using the standard interface and parse the answer
+        answer_text, _ = self.vlm.generate_answer(annotated_image, messages)
         found_labels = self._parse_answer(answer_text)
 
         logger.debug(
-            "Possible: %s | Found: %s",
+            "Possible: %s | Found: %s | Prompting: %s",
             possible_classes,
             found_labels,
+            self.ps.__class__.__name__,
         )
         return len(found_labels) == 0
 
@@ -72,13 +84,13 @@ class RegionVerifier:
         if possible_classes:
             class_list = ", ".join(possible_classes)
             return (
-                "Which of these objects are present in the highlighted regions: "
+                "Which of these objects are present in the image: "
                 f"{class_list}? Provide your answer as a python list. "
                 "If none, return empty list []."
             )
         else:
             return (
-                "Are there any objects present in the highlighted regions? "
+                "Are there any objects present in the image? "
                 "Provide your answer as a python list of object names. "
                 "If none, return empty list []."
             )

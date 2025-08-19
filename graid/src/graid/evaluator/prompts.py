@@ -1,4 +1,3 @@
-import os
 from textwrap import dedent
 
 import cv2
@@ -178,22 +177,9 @@ class FewShotPrompt(PromptingStrategy):
 
 class SetOfMarkPrompt(PromptingStrategy):
     def __init__(self, gpu=1):
-        from segment_anything import (
-            SamAutomaticMaskGenerator,
-            SamPredictor,
-            sam_model_registry,
-        )
+        from graid.utilities.sam_utils import SAMMaskGenerator
 
-        CHECKPOINT_PATH = "sam_vit_h_4b8939.pth"
-        print(CHECKPOINT_PATH, "; exist:", os.path.isfile(CHECKPOINT_PATH))
-
-        DEVICE = get_default_device()
-        MODEL_TYPE = "vit_h"
-
-        sam = sam_model_registry[MODEL_TYPE](checkpoint=CHECKPOINT_PATH).to(
-            device=f"cuda:{gpu}"
-        )
-        self.mask_generator = SamAutomaticMaskGenerator(sam)
+        self.mask_generator = SAMMaskGenerator(gpu=gpu)
         self.MIN_AREA_PERCENTAGE = 0.005
         self.MAX_AREA_PERCENTAGE = 0.05
 
@@ -302,3 +288,21 @@ class SetOfMarkPrompt(PromptingStrategy):
 
     def __str__(self):
         return "SetOfMarkPrompt"
+
+
+class PassthroughPrompt(PromptingStrategy):
+    """A minimal prompt strategy that leaves the image unaltered and forwards
+    the question verbatim.
+
+    Useful when no special instructions or visual annotations are required.
+    """
+
+    def generate_prompt(self, image, question):  # noqa: D401, ANN001
+        # Simply echo back the inputs as a message list for consistency
+        messages = [
+            {"role": "user", "content": question}
+        ]
+        return image, messages
+
+    def __str__(self):
+        return "PassthroughPrompt"

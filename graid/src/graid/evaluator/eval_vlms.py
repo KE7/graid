@@ -42,11 +42,10 @@ import random
 import re
 import sqlite3
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Optional
 
 import numpy as np
 import pandas as pd
-from PIL import Image
 from sqlitedict import SqliteDict
 from tqdm import tqdm
 
@@ -183,7 +182,7 @@ PROMPT_CONFIGS = {
 }
 
 
-def list_available_vlms() -> Dict[str, List[str]]:
+def list_available_vlms() -> dict[str, list[str]]:
     """
     List all available VLM types and their models.
 
@@ -199,7 +198,7 @@ def list_available_vlms() -> Dict[str, List[str]]:
     return result
 
 
-def list_available_metrics() -> List[str]:
+def list_available_metrics() -> list[str]:
     """
     List all available evaluation metrics.
 
@@ -209,7 +208,7 @@ def list_available_metrics() -> List[str]:
     return list(METRIC_CONFIGS.keys())
 
 
-def list_available_prompts() -> List[str]:
+def list_available_prompts() -> list[str]:
     """
     List all available prompt types.
 
@@ -328,7 +327,7 @@ def create_prompt(
 
 def validate_configuration(
     vlm_type: str, metric_type: str, prompt_type: str
-) -> Tuple[bool, Optional[str]]:
+) -> tuple[bool, Optional[str]]:
     """
     Validate that the combination of VLM, metric, and prompt is compatible.
 
@@ -382,7 +381,7 @@ def _create_output_directory(
     return results_dir
 
 
-def _load_database_tables(db_path: str) -> Dict[str, pd.DataFrame]:
+def _load_database_tables(db_path: str) -> dict[str, pd.DataFrame]:
     """Load all tables from SQLite database."""
     conn = sqlite3.connect(db_path)
 
@@ -401,8 +400,8 @@ def _load_database_tables(db_path: str) -> Dict[str, pd.DataFrame]:
 
 
 def _filter_and_sample_data(
-    dataframes: Dict[str, pd.DataFrame], sample_size: int
-) -> Dict[str, Tuple[pd.DataFrame, int]]:
+    dataframes: dict[str, pd.DataFrame], sample_size: int
+) -> dict[str, tuple[pd.DataFrame, int]]:
     """Filter and sample data from database tables."""
     sampled_dataframes = {}
     print("Filtering rows...")
@@ -553,16 +552,49 @@ def evaluate_vlm(
                                 )
                                 continue
 
+            # Get the dataframe for the current table
+            df_to_process, _ = sampled_dataframes[table_name]
+
+            # Limit to min_available_samples
+            df_to_process = df_to_process.head(min_available_samples)
+
             # Process new samples if needed
             print(f"Processing table {table_idx}: {table_name}")
+            
+            # Lists to store data for this table
+            questions, answers, preds, correctness = [], [], [], []
+            
+            for _, row in tqdm(df_to_process.iterrows(), total=len(df_to_process)):
+                d = row.to_dict()
+                image_path, v = d["key"], json.loads(d["value"])
+                
+                # Construct full image path
+                image_path = str(db_base_path / image_path)
 
-            # Implementation of evaluation logic would go here
-            # This is a simplified version - the full implementation would include
-            # image processing, question answering, and metric evaluation
+                qa_list = v.get("qa_list", [])
+                if not qa_list or qa_list == "Question not applicable":
+                    continue
 
-            # For now, we'll create a placeholder that would be replaced
-            # with the actual evaluation logic from the original file
-            correctness = [0.5] * min_available_samples  # Placeholder
+                qa_pair = random.choice(qa_list) if isinstance(qa_list[0], list) else qa_list
+                q, a = qa_pair[0], qa_pair[1]
+                
+                # Generate prompt and unique cache key
+                annotated_image, messages = my_prompt.generate_prompt(image_path, q)
+                cache_key = f"{vlm_type}_{prompt}_{image_path}_{str(messages)}"
+                
+                if cache_key in vlm_cache:
+                    pred = vlm_cache[cache_key]
+                else:
+                    pred, _ = my_vlm.generate_answer(annotated_image, messages)
+                    vlm_cache[cache_key] = pred
+                
+                correct = my_metric.evaluate(pred, a)
+                
+                questions.append(q)
+                answers.append(a)
+                preds.append(pred)
+                correctness.append(correct)
+
             all_correctness.extend(correctness)
 
             # Save results
@@ -571,8 +603,11 @@ def evaluate_vlm(
                 log_file.write(f"VLM: {vlm_type}\n")
                 log_file.write(f"Metric: {metric}\n")
                 log_file.write(f"Prompt: {prompt}\n")
-                log_file.write(f"Sample Size: {min_available_samples}\n")
+                log_file.write(f"Sample Size: {len(correctness)}\n")
                 log_file.write(f"Correctness: \n{correctness}\n")
+                log_file.write(f"Questions: \n{questions}\n")
+                log_file.write(f"Answers: \n{answers}\n")
+                log_file.write(f"Predictions: \n{preds}\n")
 
         # Calculate and return final accuracy
         if len(all_correctness) == 0:

@@ -143,32 +143,10 @@ class Bdd10kDataset(ImageDataset):
         img_dir = root_dir / "images" / "10k" / split
         rle = root_dir / "labels" / "ins_seg" / "rles" / f"ins_seg_{split}.json"
 
-        def merge_transform(image: Tensor, labels, timestamp):
-            results = []
-            attributes = []
-
-            for instance_id, label in enumerate(labels):
-                rle = label["rle"]
-                mask = cocomask.decode(rle)
-                class_label = label["category"]
-                class_id = self.category_to_coco_cls(class_label)
-                result = InstanceSegmentationResultI(
-                    score=1.0,
-                    cls=int(class_id),
-                    label=class_label,
-                    instance_id=int(instance_id),
-                    image_hw=rle["size"],
-                    mask=torch.from_numpy(mask).unsqueeze(0),
-                )
-                results.append(result)
-                attributes.append(label["attributes"])
-
-            return image, results, timestamp
-
         super().__init__(
             img_dir=str(img_dir),
             annotations_file=rle,
-            merge_transform=merge_transform,
+            merge_transform=self.merge_transform,
             **kwargs,
         )
 
@@ -200,6 +178,28 @@ class Bdd10kDataset(ImageDataset):
             "labels": labels,
             "timestamp": timestamp,
         }
+
+    def merge_transform(self, image: Tensor, labels, timestamp):
+        results = []
+        attributes = []
+
+        for instance_id, label in enumerate(labels):
+            rle = label["rle"]
+            mask = cocomask.decode(rle)
+            class_label = label["category"]
+            class_id = self.category_to_coco_cls(class_label)
+            result = InstanceSegmentationResultI(
+                score=1.0,
+                cls=int(class_id),
+                label=class_label,
+                instance_id=int(instance_id),
+                image_hw=rle["size"],
+                mask=torch.from_numpy(mask).unsqueeze(0),
+            )
+            results.append(result)
+            attributes.append(label["attributes"])
+
+        return image, results, timestamp
 
 
 class Bdd100kDataset(ImageDataset):
@@ -325,60 +325,7 @@ class Bdd100kDataset(ImageDataset):
         )
 
         self.img_labels = self.load_annotations(annotations_file)
-
-        def merge_transform(
-            image: Tensor,
-            labels: list[dict[str, Any]],
-            timestamp: str,
-        ) -> Union[
-            tuple[
-                Tensor, list[Union[ObjectDetectionResultI,
-                                   InstanceSegmentationResultI]]
-            ],
-            tuple[
-                Tensor,
-                list[
-                    tuple[
-                        Union[ObjectDetectionResultI,
-                              InstanceSegmentationResultI],
-                        dict[str, Any],
-                        str,
-                    ]
-                ],
-                dict[str, Any],
-                str,
-            ],
-        ]:
-            results = []
-
-            for label in labels:
-                channels, height, width = image.shape
-                if use_original_categories:
-                    cls = self.category_to_cls(label["category"])
-                    res_label = label["category"]
-                else:
-                    cls = self.category_to_coco_cls(label["category"])
-                    # handle the case where exact category is not in COCO aka different names for people
-                    res_label = label["category"] if cls != 0 else "person"
-
-                result = ObjectDetectionResultI(
-                    score=1.0,
-                    cls=cls,
-                    label=res_label,
-                    bbox=[
-                        label["box2d"]["x1"],
-                        label["box2d"]["y1"],
-                        label["box2d"]["x2"],
-                        label["box2d"]["y2"],
-                    ],
-                    image_hw=(height, width),
-                    bbox_format=BBox_Format.XYXY,
-                    attributes=[label["attributes"]],
-                )
-
-                results.append(result)
-
-            return image, results, timestamp
+        self.use_original_categories = use_original_categories
 
         # finally, filter out following labels
         #   'other person', 'other vehicle' and 'trail'
@@ -446,10 +393,39 @@ class Bdd100kDataset(ImageDataset):
             # No mapping file and not rebuilding, so use empty mapping
             self.filtered_to_orig_mapping = {}
 
+        # Ensure per-image pickle files exist for this split. If missing, build them.
+        pkl_root = project_root_dir() / "data" / f"bdd_{self.split}"
+        try:
+            pkl_root.mkdir(parents=True, exist_ok=True)
+            os.chmod(pkl_root, 0o777)
+        except Exception:
+            pass
+        need_build = True
+        # Quick existence check for index 0
+        if (pkl_root / "0.pkl").exists():
+            need_build = False
+        if need_build:
+            print(f"Building per-image pickle cache for BDD100K {self.split}...")
+            for idx, label in tqdm(enumerate(self.img_labels), total=len(self.img_labels), desc=f"Indexing BDD100K {self.split}..."):
+                # respect filtering flag when deciding to include
+                if self.use_time_filtered and (not self._meets_filtering_criteria(label)):
+                    continue
+                name = label.get("name")
+                timestamp = label.get("timestamp", 0)
+                labels = label.get("labels", [])
+                save_path = pkl_root / f"{idx}.pkl"
+                try:
+                    with open(save_path, "wb") as f:
+                        pickle.dump({"name": name, "labels": labels, "timestamp": timestamp}, f)
+                    os.chmod(save_path, 0o777)
+                except Exception:
+                    # best-effort; skip on failure
+                    continue
+
         super().__init__(
             annotations_file=str(annotations_file),
             img_dir=str(img_dir),
-            merge_transform=merge_transform,
+            merge_transform=self.merge_transform,
             use_extended_annotations=use_extended_annotations,
             **kwargs,
         )
@@ -471,13 +447,15 @@ class Bdd100kDataset(ImageDataset):
         Check if an image meets the filtering criteria:
         - timeofday must be 'daytime'
         - weather must not be 'foggy', 'snowy', or 'rainy'
+        Object category filtering is always applied separately.
 
-        Args:
-            label: Image label dictionary containing attributes
-
-        Returns:
-            True if the image meets filtering criteria, False otherwise
+        When self.use_time_filtered is False, we should skip the time & weather
+        checks entirely and keep all images.
         """
+        # If we're not applying time/weather filtering, accept all images.
+        if not self.use_time_filtered:
+            return True
+
         if "attributes" not in label:
             return False
 
@@ -516,7 +494,11 @@ class Bdd100kDataset(ImageDataset):
             # Use original dataset if not filtered
             orig_path = project_root_dir() / "data" / f"bdd_{self.split}" / f"{idx}.pkl"
 
-        # Load the data from the original file
+        if not orig_path.exists():
+            raise FileNotFoundError(
+                f"Pickle file {orig_path} not found. Set rebuild=True to generate it."
+            )
+
         with open(orig_path, "rb") as f:
             data = pickle.load(f)
 
@@ -563,6 +545,61 @@ class Bdd100kDataset(ImageDataset):
             "labels": labels,
             "timestamp": timestamp,
         }
+
+    def merge_transform(
+        self,
+        image: Tensor,
+        labels: list[dict[str, Any]],
+        timestamp: str,
+    ) -> Union[
+        tuple[
+            Tensor, list[Union[ObjectDetectionResultI,
+                               InstanceSegmentationResultI]]
+        ],
+        tuple[
+            Tensor,
+            list[
+                tuple[
+                    Union[ObjectDetectionResultI,
+                          InstanceSegmentationResultI],
+                    dict[str, Any],
+                    str,
+                ]
+            ],
+            dict[str, Any],
+            str,
+        ],
+    ]:
+        results = []
+
+        for label in labels:
+            channels, height, width = image.shape
+            if self.use_original_categories:
+                cls = self.category_to_cls(label["category"])
+                res_label = label["category"]
+            else:
+                cls = self.category_to_coco_cls(label["category"])
+                # handle the case where exact category is not in COCO aka different names for people
+                res_label = label["category"] if cls != 0 else "person"
+
+            result = ObjectDetectionResultI(
+                score=1.0,
+                cls=cls,
+                label=res_label,
+                bbox=[
+                    label["box2d"]["x1"],
+                    label["box2d"]["y1"],
+                    label["box2d"]["x2"],
+                    label["box2d"]["y2"],
+                ],
+                image_hw=(height, width),
+                bbox_format=BBox_Format.XYXY,
+                attributes=[label["attributes"]],
+            )
+
+            results.append(result)
+
+        return image, results, timestamp
 
 
 class NuImagesDataset(ImageDataset):
@@ -778,15 +815,9 @@ class NuImagesDataset(ImageDataset):
         self.category_labels = json.load(open(categories_file))
         self.obj_annotations = json.load(open(obj_annotations_file))
 
-        if rebuild:
-            from nuimages import NuImages
-
-            self.nuim = NuImages(
-                dataroot=img_dir,
-                version=subdir,
-                verbose=False,
-                lazy=True,  # verbose off to avoid excessive print statement
-            )
+        # Auto-generate per-image pickle cache when missing or when rebuild is requested
+        if rebuild or True:
+            # If cache already exists, we can skip heavy work unless rebuild=True
             save_path_parent = (
                 project_root_dir()
                 / "data"
@@ -802,106 +833,81 @@ class NuImagesDataset(ImageDataset):
             except Exception as e:
                 logger.warning(f"Failed to set permissions on {save_path_parent}: {e}")
 
-            empty_count = 0
-            idx = 0
-            for i in tqdm(
-                range(len(self.nuim.sample)),
-                desc="Processing NuImage dataset...",  # len(self.nuim.sample)
-            ):
-                # see: https://www.nuscenes.org/tutorials/nuimages_tutorial.html
-                sample = self.nuim.sample[i]
-                sample_token = sample["token"]
-                key_camera_token = sample["key_camera_token"]
-                object_tokens, surface_tokens = self.nuim.list_anns(
-                    sample_token, verbose=False
-                )  # verbose off to avoid excessive print statement
-                if object_tokens == []:
-                    empty_count += 1
-                    continue
+            need_build = rebuild or not (save_path_parent / "0.pkl").exists()
+            if need_build:
+                from nuimages import NuImages
 
-                object_data = []
-                for object_token in object_tokens:
-                    obj = self.nuim.get("object_ann", object_token)
-                    category_token = obj["category_token"]
-                    attribute_tokens = obj["attribute_tokens"]
-                    attributes = []
-                    for attribute_token in attribute_tokens:
-                        attribute = self.nuim.get("attribute", attribute_token)
-                        attributes.append(attribute)
-
-                    category = self.nuim.get("category", category_token)["name"]
-                    obj["category"] = category
-                    obj["attributes"] = attributes
-                    object_data.append(obj)
-
-                sample_data = self.nuim.get("sample_data", key_camera_token)
-                img_filename = sample_data["filename"]
-                timestamp = sample_data["timestamp"]
-
-                save_path = save_path_parent / f"{idx}.pkl"
-                print("creating idx... ", idx)
-                # if save_path.exists():
-                #     continue
-                if self.use_time_filtered and not self.is_time_in_working_hours(
-                    img_filename
-                ):
-                    print("invalid")
-                    continue
-
-                with open(save_path, "wb") as f:
-                    pickle.dump(
-                        {
-                            "filename": img_filename,
-                            "labels": object_data,
-                            "timestamp": timestamp,
-                        },
-                        f,
-                    )
-                os.chmod(save_path, 0o777)
-                idx += 1
-
-                # TODO: add error catching logic in case of empty token or token mismatch.
-
-            print(
-                f"{split} has {empty_count} out of {len(self.nuim.sample)} empty samples."
-            )
-
-        def merge_transform(
-            image: Tensor, labels: list[dict[str, Any]], timestamp: str
-        ) -> tuple[
-            Tensor,
-            list[tuple[ObjectDetectionResultI, dict[str, Any], str]],
-            list[dict[str, Any]],
-            str,
-        ]:
-            results = []
-            attributes = []
-
-            for obj_label in labels:
-                _, height, width = image.shape
-                obj_category = obj_label["category"]
-                obj_attributes = obj_label["attributes"]
-                label = self.category_to_coco(obj_category)
-                cls = self.category_to_cls(label)
-
-                results.append(
-                    ObjectDetectionResultI(
-                        score=1.0,
-                        cls=cls,
-                        label=label,
-                        bbox=obj_label["bbox"],
-                        image_hw=(height, width),
-                        bbox_format=BBox_Format.XYXY,
-                        attributes=obj_attributes,
-                    )
+                self.nuim = NuImages(
+                    dataroot=img_dir,
+                    version=subdir,
+                    verbose=False,
+                    lazy=True,
                 )
-                attributes.append(obj_attributes)
 
-            return (image, results, attributes, timestamp)
+                empty_count = 0
+                idx = 0
+                for i in tqdm(
+                    range(len(self.nuim.sample)),
+                    desc=f"Processing NuImages {self.split}...",
+                ):
+                    sample = self.nuim.sample[i]
+                    sample_token = sample["token"]
+                    key_camera_token = sample["key_camera_token"]
+                    object_tokens, surface_tokens = self.nuim.list_anns(
+                        sample_token, verbose=False
+                    )
+                    if not object_tokens:
+                        empty_count += 1
+                        continue
+
+                    object_data = []
+                    for object_token in object_tokens:
+                        obj = self.nuim.get("object_ann", object_token)
+                        category_token = obj["category_token"]
+                        attribute_tokens = obj["attribute_tokens"]
+                        attributes = []
+                        for attribute_token in attribute_tokens:
+                            attribute = self.nuim.get("attribute", attribute_token)
+                            attributes.append(attribute)
+                        category = self.nuim.get("category", category_token)["name"]
+                        obj["category"] = category
+                        obj["attributes"] = attributes
+                        object_data.append(obj)
+
+                    sample_data = self.nuim.get("sample_data", key_camera_token)
+                    img_filename = sample_data["filename"]
+                    timestamp = sample_data["timestamp"]
+
+                    # Apply time filtering if enabled
+                    if self.use_time_filtered and not self.is_time_in_working_hours(
+                        img_filename
+                    ):
+                        continue
+
+                    save_path = save_path_parent / f"{idx}.pkl"
+                    try:
+                        with open(save_path, "wb") as f:
+                            pickle.dump(
+                                {
+                                    "filename": img_filename,
+                                    "labels": object_data,
+                                    "timestamp": timestamp,
+                                },
+                                f,
+                            )
+                        os.chmod(save_path, 0o777)
+                    except Exception:
+                        # best-effort; skip on failure
+                        pass
+                    idx += 1
+
+                print(
+                    f"{self.split} has {empty_count} out of {len(self.nuim.sample)} empty samples."
+                )
 
         super().__init__(
             img_dir=img_dir,
-            merge_transform=merge_transform,
+            merge_transform=self.merge_transform,
             **kwargs,
         )
 
@@ -968,6 +974,42 @@ class NuImagesDataset(ImageDataset):
             "attributes": attributes,
             "timestamp": timestamp,
         }
+
+    def merge_transform(
+        self,
+        image: Tensor, 
+        labels: list[dict[str, Any]], 
+        timestamp: str
+    ) -> tuple[
+        Tensor,
+        list[tuple[ObjectDetectionResultI, dict[str, Any], str]],
+        list[dict[str, Any]],
+        str,
+    ]:
+        results = []
+        attributes = []
+
+        for obj_label in labels:
+            _, height, width = image.shape
+            obj_category = obj_label["category"]
+            obj_attributes = obj_label["attributes"]
+            label = self.category_to_coco(obj_category)
+            cls = self.category_to_cls(label)
+
+            results.append(
+                ObjectDetectionResultI(
+                    score=1.0,
+                    cls=cls,
+                    label=label,
+                    bbox=obj_label["bbox"],
+                    image_hw=(height, width),
+                    bbox_format=BBox_Format.XYXY,
+                    attributes=obj_attributes,
+                )
+            )
+            attributes.append(obj_attributes)
+
+        return (image, results, attributes, timestamp)
 
 
 class NuImagesDataset_seg(ImageDataset):
@@ -1170,44 +1212,10 @@ class NuImagesDataset_seg(ImageDataset):
                 }
             )
 
-        def merge_transform(
-            image: Tensor, labels: list[dict[str, Any]], timestamp: str
-        ) -> tuple[
-            Tensor,
-            list[tuple[InstanceSegmentationResultI, dict[str, Any], str]],
-            dict[str, Any],
-            str,
-        ]:
-            results = []
-            attributes = []
-
-            for instance_id, obj_label in enumerate(labels):
-                _, height, width = image.shape
-                obj_category = obj_label["category"]
-                obj_attributes = obj_label["attributes"]
-                new_mask = obj_label["mask"].copy()
-                new_mask["counts"] = base64.b64decode(new_mask["counts"])
-                mask = cocomask.decode(new_mask)
-
-                results.append(
-                    InstanceSegmentationResultI(
-                        score=1.0,
-                        cls=self.category_to_cls(obj_category),
-                        label=obj_category,
-                        instance_id=instance_id,
-                        image_hw=(height, width),
-                        mask=torch.from_numpy(mask).unsqueeze(0),
-                        mask_format=Mask_Format.BITMASK,
-                    )
-                )
-                attributes.append(obj_attributes)
-
-            return (image, results, attributes, timestamp)
-
         super().__init__(
             img_labels=img_labels,
             img_dir=img_dir,
-            merge_transform=merge_transform,
+            merge_transform=self.merge_transform,
             **kwargs,
         )
 
@@ -1241,6 +1249,43 @@ class NuImagesDataset_seg(ImageDataset):
             "attributes": attributes,
             "timestamp": timestamp,
         }
+
+    def merge_transform(
+        self,
+        image: Tensor, 
+        labels: list[dict[str, Any]], 
+        timestamp: str
+    ) -> tuple[
+        Tensor,
+        list[tuple[InstanceSegmentationResultI, dict[str, Any], str]],
+        dict[str, Any],
+        str,
+    ]:
+        results = []
+        attributes = []
+
+        for instance_id, obj_label in enumerate(labels):
+            _, height, width = image.shape
+            obj_category = obj_label["category"]
+            obj_attributes = obj_label["attributes"]
+            new_mask = obj_label["mask"].copy()
+            new_mask["counts"] = base64.b64decode(new_mask["counts"])
+            mask = cocomask.decode(new_mask)
+
+            results.append(
+                InstanceSegmentationResultI(
+                    score=1.0,
+                    cls=self.category_to_cls(obj_category),
+                    label=obj_category,
+                    instance_id=instance_id,
+                    image_hw=(height, width),
+                    mask=torch.from_numpy(mask).unsqueeze(0),
+                    mask_format=Mask_Format.BITMASK,
+                )
+            )
+            attributes.append(obj_attributes)
+
+        return (image, results, attributes, timestamp)
 
 
 class WaymoDataset(ImageDataset):
@@ -1466,34 +1511,11 @@ class WaymoDataset(ImageDataset):
                             )
                     idx += 1
 
-        def merge_transform(image, labels, attributes, timestamp):
-            results = []
-
-            for label in labels:
-                cls = label["type"]
-                bbox = label["bbox"]
-                class_label = self.cls_to_category(cls)
-                cls = self.category_to_cls(class_label)
-                label = self.category_to_coco(class_label)
-
-                result = ObjectDetectionResultI(
-                    score=1.0,
-                    cls=cls,
-                    label=label,
-                    bbox=list(bbox),
-                    image_hw=image.shape,
-                    attributes=[attributes],
-                    bbox_format=BBox_Format.XYXY,
-                )
-                results.append(result)
-
-            return (image, results, attributes, timestamp)
-
         # Call the parent class constructor (no annotations_file argument)
         super().__init__(
             annotations_file=None,
             img_dir=str(self.camera_img_dir),
-            merge_transform=merge_transform,
+            merge_transform=self.merge_transform,
             **kwargs,
         )
 
@@ -1559,6 +1581,29 @@ class WaymoDataset(ImageDataset):
             "attributes": attributes,
             "timestamp": timestamp,
         }
+
+    def merge_transform(self, image, labels, attributes, timestamp):
+        results = []
+
+        for label in labels:
+            cls = label["type"]
+            bbox = label["bbox"]
+            class_label = self.cls_to_category(cls)
+            cls = self.category_to_cls(class_label)
+            label = self.category_to_coco(class_label)
+
+            result = ObjectDetectionResultI(
+                score=1.0,
+                cls=cls,
+                label=label,
+                bbox=list(bbox),
+                image_hw=image.shape,
+                attributes=[attributes],
+                bbox_format=BBox_Format.XYXY,
+            )
+            results.append(result)
+
+        return (image, results, attributes, timestamp)
 
 
 class WaymoDataset_seg(ImageDataset):
@@ -1730,40 +1775,12 @@ class WaymoDataset_seg(ImageDataset):
                 f"No valid data found in {self.camera_img_dir} and {self.camera_box_dir}"
             )
 
-        def merge_transform(image, labels, attributes, timestamp):
-            masks_bytes = labels[0]["masks"]
-            divisor = labels[0]["divisor"]
-            instance_id = labels[0]["instance_id"]
-            masks = transforms.ToTensor()(Image.open(io.BytesIO(masks_bytes)))
-            instance_masks = masks % divisor
-            semantic_masks = masks // divisor
-
-            results = []
-            for i in instance_id:
-                semantic_id = self.get_semantic_class(instance_masks, semantic_masks, i)
-                if len(semantic_id) == 0:
-                    # Skip if semantic class could not be determined
-                    continue
-                class_id = int(semantic_id[0])
-                instance_mask = instance_masks == i
-                result = InstanceSegmentationResultI(
-                    score=1.0,
-                    cls=class_id,
-                    label=self.cls_to_category(class_id),
-                    instance_id=i,
-                    image_hw=image.shape,
-                    mask=instance_mask,
-                )
-                results.append(result)
-
-            return image, results, attributes, timestamp
-
         # Call the parent class constructor (no annotations_file argument)
         super().__init__(
             annotations_file=None,
             img_dir=str(self.camera_img_dir),
             img_labels=self.img_labels,
-            merge_transform=merge_transform,
+            merge_transform=self.merge_transform,
             **kwargs,
         )
 
@@ -1807,3 +1824,31 @@ class WaymoDataset_seg(ImageDataset):
             "attributes": attributes,
             "timestamp": timestamp,
         }
+
+    def merge_transform(self, image, labels, attributes, timestamp):
+        masks_bytes = labels[0]["masks"]
+        divisor = labels[0]["divisor"]
+        instance_id = labels[0]["instance_id"]
+        masks = transforms.ToTensor()(Image.open(io.BytesIO(masks_bytes)))
+        instance_masks = masks % divisor
+        semantic_masks = masks // divisor
+
+        results = []
+        for i in instance_id:
+            semantic_id = self.get_semantic_class(instance_masks, semantic_masks, i)
+            if len(semantic_id) == 0:
+                # Skip if semantic class could not be determined
+                continue
+            class_id = int(semantic_id[0])
+            instance_mask = instance_masks == i
+            result = InstanceSegmentationResultI(
+                score=1.0,
+                cls=class_id,
+                label=self.cls_to_category(class_id),
+                instance_id=i,
+                image_hw=image.shape,
+                mask=instance_mask,
+            )
+            results.append(result)
+
+        return image, results, attributes, timestamp

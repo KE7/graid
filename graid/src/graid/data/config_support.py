@@ -179,8 +179,6 @@ class DatasetGenerationConfig:
         hub_repo_id: Optional[str] = None,
         hub_private: bool = False,
         num_samples: Optional[int] = None,
-        save_steps: int = 50,
-        force: bool = False,
         use_original_filenames: bool = True,
         filename_prefix: str = "img",
     ):
@@ -201,8 +199,6 @@ class DatasetGenerationConfig:
         self.hub_repo_id = hub_repo_id
         self.hub_private = hub_private
         self.num_samples = num_samples
-        self.save_steps = save_steps
-        self.force = force
         self.use_original_filenames = use_original_filenames
         self.filename_prefix = filename_prefix
 
@@ -293,8 +289,6 @@ class DatasetGenerationConfig:
             "num_workers": self.num_workers,
             "qa_workers": self.qa_workers,
             "num_samples": self.num_samples,
-            "save_steps": self.save_steps,
-            "force": self.force,
             "use_original_filenames": self.use_original_filenames,
             "filename_prefix": self.filename_prefix,
         }
@@ -382,8 +376,6 @@ def load_config_from_dict(config_data: dict[str, Any]) -> DatasetGenerationConfi
             hub_repo_id=config_data.get("hub_repo_id"),
             hub_private=config_data.get("hub_private", False),
             num_samples=config_data.get("num_samples"),
-            save_steps=config_data.get("save_steps", 50),
-            force=config_data.get("force", False),
             use_original_filenames=config_data.get("use_original_filenames", True),
             filename_prefix=config_data.get("filename_prefix", "img"),
         )
@@ -454,14 +446,6 @@ def validate_config_file(config_path: Union[str, Path]) -> tuple[bool, Optional[
         Tuple of (is_valid, error_message)
     """
     try:
-        config = load_config_from_file(config_path)
-        return True, None
-    except ConfigurationError as e:
-        return False, str(e)
-    except Exception as e:
-        return False, f"Unexpected error: {e}"
-
-
         config = load_config_from_file(config_path)
         return True, None
     except ConfigurationError as e:

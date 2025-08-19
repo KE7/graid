@@ -90,16 +90,16 @@ def install_detectron2() -> None:
     if platform.system() == "Darwin":
         subprocess.run(
             [
-                'CC=clang CXX=clang++ ARCHFLAGS="-arch x86_64" python',
-                "-m",
+                'CC=clang CXX=clang++ ARCHFLAGS="-arch x86_64" uv',
                 "pip",
                 "install",
                 "-e",
                 ".",
+                "--no-build-isolation",
             ]
         )
     else:
-        subprocess.run(["python", "-m", "pip", "install", "-e", "."])
+        subprocess.run(['CC=clang CXX=clang++ ARCHFLAGS="-arch x86_64" uv', "pip", "install", "-e", ".", "--no-build-isolation"])
 
     # Change back to the original directory
     os.chdir("..")

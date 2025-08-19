@@ -11,7 +11,7 @@ Key Features:
     - Parallel question-answer generation
     - COCO-style annotations with embedded PIL images
     - Unlabeled image support (model-generated detections)
-    - Robust checkpointing and crash recovery
+    - Memory-efficient dataset generation
     - HuggingFace Hub integration
 
 Classes:
@@ -309,7 +309,6 @@ class HuggingFaceDatasetBuilder:
         📊 COCO Compatibility: Standard annotations with category strings
         🖼️ PIL Integration: Embedded images ready for VLM workflows
         📁 Flexible Storage: Original or generated filenames
-        🔄 Crash Recovery: Robust checkpointing for long-running jobs
         🌐 Hub Integration: Direct upload to HuggingFace Hub
 
     Architecture:
@@ -328,8 +327,7 @@ class HuggingFaceDatasetBuilder:
     Performance Optimizations:
         - Batch processing with configurable sizes
         - Parallel QA generation with ThreadPoolExecutor
-        - Incremental dataset building to manage memory
-        - Optional checkpointing for crash recovery
+        - Memory-efficient generator-based processing
         - Confidence thresholds for quality control
 
     Example:
@@ -360,10 +358,8 @@ class HuggingFaceDatasetBuilder:
         num_workers: int = 4,
         qa_workers: int = 4,
         num_samples: Optional[int] = None,
-        save_steps: int = 50,
         use_original_filenames: bool = True,
         filename_prefix: str = "img",
-        force: bool = False,
         save_path: str = "./graid-datasets",
     ):
         """
@@ -383,11 +379,9 @@ class HuggingFaceDatasetBuilder:
             num_workers: Number of data loading workers
             qa_workers: Number of QA generation workers
             num_samples: Maximum number of samples to process (0 or None = process all)
-            save_steps: Save checkpoint every N batches for crash recovery
             save_path: Path to save dataset (required)
             use_original_filenames: Whether to keep original filenames
             filename_prefix: Prefix for generated filenames if not using originals
-            force: Force restart from scratch, ignoring existing checkpoints
         """
         self.dataset_name = dataset_name
         self.split = split
@@ -401,20 +395,19 @@ class HuggingFaceDatasetBuilder:
         self.num_workers = num_workers
         self.qa_workers = qa_workers
         self.num_samples = num_samples
-        self.save_steps = save_steps
         self.save_path = Path(save_path)
         self.use_original_filenames = use_original_filenames
         self.filename_prefix = filename_prefix
-        self.force = force
 
         # Question profiling (timings)
         self.profile_questions: bool = bool(os.getenv("GRAID_PROFILE_QUESTIONS"))
         self.question_timings: Dict[str, Tuple[float, int]] = {}
         self.question_counts: Dict[str, int] = {}
 
-        # Checkpointing support
-        self.checkpoint_dir = self.save_path / "checkpoints"
-        self.checkpoint_file = self.checkpoint_dir / f"checkpoint_{self.split}.json"
+        # Enhanced profiling for is_applicable vs apply efficiency
+        self.question_detailed_stats: Dict[str, Dict[str, Any]] = {}
+
+
 
         # Validate allowable_set
         if allowable_set is not None:
@@ -619,7 +612,11 @@ class HuggingFaceDatasetBuilder:
             image = np.array(image)
 
         if image.dtype in [np.float32, np.float64]:
-            image = (image * 255).astype(np.uint8)
+            if image.max() > 1.0:
+                # Values already in [0, 255] range, just convert to uint8
+                image = image.astype(np.uint8)
+            else:
+                image = (image * 255).astype(np.uint8)
         elif image.dtype != np.uint8:
             image = image.astype(np.uint8)
 
@@ -713,55 +710,99 @@ class HuggingFaceDatasetBuilder:
             detections, pil_image.width, pil_image.height
         )
 
-        # Generate questions and answers
+        # Generate questions and answers with enhanced profiling
         for question in self.questions:
-            if detections and question.is_applicable(pil_image, detections):
-                t0 = time.perf_counter() if self.profile_questions else None
-                try:
-                    qa_results = question.apply(pil_image, detections)
-                    if self.profile_questions and t0 is not None:
-                        dt = time.perf_counter() - t0
-                        qname = question.__class__.__name__
-                        t_total, t_cnt = local_timings.get(qname, (0.0, 0))
-                        local_timings[qname] = (t_total + dt, t_cnt + 1)
-
-                    for qa_item in qa_results:
-                        if not isinstance(qa_item, (tuple, list)) or len(qa_item) != 2:
-                            logger.warning(
-                                f"{question.__class__.__name__}.apply() returned malformed item: {qa_item!r}"
-                            )
-                            continue
-
-                        question_text, answer_text = qa_item
-
-                        # Build the final QA pair with embedded image bytes
-                        qa_pair = {
-                            "image": image_reference,  # Embedded bytes dict format
-                            "annotations": annotations,
-                            "question": question_text,
-                            "answer": answer_text,
-                            "reasoning": None,
-                            "question_type": question.__class__.__name__,
-                            "source_id": source_id,
-                        }
-
-                        # Add source_filename if using generated filenames for reference
-                        if not self.use_original_filenames:
-                            source_name = (
-                                self._infer_source_name({"name": source_id})
-                                if hasattr(self, "_current_example")
-                                else None
-                            )
-                            if source_name:
-                                qa_pair["source_filename"] = source_name
-
-                        qa_pairs.append(qa_pair)
-
-                except Exception as e:
-                    logger.warning(
-                        f"Question {question.__class__.__name__} failed on image {source_id}: {e}"
+            qname = question.__class__.__name__
+            
+            # Initialize detailed stats for this question if not exists
+            if self.profile_questions and qname not in self.question_detailed_stats:
+                self.question_detailed_stats[qname] = {
+                    "is_applicable_time": (0.0, 0),
+                    "is_applicable_true_count": 0,
+                    "apply_time": (0.0, 0),
+                    "apply_empty_results": 0,
+                    "total_qa_generated": 0,
+                    "question_text": getattr(question, "question", qname)  # Full question string
+                }
+            
+            # Profile is_applicable timing
+            if detections:
+                is_applicable_start = time.perf_counter() if self.profile_questions else None
+                is_applicable_result = question.is_applicable(pil_image, detections)
+                
+                if self.profile_questions and is_applicable_start is not None:
+                    is_applicable_time = time.perf_counter() - is_applicable_start
+                    current_time, current_count = self.question_detailed_stats[qname]["is_applicable_time"]
+                    self.question_detailed_stats[qname]["is_applicable_time"] = (
+                        current_time + is_applicable_time, current_count + 1
                     )
-                    continue
+                    
+                if is_applicable_result:
+                    if self.profile_questions:
+                        self.question_detailed_stats[qname]["is_applicable_true_count"] += 1
+                    
+                    # Profile apply timing
+                    apply_start = time.perf_counter() if self.profile_questions else None
+                    try:
+                        qa_results = question.apply(pil_image, detections)
+                        
+                        if self.profile_questions and apply_start is not None:
+                            apply_time = time.perf_counter() - apply_start
+                            current_time, current_count = self.question_detailed_stats[qname]["apply_time"]
+                            self.question_detailed_stats[qname]["apply_time"] = (
+                                current_time + apply_time, current_count + 1
+                            )
+                            
+                            # Track legacy timing for backward compatibility
+                            dt = apply_time
+                            t_total, t_cnt = local_timings.get(qname, (0.0, 0))
+                            local_timings[qname] = (t_total + dt, t_cnt + 1)
+
+                        # Check if apply returned empty results despite is_applicable=True
+                        if not qa_results and self.profile_questions:
+                            self.question_detailed_stats[qname]["apply_empty_results"] += 1
+
+                        for qa_item in qa_results:
+                            if not isinstance(qa_item, (tuple, list)) or len(qa_item) != 2:
+                                logger.warning(
+                                    f"{question.__class__.__name__}.apply() returned malformed item: {qa_item!r}"
+                                )
+                                continue
+
+                            question_text, answer_text = qa_item
+
+                            # Build the final QA pair with embedded image bytes
+                            qa_pair = {
+                                "image": image_reference,  # Embedded bytes dict format
+                                "annotations": annotations,
+                                "question": question_text,
+                                "answer": answer_text,
+                                "reasoning": None,
+                                "question_type": question.__class__.__name__,
+                                "source_id": source_id,
+                            }
+
+                            # Add source_filename if using generated filenames for reference
+                            if not self.use_original_filenames:
+                                source_name = (
+                                    self._infer_source_name({"name": source_id})
+                                    if hasattr(self, "_current_example")
+                                    else None
+                                )
+                                if source_name:
+                                    qa_pair["source_filename"] = source_name
+
+                            qa_pairs.append(qa_pair)
+                            
+                            # Track successful QA generation
+                            if self.profile_questions:
+                                self.question_detailed_stats[qname]["total_qa_generated"] += 1
+
+                    except Exception as e:
+                        logger.warning(
+                            f"Question {question.__class__.__name__} failed on image {source_id}: {e}"
+                        )
+                        continue
 
         if self.profile_questions:
             return (qa_pairs, local_timings)
@@ -787,83 +828,11 @@ class HuggingFaceDatasetBuilder:
             # Return appropriate empty result based on profiling mode
             return ([], {}) if self.profile_questions else []
 
-    def _save_checkpoint(
-        self, batch_idx: int, results: List[Dict[str, Any]], processed_images: int
-    ):
-        """Save checkpoint to resume from crash."""
-        self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
-        checkpoint_data = {
-            "batch_idx": batch_idx,
-            "processed_images": processed_images,
-            "num_results": len(results),
-            "dataset_name": self.dataset_name,
-            "split": self.split,
-            "timestamp": time.time(),
-        }
 
-        # Save checkpoint metadata
-        with open(self.checkpoint_file, "w") as f:
-            json.dump(checkpoint_data, f, indent=2)
 
-        # Save results so far
-        results_file = self.checkpoint_dir / f"results_{self.split}.json"
-        with open(results_file, "w") as f:
-            json.dump(results, f)
 
-        logger.info(
-            f"Checkpoint saved at batch {batch_idx} ({processed_images} images processed)"
-        )
 
-    def _load_checkpoint(self) -> tuple[int, List[Dict[str, Any]], int]:
-        """Load checkpoint to resume from crash. Returns (start_batch_idx, results, processed_images)."""
-        if not self.checkpoint_file.exists():
-            return 0, [], 0
-
-        try:
-            with open(self.checkpoint_file, "r") as f:
-                checkpoint_data = json.load(f)
-
-            results_file = self.checkpoint_dir / f"results_{self.split}.json"
-            if not results_file.exists():
-                logger.warning(
-                    "Checkpoint metadata found but results file missing. Starting from scratch."
-                )
-                return 0, [], 0
-
-            with open(results_file, "r") as f:
-                results = json.load(f)
-
-            start_batch = checkpoint_data["batch_idx"] + 1  # Resume from next batch
-            processed_images = checkpoint_data["processed_images"]
-
-            from datasets import Dataset
-
-            checkpoint_dataset = Dataset.from_list(results)
-
-            logger.info(
-                f"Resuming from checkpoint: batch {start_batch}, {processed_images} images processed, {len(results)} QA pairs"
-            )
-            return start_batch, [checkpoint_dataset], processed_images
-
-        except Exception as e:
-            logger.warning(f"Failed to load checkpoint: {e}. Starting from scratch.")
-            return 0, [], 0
-
-    def _cleanup_checkpoint(self):
-        """Clean up checkpoint files after successful completion."""
-        try:
-            if self.checkpoint_file.exists():
-                self.checkpoint_file.unlink()
-            results_file = self.checkpoint_dir / f"results_{self.split}.json"
-            if results_file.exists():
-                results_file.unlink()
-            # Remove checkpoint dir if empty
-            if self.checkpoint_dir.exists() and not any(self.checkpoint_dir.iterdir()):
-                self.checkpoint_dir.rmdir()
-            logger.debug("Checkpoint files cleaned up")
-        except Exception as e:
-            logger.debug(f"Failed to cleanup checkpoint files: {e}")
 
     def _cleanup_images(self):
         """Clean up image files after successful dataset creation to avoid duplicate storage."""
@@ -898,21 +867,9 @@ class HuggingFaceDatasetBuilder:
             persistent_workers=False,
         )
 
-    def _initialize_processing_state(self) -> tuple[int, List, int]:
-        """Initialize or resume processing state from checkpoints."""
-        force_restart = bool(os.getenv("GRAID_FORCE_RESTART")) or self.force
-        if force_restart:
-            logger.info(
-                "Force restart requested - removing existing checkpoints and starting from scratch"
-            )
-            self._cleanup_checkpoint()
-            return 0, [], 0
-        else:
-            return self._load_checkpoint()
 
-    def _should_skip_batch(self, batch_idx: int, start_batch_idx: int) -> bool:
-        """Check if batch should be skipped (for checkpoint resume)."""
-        return batch_idx < start_batch_idx
+
+
 
     def _should_stop_early(self, batch_idx: int, processed_images: int) -> bool:
         """Check if processing should stop early due to limits."""
@@ -1069,27 +1026,7 @@ class HuggingFaceDatasetBuilder:
 
         return batch_results, batch_timings
 
-    def _create_batch_dataset(
-        self, batch_results: List[Dict[str, Any]]
-    ) -> Optional[Any]:
-        """Create a Dataset from batch results with deferred image casting."""
-        from datasets import Dataset
 
-        if not batch_results:
-            return None
-
-        try:
-            logger.debug(f"Creating batch dataset from {len(batch_results)} results...")
-            batch_dataset = Dataset.from_list(batch_results)
-            logger.debug(f"✓ Created batch dataset with {len(batch_dataset)} rows")
-            # Note: We deliberately do NOT cast image column here - defer until the very end
-            return batch_dataset
-        except Exception as e:
-            logger.error(f"❌ Failed to create batch dataset: {e}")
-            import traceback
-
-            logger.error(f"Traceback: {traceback.format_exc()}")
-            return None
 
     def _update_progress_tracking(
         self,
@@ -1119,44 +1056,41 @@ class HuggingFaceDatasetBuilder:
                 f"Processed {processed_images} images, generated {total_qa_pairs} QA pairs"
             )
 
-    def _create_final_dataset(self, batch_datasets: List) -> Any:
-        """Combine batch datasets into final DatasetDict with metadata."""
-        from datasets import (
-            Dataset,
-            DatasetDict,
-            Image as HFImage,
-            concatenate_datasets,
+
+
+    def build(self):
+        """
+        Build the HuggingFace dataset using memory-efficient generator approach.
+
+        This method creates datasets using Dataset.from_generator to maintain bounded
+        memory usage while preserving parallel QA processing. Key improvements:
+        1. Generator-based processing eliminates memory accumulation
+        2. Parallel QA workers still utilized for performance
+        3. Bounded memory via writer_batch_size parameter
+        4. Embedded images preserved (solving 10k file limit)
+
+        Returns:
+            DatasetDict containing the generated VQA dataset
+        """
+        logger.info(
+            "🚀 Building HuggingFace dataset for %s/%s with generator approach", 
+            self.dataset_name, self.split
         )
 
-        if not batch_datasets:
-            logger.warning("No batch datasets created - no QA pairs generated")
-            # Create empty dataset with proper schema
-            empty_data = {
-                "image": [],
-                "annotations": [],
-                "question": [],
-                "answer": [],
-                "question_type": [],
-                "source_id": [],
-            }
-            dataset = Dataset.from_dict(empty_data)
-            dataset = dataset.cast_column("image", HFImage())
-        else:
-            # Concatenate all batch datasets
-            try:
-                logger.info(f"Concatenating {len(batch_datasets)} batch datasets...")
-                dataset = concatenate_datasets(batch_datasets)
-                logger.debug(f"Final concatenated dataset: {len(dataset)} rows")
+        # Import Dataset locally to avoid import issues
+        from datasets import Dataset, DatasetDict, Image as HFImage
 
-                # Cast image column from paths to HFImage at the very end (memory optimization)
-                logger.debug(
-                    "🎯 Converting image paths to HFImage format at the end..."
-                )
-                dataset = dataset.cast_column("image", HFImage())
-
-            except Exception as e:
-                logger.error(f"Failed to concatenate batch datasets: {e}")
-                raise
+        # Create dataset using memory-efficient generator
+        logger.info("🔧 Creating dataset using a generator...")
+        
+        dataset = Dataset.from_generator(
+            self._qa_data_generator,
+            # Let HuggingFace infer features from the first examples
+        )
+        
+        # Cast image column to HFImage format
+        logger.debug("🎯 Converting image bytes to HFImage format...")
+        dataset = dataset.cast_column("image", HFImage())
 
         # Add metadata
         metadata = self._create_metadata()
@@ -1164,16 +1098,14 @@ class HuggingFaceDatasetBuilder:
             f"Object detection QA dataset for {self.dataset_name}"
         )
         dataset.info.features = dataset.features
-        # dataset.info.version = "1.0.0"
         dataset.info.config_name = json.dumps(metadata)
 
         # Create DatasetDict
         dataset_dict = DatasetDict({self.split: dataset})
 
-        logger.info(f"Generated {len(dataset)} question-answer pairs")
+        logger.info(f"✅ Generated {len(dataset)} question-answer pairs")
 
-        # Clean up checkpoint files on successful completion
-        self._cleanup_checkpoint()
+
 
         # Log profiling information
         if self.profile_questions and self.question_timings:
@@ -1194,113 +1126,124 @@ class HuggingFaceDatasetBuilder:
             summary = ", ".join([f"{k}={v}" for k, v in pairs])
             logger.info(f"Per-question counts: {summary}")
 
+        # Log detailed profiling statistics
+        if self.profile_questions and self.question_detailed_stats:
+            from graid.utils.profiling import log_profiling_statistics
+            question_stats = {'detailed_stats': self.question_detailed_stats}
+            log_profiling_statistics(question_stats, "Detailed Question Processing Statistics")
+
         return dataset_dict
 
-    def build(self):
+    def _qa_data_generator(self):
         """
-        Build the HuggingFace dataset using clean architecture with extracted methods.
-
-        This method orchestrates the complete dataset generation pipeline:
-        1. Setup data loaders and processing strategies
-        2. Initialize or resume from checkpoints
-        3. Process batches with progress tracking
-        4. Generate QA pairs using configured strategy
-        5. Build incremental datasets and combine
-        6. Return final DatasetDict with metadata
-
-        Returns:
-            DatasetDict containing the generated VQA dataset
+        Memory-efficient generator that yields individual QA pairs with parallel processing.
+        
+        This generator maintains bounded memory usage by yielding QA pairs one at a time
+        instead of accumulating them in memory. Parallel QA processing is preserved
+        within each batch for optimal performance.
+        
+        Yields:
+            Dict[str, Any]: Individual QA pair with embedded image bytes
         """
-        logger.info(
-            "🚀 Building HuggingFace dataset for %s/%s", self.dataset_name, self.split
-        )
-
-        # Setup phase
         logger.debug("📋 Initializing data loader and processing components")
         data_loader = self._create_data_loader()
-        start_batch_idx, batch_datasets, processed_images = (
-            self._initialize_processing_state()
-        )
         qa_processor = QAProcessorFactory.create(
             self.qa_workers, self, self.profile_questions
         )
 
-        # Calculate total batches for accurate progress bar
+        # Calculate total batches for progress tracking
         total_batches = self._calculate_total_batches(data_loader)
+        processed_images = 0
+        total_qa_pairs = 0
+        
         logger.info(
-            "📊 Processing %d total batches (%d images per batch)",
+            "📊 Processing %d total batches (%d images per batch) with generator",
             total_batches,
             self.batch_size,
         )
 
-        # Skip already processed batches if resuming
-        if start_batch_idx > 0:
-            logger.info(
-                "⏭️  Resuming from checkpoint: skipping first %d batches",
-                start_batch_idx,
-            )
-
-        # Processing phase with accurate progress bar
         logger.debug(
             "🔄 Starting batch processing with %s strategy",
             "parallel" if self.qa_workers > 1 else "sequential",
         )
+
+        # Create progress bar for batch processing
         progress_bar = tqdm(
-            enumerate(data_loader), desc="Processing batches", total=total_batches
+            enumerate(data_loader), 
+            desc="Generating QA pairs", 
+            total=total_batches
         )
 
         for batch_idx, batch in progress_bar:
-            # Skip and continue logic
-            if self._should_skip_batch(batch_idx, start_batch_idx):
-                continue
+            # Early stopping logic
             if self._should_stop_early(batch_idx, processed_images):
+                logger.info(f"Early stopping at batch {batch_idx}")
                 break
 
-            # Get predictions and prepare batch data
+            # Get predictions and prepare batch data (same as before)
             batch_images, labels = self._get_batch_predictions(batch)
             batch_data = self._prepare_batch_data(
                 batch_idx, batch, batch_images, labels
             )
 
-            # Process QA using strategy pattern
+            # Process QA using parallel/sequential strategy (unchanged)
             batch_results_raw = qa_processor.process_batch(batch_data)
 
             # Process results and update tracking
             batch_results, batch_timings = self._process_qa_results(batch_results_raw)
             self._update_progress_tracking(batch_results, batch_timings)
 
-            # Create batch dataset and add to collection
-            batch_dataset = self._create_batch_dataset(batch_results)
-            if batch_dataset:
-                batch_datasets.append(batch_dataset)
+            # Yield individual QA pairs instead of accumulating
+            for qa_pair in batch_results:
+                yield qa_pair
+                total_qa_pairs += 1
 
-            # Update progress
+            # Update progress tracking
             processed_images += len(batch)
-            total_qa_pairs = sum(len(ds) for ds in batch_datasets)
             self._log_progress(batch_idx, processed_images, total_qa_pairs)
 
             # Update progress bar description
             progress_bar.set_description(
-                f"Processing batches ({processed_images} images, {total_qa_pairs} QA pairs)"
+                f"Generated {total_qa_pairs} QA pairs from {processed_images} images"
             )
 
         # Close progress bar
         progress_bar.close()
 
-        # Finalization phase
-        logger.info("🔧 Finalizing dataset construction and adding metadata")
-        final_dataset = self._create_final_dataset(batch_datasets)
-
-        # Success summary
-        total_qa_pairs = sum(len(ds) for ds in batch_datasets) if batch_datasets else 0
-        logger.info("✅ Dataset generation completed successfully!")
         logger.info(
-            "📊 Generated %d QA pairs from %d processed images",
-            total_qa_pairs,
-            processed_images,
+            f"🎯 Generator completed: {total_qa_pairs} QA pairs from {processed_images} images"
         )
 
-        return final_dataset
+    def _get_features_schema(self):
+        """
+        Define the dataset features schema for Dataset.from_generator.
+        
+        Returns:
+            datasets.Features: Schema definition for the generated dataset
+        """
+        from datasets import Features, Value, Sequence, Image as HFImage
+        
+        return Features({
+            "image": {
+                "bytes": Value("binary"),
+                "path": Value("string"),
+            },  # Image dict with embedded bytes
+            "annotations": Sequence({
+                "bbox": Sequence(Value("float32"), length=4),
+                "category_id": Value("int32"),
+                "category": Value("string"),
+                "iscrowd": Value("int32"),
+                "area": Value("float32"),
+                "score": Value("float32"),
+            }),
+            "question": Value("string"),
+            "answer": Value("string"),
+            "reasoning": Value("string"),
+            "question_type": Value("string"),
+            "source_id": Value("string"),
+        })
+
+
 
     def _create_metadata(self) -> Dict[str, Any]:
         """Create metadata dictionary for the dataset."""
@@ -1351,7 +1294,6 @@ def generate_dataset(
     question_configs: Optional[List[Dict[str, Any]]] = None,
     num_workers: int = 4,
     qa_workers: int = 4,
-    save_steps: int = 50,
     save_path: str = "./graid-datasets",
     upload_to_hub: bool = False,
     hub_repo_id: Optional[str] = None,
@@ -1359,7 +1301,6 @@ def generate_dataset(
     num_samples: Optional[int] = None,
     use_original_filenames: bool = True,
     filename_prefix: str = "img",
-    force: bool = False,
 ):
     """
     Generate comprehensive HuggingFace datasets for object detection question-answering.
@@ -1438,10 +1379,6 @@ def generate_dataset(
             - >1: Parallel processing (production, high-throughput)
             Recommended: 2-4x CPU cores. Default: 4
 
-        save_steps (int): Save checkpoint every N batches for crash recovery.
-            Larger values save less frequently but reduce I/O overhead.
-            Default: 50
-
         save_path (str): Local directory to save the generated dataset.
             Creates standard HuggingFace dataset structure with Parquet files.
             Default: "./graid-datasets"
@@ -1468,8 +1405,7 @@ def generate_dataset(
             use_original_filenames=False. Example: "img" → "img000001.jpg"
             Default: "img"
 
-        force (bool): Whether to force restart from scratch, ignoring any
-            existing checkpoints from previous runs. Default: False
+
 
     Returns:
         DatasetDict: HuggingFace dataset dictionary containing the generated
@@ -1543,11 +1479,9 @@ def generate_dataset(
         num_workers=num_workers,
         qa_workers=qa_workers,
         num_samples=num_samples,
-        save_steps=save_steps,
         save_path=save_path,
         use_original_filenames=use_original_filenames,
         filename_prefix=filename_prefix,
-        force=force,
     )
 
     # Build the dataset
@@ -1618,7 +1552,15 @@ def generate_dataset(
     #     except Exception as e:
     #         logger.warning(f"Failed to cleanup temporary image files: {e}")
 
-    return dataset_dict
+    # Collect statistics from builder
+    stats = None
+    if builder.profile_questions and hasattr(builder, 'question_detailed_stats'):
+        stats = {
+            'question_counts': builder.question_counts,
+            'detailed_stats': builder.question_detailed_stats
+        }
+    
+    return dataset_dict, stats
 
 
 # Compatibility functions for existing code
@@ -1761,7 +1703,7 @@ def interactive_question_selection() -> List[Dict[str, Any]]:
     return question_configs
 
 
-def create_webdataset_archive(dataset_path: str, output_path: str, max_tar_size_mb: int = 1000):
+def create_webdataset_archive(dataset_path: str, output_path: str, max_tar_size_mb: int = 1000) -> List[str]:
     """
     ALTERNATIVE SOLUTION: Convert existing dataset to WebDataset format (TAR archives).
     
@@ -1781,9 +1723,9 @@ def create_webdataset_archive(dataset_path: str, output_path: str, max_tar_size_
     import json
     from pathlib import Path
     
-    dataset_path = Path(dataset_path)
-    output_path = Path(output_path)
-    output_path.mkdir(parents=True, exist_ok=True)
+    dataset_path_obj = Path(dataset_path)
+    output_path_obj = Path(output_path)
+    output_path_obj.mkdir(parents=True, exist_ok=True)
     
     # Load existing parquet to get QA pairs
     from datasets import load_dataset
@@ -1797,7 +1739,7 @@ def create_webdataset_archive(dataset_path: str, output_path: str, max_tar_size_
     
     # Process each split
     for split in ['train', 'val']:
-        parquet_file = dataset_path / "data" / f"{split}-00000-of-00001.parquet"
+        parquet_file = dataset_path_obj / "data" / f"{split}-00000-of-00001.parquet"
         if not parquet_file.exists():
             continue
             
@@ -1808,7 +1750,7 @@ def create_webdataset_archive(dataset_path: str, output_path: str, max_tar_size_
             if current_tar is None or current_size > max_tar_size_mb * 1024 * 1024:
                 if current_tar:
                     current_tar.close()
-                tar_path = output_path / f"{split}_{tar_index:04d}.tar"
+                tar_path = output_path_obj / f"{split}_{tar_index:04d}.tar"
                 current_tar = tarfile.open(tar_path, 'w')
                 tar_files.append(str(tar_path))
                 current_size = 0
@@ -1817,7 +1759,7 @@ def create_webdataset_archive(dataset_path: str, output_path: str, max_tar_size_
             
             # Add image to TAR
             image_path = sample['image']['path']
-            full_image_path = dataset_path / image_path
+            full_image_path = dataset_path_obj / image_path
             if full_image_path.exists():
                 current_tar.add(full_image_path, arcname=f"{i:08d}.jpg")
                 current_size += full_image_path.stat().st_size

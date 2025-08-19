@@ -10,11 +10,11 @@ import os
 import sys
 import warnings
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Dict
 
 import typer
 
-from graid.data.config_support import load_config_from_file
+
 
 # Suppress common warnings for better user experience
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -53,31 +53,68 @@ def _configure_logging():
     logger.setLevel(root_level)
     formatter = logging.Formatter("%(asctime)s %(levelname)s [%(name)s] %(message)s", datefmt="%H:%M:%S")
     
-    # Console handler
+    # Create a custom filter to only show GRAID logs on console
+    class GraidLogFilter(logging.Filter):
+        def filter(self, record):
+            # Only show logs from graid modules (and a few important system messages)
+            return (record.name.startswith('graid.') or 
+                   record.name == 'graid' or
+                   record.levelno >= logging.WARNING)  # Always show warnings/errors from any source
+    
+    # Console handler with GRAID-only filter
     ch = logging.StreamHandler()
     ch.setLevel(console_level)
     ch.setFormatter(formatter)
+    ch.addFilter(GraidLogFilter())  # Only show GRAID logs on console
     logger.addHandler(ch)
     
     # File handler with timestamp
     log_dir = os.getenv("GRAID_LOG_DIR", "logs")
+    # Create log directory with proper error handling
     try:
         Path(log_dir).mkdir(parents=True, exist_ok=True)
-    except Exception:
-        pass
+    except PermissionError:
+        # Log to stderr if we can't create log directory
+        print(f"Warning: Permission denied creating log directory: {log_dir}", file=sys.stderr)
+        log_dir = "/tmp"  # Fallback to /tmp
+        try:
+            Path(log_dir).mkdir(parents=True, exist_ok=True)
+        except Exception as fallback_e:
+            print(f"Warning: Could not create fallback log directory: {fallback_e}", file=sys.stderr)
+            log_dir = None
+    except OSError as e:
+        print(f"Warning: OS error creating log directory {log_dir}: {e}", file=sys.stderr)
+        log_dir = None
+    except Exception as e:
+        print(f"Warning: Unexpected error creating log directory {log_dir}: {e}", file=sys.stderr)
+        log_dir = None
     
-    # Generate timestamped log filename
+    # Generate timestamped log filename and create file handler
     from datetime import datetime
     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
     log_filename = f"graid_{timestamp}.log"
     
-    fh = logging.FileHandler(Path(log_dir) / log_filename)
-    fh.setLevel(file_level)
-    fh.setFormatter(formatter)
-    logger.addHandler(fh)
-    # Quiet noisy libraries a bit
+    # Only create file handler if we have a valid log directory
+    if log_dir is not None:
+        try:
+            fh = logging.FileHandler(Path(log_dir) / log_filename)
+            fh.setLevel(file_level)
+            fh.setFormatter(formatter)
+            logger.addHandler(fh)
+        except Exception as e:
+            print(f"Warning: Failed to create log file handler: {e}", file=sys.stderr)
+            print("Logging will only go to console", file=sys.stderr)
+    else:
+        print("Warning: No log directory available, logging only to console", file=sys.stderr)
+    # Quiet noisy libraries more aggressively
     logging.getLogger("mmengine").setLevel(logging.WARNING)
     logging.getLogger("urllib3").setLevel(logging.WARNING)
+    logging.getLogger("PIL").setLevel(logging.WARNING)
+    logging.getLogger("PIL.Image").setLevel(logging.WARNING)
+    logging.getLogger("matplotlib").setLevel(logging.WARNING)
+    logging.getLogger("datasets").setLevel(logging.WARNING)
+    logging.getLogger("transformers").setLevel(logging.WARNING)
+    logging.getLogger("torch").setLevel(logging.WARNING)
 
 
 _configure_logging()
@@ -98,23 +135,17 @@ def print_welcome():
         "   Generating Reasoning questions from Analysis of Images via Discriminative artificial intelligence"
     )
     typer.echo()
-    typer.echo("GRAID provides three main capabilities:")
+    typer.echo("GRAID provides two main capabilities:")
     typer.echo()
-    typer.secho("📁 Database Generation (generate):",
+    typer.secho("🗄️ Dataset Generation (generate-dataset):",
                 fg=typer.colors.BLUE, bold=True)
-    typer.echo("• Multiple datasets: BDD100K, NuImages, Waymo")
-    typer.echo("• Various model backends: Detectron, MMDetection, Ultralytics")
+    typer.echo("• Multiple datasets: BDD100K, NuImages, Waymo + Custom datasets")
+    typer.echo("• Multi-backend support: Detectron2, MMDetection, Ultralytics")
+    typer.echo("• Ensemble models with Weighted Box Fusion (WBF)")
     typer.echo("• Ground truth data or custom model predictions")
-    typer.echo()
-    typer.secho(
-        "🤗 HuggingFace Dataset Generation (generate-dataset):",
-        fg=typer.colors.BLUE,
-        bold=True,
-    )
-    typer.echo("• Generate HuggingFace datasets with VQA pairs")
-    typer.echo("• Support for WBF multi-model ensembles")
-    typer.echo("• Allowable set filtering for COCO objects")
-    typer.echo("• Interactive mode with config file support")
+    typer.echo("• Unlabeled image support (models generate detections)")
+    typer.echo("• Standard formats with COCO-style annotations")
+    typer.echo("• Interactive configuration and batch processing")
     typer.echo()
     typer.secho("🧠 VLM Evaluation (eval-vlms):",
                 fg=typer.colors.BLUE, bold=True)
@@ -243,8 +274,8 @@ def get_preconfigured_model() -> tuple[str, str, None]:
             if 0 <= backend_choice < len(backends):
                 backend = backends[backend_choice]
                 break
-        except ValueError:
-            pass
+        except ValueError as e:
+            typer.secho(f"Invalid input: Expected a number", fg=typer.colors.RED)
         typer.secho("Invalid choice. Please enter a valid number.",
                     fg=typer.colors.RED)
 
@@ -261,8 +292,8 @@ def get_preconfigured_model() -> tuple[str, str, None]:
             if 0 <= model_choice < len(models):
                 model_name = models[model_choice]
                 break
-        except ValueError:
-            pass
+        except ValueError as e:
+            typer.secho(f"Invalid input: Expected a number", fg=typer.colors.RED)
         typer.secho("Invalid choice. Please enter a valid number.",
                     fg=typer.colors.RED)
 
@@ -438,17 +469,9 @@ def generate(
         if conf is None:
             conf = 0.2
 
-        custom_config = None
-        if config and checkpoint:
-            if backend == "detectron":
-                custom_config = {"config": config, "weights": checkpoint}
-            elif backend == "mmdetection":
-                custom_config = {"config": config, "checkpoint": checkpoint}
-
-    # Handle custom model configuration
-    if "custom_config" in locals() and custom_config:
-        # Custom model configuration is handled directly by create_model
-        pass
+        # Note: Custom model configuration support would need to be implemented
+        # in the model creation logic. For now, custom models are not supported 
+        # in non-interactive mode.
 
     # Start generation
     typer.secho("🚀 Starting database generation...",
@@ -481,11 +504,148 @@ def generate(
         )
         typer.echo(f"Database created: {db_name}")
 
+    except KeyboardInterrupt:
+        typer.echo("\n⏹️  Generation cancelled by user")
+        raise typer.Exit(130)  # Standard exit code for SIGINT
+    except PermissionError as e:
+        typer.echo()
+        typer.secho(f"❌ Permission Error: {e}", fg=typer.colors.RED, bold=True)
+        typer.secho("Check file/directory permissions and try again.", fg=typer.colors.YELLOW)
+        raise typer.Exit(1)
+    except FileNotFoundError as e:
+        typer.echo()
+        typer.secho(f"❌ File Not Found: {e}", fg=typer.colors.RED, bold=True)
+        raise typer.Exit(1)
+    except ValueError as e:
+        typer.echo()
+        typer.secho(f"❌ Invalid Value: {e}", fg=typer.colors.RED, bold=True)
+        typer.secho("Check your input parameters and try again.", fg=typer.colors.YELLOW)
+        raise typer.Exit(1)
     except Exception as e:
         typer.echo()
-        typer.secho(
-            f"❌ Error during generation: {e}", fg=typer.colors.RED, bold=True)
+        typer.secho(f"❌ Unexpected Error: {e}", fg=typer.colors.RED, bold=True)
+        if os.getenv("GRAID_DEBUG_VERBOSE"):
+            import traceback
+            typer.echo("Detailed traceback:")
+            typer.echo(traceback.format_exc())
+        else:
+            typer.secho("Use GRAID_DEBUG_VERBOSE=1 for detailed error information.", fg=typer.colors.CYAN)
         raise typer.Exit(1)
+
+
+def _handle_list_commands(
+    list_valid_objects: bool,
+    list_questions: bool
+) -> bool:
+    """Handle --list-objects and --list-questions commands."""
+    if list_valid_objects:
+        from graid.utilities.coco import coco_labels
+        typer.secho("📋 Valid COCO Objects", fg=typer.colors.BLUE, bold=True)
+        typer.echo()
+        
+        valid_objects = list(coco_labels.values())
+        # Remove undefined as it's not a real COCO class
+        if "undefined" in valid_objects:
+            valid_objects.remove("undefined")
+        valid_objects.sort()
+        
+        for i, obj in enumerate(valid_objects, 1):
+            typer.echo(f"  {i:2d}. {obj}")
+        
+        typer.echo()
+        typer.echo(f"Total: {len(valid_objects)} objects")
+        return True
+    
+    if list_questions:
+        from graid.data.generate_dataset import list_available_questions
+        typer.secho("📋 Available Questions", fg=typer.colors.BLUE, bold=True)
+        typer.echo()
+        
+        questions = list_available_questions()
+        for i, (name, info) in enumerate(questions.items(), 1):
+            typer.secho(f"{i:2d}. {name}", fg=typer.colors.GREEN, bold=True)
+            typer.echo(f"    {info['question']}")
+            if info["parameters"]:
+                typer.echo("    Parameters:")
+                for param_name, param_info in info["parameters"].items():
+                    typer.echo(
+                        f"      • {param_name}: {param_info['description']} (default: {param_info['default']})"
+                    )
+            typer.echo()
+        
+        typer.echo(f"Total: {len(questions)} question types")
+        return True
+    
+    return False
+
+
+def _handle_interactive_questions(interactive_questions: bool) -> Optional[List[Dict]]:
+    """Handle interactive question selection."""
+    if interactive_questions:
+        from graid.data.generate_dataset import interactive_question_selection
+        return interactive_question_selection()
+    return None
+
+
+def _load_and_validate_config(
+    config_file: Optional[str],
+    **cli_args
+):
+    """Load configuration from file and apply CLI overrides."""
+    from graid.cli_helpers import ConfigurationManager
+    
+    if config_file:
+        config = ConfigurationManager.load_from_file(config_file)
+        config = ConfigurationManager.apply_cli_overrides(config, **cli_args)
+    else:
+        # Create config from CLI args only
+        if not cli_args.get('dataset') or not cli_args.get('split'):
+            raise ValueError("Either --config file or both --dataset and --split are required")
+        
+        # Local import for config creation
+        from graid.data.config_support import DatasetGenerationConfig
+        config = DatasetGenerationConfig(
+            dataset_name=cli_args['dataset'],
+            split=cli_args['split'],
+            models=[],
+            use_wbf=False,
+            confidence_threshold=0.0,
+            batch_size=32,
+            device=None,
+            allowable_set=cli_args.get('allowable_set', []).split(',') if cli_args.get('allowable_set') else None,
+            num_workers=cli_args.get('num_workers', 4),
+            qa_workers=cli_args.get('qa_workers', 4),
+            save_path=cli_args.get('save_path'),
+            upload_to_hub=cli_args.get('upload_to_hub', False),
+            hub_repo_id=cli_args.get('hub_repo_id'),
+            hub_private=cli_args.get('hub_private', False),
+            num_samples=None,
+            use_original_filenames=True,
+            filename_prefix='img',
+            force=cli_args.get('force', False),
+            question_configs=[{'name': 'HowMany', 'params': {}}]  # Default question
+        )
+    
+    # Final validation
+    ConfigurationManager.validate_final_config(config)
+    return config
+
+
+def _process_dataset_generation(config, question_configs: Optional[List] = None):
+    """Process the actual dataset generation."""
+    from graid.cli_helpers import DatasetProcessor, ArgumentValidator
+    
+    # Override question configs if provided interactively
+    if question_configs:
+        config.question_configs = question_configs
+    
+    # Determine processing strategy
+    splits = ArgumentValidator.validate_split_format(config.split)
+    
+    if len(splits) == 1:
+        return DatasetProcessor.process_single_split(config)
+    else:
+        return DatasetProcessor.process_multiple_splits(config)
 
 
 @app.command("generate-dataset")
@@ -502,8 +662,8 @@ def generate_dataset_cmd(
     allowable_set: Optional[str] = typer.Option(
         None, help="Comma-separated list of allowed COCO objects"
     ),
-    save_path: Optional[str] = typer.Option(
-        None, help="Path to save the generated dataset"
+    save_path: str = typer.Option(
+        "./graid-datasets", help="Path to save the generated dataset"
     ),
     upload_to_hub: bool = typer.Option(
         False, help="Upload dataset to HuggingFace Hub"),
@@ -539,271 +699,167 @@ def generate_dataset_cmd(
     Supports built-in datasets (BDD100K, NuImages, Waymo) and custom PyTorch datasets
     with COCO-style annotations. Use interactive mode or config files for easy setup.
     """
-
-    # Handle special flags
-    if list_valid_objects:
-        typer.echo("Valid COCO objects:")
-        # Local import to avoid heavy dependencies
-        from graid.utilities.coco import coco_labels
-        valid_objects = list(coco_labels.values())
-        # Remove undefined as it's not a real COCO class
-        if "undefined" in valid_objects:
-            valid_objects.remove("undefined")
-        valid_objects.sort()
-        for i, obj in enumerate(valid_objects, 1):
-            typer.echo(f"  {i:2d}. {obj}")
-        typer.echo(f"\nTotal: {len(valid_objects)} objects")
-        return
-
-    if list_questions:
-        typer.secho("📋 Available Questions:", fg=typer.colors.BLUE, bold=True)
-        typer.echo()
-        # Local import to avoid heavy dependencies
-        from graid.data.generate_dataset import list_available_questions
-        questions = list_available_questions()
-        for i, (name, info) in enumerate(questions.items(), 1):
-            typer.secho(f"{i:2d}. {name}", fg=typer.colors.GREEN, bold=True)
-            typer.echo(f"    {info['question']}")
-            if info["parameters"]:
-                typer.echo("    Parameters:")
-                for param_name, param_info in info["parameters"].items():
-                    typer.echo(
-                        f"      • {param_name}: {param_info['description']} (default: {param_info['default']})"
-                    )
-            typer.echo()
-        return
-
-    print_welcome()
-
+    
+    from graid.cli_helpers import (
+        ValidationError, ConfigurationError, ProcessingError, ErrorHandler
+    )
+    
     try:
-        if config_file:
-            # Load configuration from file
-            typer.secho(
-                "📄 Loading configuration from file...", fg=typer.colors.BLUE, bold=True
-            )
-            config = load_config_from_file(config_file)
-            # Override CLI arguments if provided (CLI takes precedence over config file)
-            if force:
-                config.force = force
-            if save_path:
-                config.save_path = save_path
-            if upload_to_hub:
-                config.upload_to_hub = upload_to_hub
-            if hub_repo_id:
-                config.hub_repo_id = hub_repo_id
-            if hub_private:
-                config.hub_private = hub_private
-            if dataset:
-                config.dataset_name = dataset
-            if split:
-                config.split = split
-            if num_workers != 4:  # Only override if not default
-                config.num_workers = num_workers
-            if qa_workers != 4:  # Only override if not default
-                config.qa_workers = qa_workers
-            if allowable_set:
-                # Parse allowable_set from CLI
-                allowable_set_list = [obj.strip() for obj in allowable_set.split(",")]
-                # Validate COCO objects
-                from graid.utilities.coco import validate_coco_objects
-                is_valid, error_msg = validate_coco_objects(allowable_set_list)
-                if not is_valid:
-                    typer.secho(f"❌ {error_msg}", fg=typer.colors.RED)
-                    raise typer.Exit(1)
-                config.allowable_set = allowable_set_list
-            typer.secho(
-                f"✓ Configuration loaded from: {config_file}", fg=typer.colors.GREEN
-            )
-        elif interactive:
-            # Interactive mode
-            typer.secho("🎮 Interactive Mode", fg=typer.colors.BLUE, bold=True)
-            typer.echo(
-                "Let's configure your HuggingFace dataset generation step by step."
-            )
-            typer.echo()
-            # Local import to avoid heavy dependencies
-            from graid.data.config_support import DatasetGenerationConfig
-            # For now, create a basic config - would need to implement interactive config creation
-            typer.secho(
-                "❌ Interactive configuration is not yet implemented. Please use --config.",
-                fg=typer.colors.RED,
-            )
-            typer.echo("Use 'graid generate-dataset --help' for more information.")
-            raise typer.Exit(1)
-        else:
-            # Command line parameters mode
-            typer.secho("⚙️  Command Line Mode",
-                        fg=typer.colors.BLUE, bold=True)
-
-            # Parse allowable_set if provided
-            allowable_set_list = None
-            if allowable_set:
-                allowable_set_list = [obj.strip()
-                                      for obj in allowable_set.split(",")]
-                # Validate COCO objects
-                from graid.utilities.coco import validate_coco_objects
-
-                is_valid, error_msg = validate_coco_objects(allowable_set_list)
-                if not is_valid:
-                    typer.secho(f"❌ {error_msg}", fg=typer.colors.RED)
-                    raise typer.Exit(1)
-
-            # For now, require interactive mode or config file
-            typer.secho(
-                "❌ Command line mode is not yet implemented. Please use --interactive or --config.",
-                fg=typer.colors.RED,
-            )
-            typer.echo(
-                "Use 'graid generate-dataset --help' for more information.")
-            raise typer.Exit(1)
-
-        # Generate the dataset
-        typer.echo()
-        typer.secho(
-            "🚀 Starting dataset generation...", fg=typer.colors.BLUE, bold=True
-        )
-
-        # Handle interactive question selection
-        question_configs = None
-        if interactive_questions:
-            from graid.data.generate_dataset import interactive_question_selection
-            question_configs = interactive_question_selection()
-            if not question_configs:
-                typer.secho("No questions selected. Exiting.",
-                            fg=typer.colors.YELLOW)
-                return
-
-        # Create models from configuration
-        models = config.create_models()
-
-        # Lazy import heavy modules only when needed
-        from graid.data.generate_dataset import generate_dataset
+        # Handle list commands first
+        if _handle_list_commands(list_valid_objects, list_questions):
+            return
         
-        # Generate the dataset (support multi-split in a single final DatasetDict)
-        from datasets import DatasetDict as _HF_DatasetDict
-
-        def _normalize_splits(split_value):
-            # Accept list or special combined tokens
-            if isinstance(split_value, (list, tuple)):
-                return list(split_value)
-            value = str(split_value).lower()
-            if value in {"train+val", "both", "all", "trainval"}:
-                return ["train", "val"]
-            return [str(split_value)]
-
-        requested_splits = _normalize_splits(config.split)
-
-        if len(requested_splits) == 1:
-            dataset_dict = generate_dataset(
-                dataset_name=config.dataset_name,
-                split=requested_splits[0],
-                models=models,
-                use_wbf=config.use_wbf,
-                wbf_config=config.wbf_config.to_dict() if config.wbf_config else None,
-                conf_threshold=config.confidence_threshold,
-                batch_size=config.batch_size,
-                device=config.device,
-                allowable_set=config.allowable_set,
-                question_configs=question_configs or config.question_configs,
-                num_workers=num_workers or config.num_workers,
-                qa_workers=qa_workers or config.qa_workers,
-                save_steps=config.save_steps,
-                save_path=config.save_path,
-                upload_to_hub=config.upload_to_hub,
-                hub_repo_id=config.hub_repo_id,
-                hub_private=config.hub_private,
-                num_samples=config.num_samples,
-                use_original_filenames=config.use_original_filenames,
-                filename_prefix=config.filename_prefix,
-                force=config.force,
-            )
-        else:
-            # Build each split without saving/pushing; combine and then save/push once
-            combined = _HF_DatasetDict()
-            for split_name in requested_splits:
-                partial = generate_dataset(
-                    dataset_name=config.dataset_name,
-                    split=split_name,
-                    models=models,
-                    use_wbf=config.use_wbf,
-                    wbf_config=config.wbf_config.to_dict() if config.wbf_config else None,
-                    conf_threshold=config.confidence_threshold,
-                    batch_size=config.batch_size,
-                    device=config.device,
-                    allowable_set=config.allowable_set,
-                    question_configs=question_configs or config.question_configs,
-                    num_workers=num_workers or config.num_workers,
-                    qa_workers=qa_workers or config.qa_workers,
-                    save_steps=config.save_steps,
-                    save_path=config.save_path,
-                    upload_to_hub=False,
-                    hub_repo_id=None,
-                    hub_private=config.hub_private,
-                    num_samples=config.num_samples,
-                    use_original_filenames=config.use_original_filenames,
-                    filename_prefix=config.filename_prefix,
-                    force=config.force,
-                )
-                # Copy the split into combined
-                combined[split_name] = partial[split_name]
-
-            # Save combined if requested
-            import os as _os
-            dry_run = bool(_os.getenv("GRAID_DRY_RUN"))
-            # NOTE: Skipping combined.save_to_disk() because individual splits are already 
-            # saved efficiently in split directories with images and metadata.parquet
-            # if config.save_path and not dry_run:
-            #     combined.save_to_disk(config.save_path)
-            # Push combined if requested: upload split folders (images + metadata) via large-folder upload
-            if config.upload_to_hub and not dry_run:
-                if not config.hub_repo_id:
-                    raise ValueError("hub_repo_id is required when upload_to_hub=True")
-
-                from huggingface_hub import HfApi as _HfApi
-                _api = _HfApi()
-
-                if not config.save_path:
-                    raise ValueError("save_path is required to upload folders to the Hub")
-
-                _base_dataset_dir = Path(config.save_path)
-                typer.echo("Uploading dataset folder (with split subfolders) to the Hub using upload_large_folder...")
-                # Upload the entire dataset directory so train/ and val/ are preserved in repo
-                _api.upload_large_folder(
-                    repo_id=config.hub_repo_id,
-                    repo_type="dataset",
-                    folder_path=str(_base_dataset_dir),
-                )
-                typer.echo("✓ Upload completed")
-
-            dataset_dict = combined
-
-        # Success message
+        print_welcome()
+        
+        # Handle interactive question selection
+        question_configs = _handle_interactive_questions(interactive_questions)
+        
+        # Load and validate configuration
+        typer.echo("📄 Loading and validating configuration...")
+        
+        # Only include CLI args that were explicitly provided (not defaults)
+        cli_args = {}
+        
+        # String/Optional args (None means not provided)
+        if dataset is not None:
+            cli_args['dataset'] = dataset
+        if split is not None:
+            cli_args['split'] = split
+        if allowable_set is not None:
+            cli_args['allowable_set'] = allowable_set
+        if hub_repo_id is not None:
+            cli_args['hub_repo_id'] = hub_repo_id
+            
+        # Boolean args - need to check if explicitly set vs default
+        # For typer, we need to detect if these were provided by user
+        # Since typer doesn't provide an easy way, we'll use a different approach
+        import sys
+        cli_flags = sys.argv[1:]  # Get CLI arguments
+        
+        if '--upload-to-hub' in cli_flags:
+            cli_args['upload_to_hub'] = upload_to_hub
+        if '--hub-private' in cli_flags:
+            cli_args['hub_private'] = hub_private
+        if '--force' in cli_flags:
+            cli_args['force'] = force
+            
+        # For numeric args, check if they differ from defaults
+        if '--num-workers' in cli_flags or '-j' in cli_flags:
+            cli_args['num_workers'] = num_workers
+        if '--qa-workers' in cli_flags:
+            cli_args['qa_workers'] = qa_workers
+        
+        # For save_path, only override if explicitly provided
+        if '--save-path' in cli_flags:
+            cli_args['save_path'] = save_path
+        
+        config = _load_and_validate_config(config_file, **cli_args)
+        typer.secho("✓ Configuration validated successfully", fg=typer.colors.GREEN)
+        
+        # Display configuration summary
         typer.echo()
-        typer.secho(
-            "✅ Dataset generation completed successfully!",
-            fg=typer.colors.GREEN,
-            bold=True,
-        )
-
-        # Show summary
-        if len(requested_splits) == 1:
-            split_dataset = dataset_dict[requested_splits[0]]
-            typer.echo(f"📊 Generated {len(split_dataset)} question-answer pairs")
-        else:
-            counts = ", ".join(f"{s}={len(dataset_dict[s])}" for s in requested_splits)
-            typer.echo(f"📊 Generated per-split counts: {counts}")
+        typer.secho("📋 Configuration Summary", fg=typer.colors.BLUE, bold=True)
+        typer.echo(f"Dataset: {config.dataset_name}")
+        typer.echo(f"Split: {config.split}")
+        typer.echo(f"Models: {len(getattr(config, 'models', [])) if getattr(config, 'models', None) else 0} (using ground truth if 0)")
+        typer.echo(f"Batch size: {getattr(config, 'batch_size', 32)}")
+        typer.echo(f"Workers: {config.num_workers} (loading), {config.qa_workers} (QA)")
+        typer.echo(f"Save path: {config.save_path}")
+        if config.allowable_set:
+            typer.echo(f"COCO filter: {', '.join(config.allowable_set[:3])}{'...' if len(config.allowable_set) > 3 else ''}")
+        typer.echo(f"Upload to Hub: {'Yes' if config.upload_to_hub else 'No'}")
+        if config.upload_to_hub:
+            typer.echo(f"Hub repo: {config.hub_repo_id}")
+        typer.echo()
+        
+        # Start dataset generation
+        typer.secho("🚀 Starting dataset generation...", fg=typer.colors.BLUE, bold=True)
+        dataset_dict = _process_dataset_generation(config, question_configs)
+        
+        # Success reporting
+        typer.echo()
+        typer.secho("✅ Dataset generation completed successfully!", fg=typer.colors.GREEN, bold=True)
+        
+        total_pairs = sum(len(dataset) for dataset in dataset_dict.values())
+        typer.echo(f"📊 Generated {total_pairs} question-answer pairs")
+        
+        if len(dataset_dict) > 1:
+            counts = ", ".join(f"{s}={len(dataset_dict[s])}" for s in dataset_dict.keys())
+            typer.echo(f"📊 Per-split counts: {counts}")
 
         if config.save_path:
             typer.echo(f"💾 Saved to: {config.save_path}")
 
         if config.upload_to_hub:
             typer.echo(f"🤗 Uploaded to HuggingFace Hub: {config.hub_repo_id}")
-
+    
+    except ValidationError as e:
+        ErrorHandler.handle_validation_error(e)
+    except ConfigurationError as e:
+        ErrorHandler.handle_configuration_error(e)
+    except ProcessingError as e:
+        ErrorHandler.handle_processing_error(e)
     except Exception as e:
-        import traceback, sys
-        traceback.print_exc()
-        typer.secho(f"❌ Error: {str(e)}", fg=typer.colors.RED)
-        raise typer.Exit(1)
+        ErrorHandler.handle_unexpected_error(e)
+
+
+
+
+
+def _load_configuration(config_file, interactive, interactive_questions, **cli_args):
+    """Load configuration from file or interactive mode with CLI overrides."""
+    from graid.cli import ConfigurationManager
+    
+    if config_file:
+        # Load from file and apply CLI overrides
+        config = ConfigurationManager.load_from_file(config_file)
+        config = ConfigurationManager.apply_cli_overrides(config, **cli_args)
+        
+        typer.secho("✓ Configuration loaded from:", fg=typer.colors.GREEN)
+        typer.echo(f"  {config_file}")
+        typer.echo()
+    else:
+        # Interactive configuration
+        config = ConfigurationManager.create_interactive_config(
+            interactive_questions=interactive_questions, **cli_args
+        )
+    
+    return config
+
+
+def _validate_configuration(config):
+    """Validate final configuration."""
+    from graid.cli import ConfigurationManager
+    ConfigurationManager.validate_configuration(config)
+
+
+def _report_success(dataset_dict, config):
+    """Report successful completion with summary."""
+    from graid.cli.validators import ArgumentValidator
+    
+    requested_splits = ArgumentValidator.parse_and_validate_split(config.split)
+    
+    # Success message
+    typer.echo()
+    typer.secho(
+        "✅ Dataset generation completed successfully!",
+        fg=typer.colors.GREEN,
+        bold=True,
+    )
+
+    # Show summary
+    if len(requested_splits) == 1:
+        split_dataset = dataset_dict[requested_splits[0]]
+        typer.echo(f"📊 Generated {len(split_dataset)} question-answer pairs")
+    else:
+        counts = ", ".join(f"{s}={len(dataset_dict[s])}" for s in requested_splits)
+        typer.echo(f"📊 Generated per-split counts: {counts}")
+
+    if config.save_path:
+        typer.echo(f"💾 Saved to: {config.save_path}")
+
+    if config.upload_to_hub:
+        typer.echo(f"🤗 Uploaded to HuggingFace Hub: {config.hub_repo_id}")
 
 
 @app.command("eval-vlms")
@@ -946,10 +1002,38 @@ def eval_vlms(
         )
         typer.echo(f"Final accuracy: {accuracy:.4f}")
 
+    except KeyboardInterrupt:
+        typer.echo("\n⏹️  Evaluation cancelled by user")
+        raise typer.Exit(130)  # Standard exit code for SIGINT
+    except FileNotFoundError as e:
+        typer.echo()
+        typer.secho(f"❌ File Not Found: {e}", fg=typer.colors.RED, bold=True)
+        typer.secho("Check that the database file exists and try again.", fg=typer.colors.YELLOW)
+        raise typer.Exit(1)
+    except PermissionError as e:
+        typer.echo()
+        typer.secho(f"❌ Permission Error: {e}", fg=typer.colors.RED, bold=True)
+        typer.secho("Check file permissions and try again.", fg=typer.colors.YELLOW)
+        raise typer.Exit(1)
+    except ValueError as e:
+        typer.echo()
+        typer.secho(f"❌ Invalid Parameter: {e}", fg=typer.colors.RED, bold=True)
+        typer.secho("Check your evaluation parameters and try again.", fg=typer.colors.YELLOW)
+        raise typer.Exit(1)
+    except ImportError as e:
+        typer.echo()
+        typer.secho(f"❌ Import Error: {e}", fg=typer.colors.RED, bold=True)
+        typer.secho("Check that VLM dependencies are installed.", fg=typer.colors.YELLOW)
+        raise typer.Exit(1)
     except Exception as e:
         typer.echo()
-        typer.secho(
-            f"❌ Error during evaluation: {e}", fg=typer.colors.RED, bold=True)
+        typer.secho(f"❌ Unexpected Error during evaluation: {e}", fg=typer.colors.RED, bold=True)
+        if os.getenv("GRAID_DEBUG_VERBOSE"):
+            import traceback
+            typer.echo("Detailed traceback:")
+            typer.echo(traceback.format_exc())
+        else:
+            typer.secho("Use GRAID_DEBUG_VERBOSE=1 for detailed error information.", fg=typer.colors.CYAN)
         raise typer.Exit(1)
 
 
