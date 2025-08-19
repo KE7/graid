@@ -730,7 +730,6 @@ This dataset was generated using **GRAID** (**G**enerating **R**easoning questio
         readme_content += f"""- **Total QA Pairs**: {total_qa_pairs:,}
 - **Source Dataset**: {dataset_config['source_info']}
 - **Generation Date**: {datetime.now().strftime('%Y-%m-%d')}
-- **Image Format**: Embedded in parquet files (no separate image files)
 - **Question Types**: {len(question_stats.get('question_counts', {})) if question_stats else 'Multiple'} different reasoning patterns
 
 ## Dataset Splits
@@ -741,7 +740,7 @@ This dataset was generated using **GRAID** (**G**enerating **R**easoning questio
         for split_name in sorted(dataset_dict.keys()):
             split_size = len(dataset_dict[split_name])
             percentage = (split_size / total_qa_pairs) * 100
-            readme_content += f"- **{split_name}**: {split_size:,} ({percentage:.1f}%)\n"
+            readme_content += f"- **{split_name}**: {split_size:,} ({percentage:.2f}%)\n"
         
         readme_content += "\n## Question Type Distribution\n\n"
         
@@ -757,7 +756,7 @@ This dataset was generated using **GRAID** (**G**enerating **R**easoning questio
                 if 'detailed_stats' in question_stats and qtype in question_stats['detailed_stats']:
                     question_text = question_stats['detailed_stats'][qtype].get("question_text", qtype)
                 
-                readme_content += f"- **{question_text}**: {count:,} ({percentage:.1f}%)\n"
+                readme_content += f"- **{question_text}**: {count:,} ({percentage:.2f}%)\n"
         
         # Add performance profiling information if available
         if question_stats and 'detailed_stats' in question_stats:

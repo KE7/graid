@@ -5,7 +5,7 @@
 ## 🚀 Quick Start
 
 ### Installation
-0. 0. Install uv (optional if you already have it): `curl -LsSf https://astral.sh/uv/install.sh | sh` (or see [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/))
+0. Install uv (optional if you already have it): `curl -LsSf https://astral.sh/uv/install.sh | sh` (or see [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/))
 1. Create a virtual environment: `uv venv`
 2. Activate it: `source .venv/bin/activate` (or use direnv with the provided .envrc)
 3. Install dependencies: `uv sync`
@@ -17,9 +17,6 @@
 ```bash
 # Interactive mode with step-by-step guidance
 graid generate-dataset
-
-# Or using uv run (equivalent, but not necessary after uv sync)
-uv run graid generate-dataset
 ```
 
 **Key Features:**

@@ -26,7 +26,6 @@ dependencies = [
     "torchmetrics>=1.6.0,<2",
     "sqlitedict>=2.1.0,<3",
     "numpy==1.26.4",
-    "ray>=2.43.0,<3",
     "fairscale>=0.4.13,<0.5",
     "ijson>=3.3.0,<4",
     "openai>=1.69.0,<2",
@@ -105,14 +104,8 @@ include = ["graid/src/graid"]
 "graid/src/graid" = "graid"
 
 [build-system]
-requires = [ "setuptools", "wheel", "torch"]
-build-backend = "setuptools.build_meta:__legacy__"
-
-[tool.setuptools.packages.find]
-where = ["graid/src"]
-
-[tool.setuptools.package-dir]
-"" = "graid/src"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [tool.isort]
 profile = "black"
