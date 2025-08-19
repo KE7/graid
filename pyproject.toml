@@ -105,14 +105,8 @@ include = ["graid/src/graid"]
 "graid/src/graid" = "graid"
 
 [build-system]
-requires = [ "setuptools", "wheel", "torch"]
-build-backend = "setuptools.build_meta:__legacy__"
-
-[tool.setuptools.packages.find]
-where = ["graid/src"]
-
-[tool.setuptools.package-dir]
-"" = "graid/src"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [tool.isort]
 profile = "black"
