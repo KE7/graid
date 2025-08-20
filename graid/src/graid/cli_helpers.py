@@ -730,6 +730,7 @@ This dataset was generated using **GRAID** (**G**enerating **R**easoning questio
         readme_content += f"""- **Total QA Pairs**: {total_qa_pairs:,}
 - **Source Dataset**: {dataset_config['source_info']}
 - **Generation Date**: {datetime.now().strftime('%Y-%m-%d')}
+- **Image Format**: Embedded in parquet files (no separate image files)
 - **Question Types**: {len(question_stats.get('question_counts', {})) if question_stats else 'Multiple'} different reasoning patterns
 
 ## Dataset Splits

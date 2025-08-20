@@ -64,63 +64,22 @@ def clean_depth_pro() -> None:
 
 
 def install_detectron2() -> None:
+    # Install detectron2 directly from GitHub using modern package management
     # https://detectron2.readthedocs.io/en/latest/tutorials/install.html
-
-    root_dir = PROJECT_DIR
-
-    os.chdir(root_dir)
-    if not os.path.exists("install"):
-        os.makedirs("install")
-
-    os.chdir("install")
-
-    # Check if the repository already exists in the root
-    if not os.path.exists("detectron2"):
-        subprocess.run(
-            ["git", "clone", "https://github.com/facebookresearch/detectron2.git"]
-        )
-
-    # Change to the detectron2 directory
-    os.chdir("detectron2")
-
-    # clean up the build directory in case the cloned repo was already there
-    subprocess.run(["rm", "-rf", "build/", "**/*.so"])
-
-    # if on macOS
-    if platform.system() == "Darwin":
-        subprocess.run(
-            [
-                'CC=clang CXX=clang++ ARCHFLAGS="-arch x86_64" uv',
-                "pip",
-                "install",
-                "--no-build-isolation",
-                "-e",
-                ".",
-                "--no-build-isolation",
-            ]
-        )
-    else:
-        subprocess.run(['CC=clang CXX=clang++ ARCHFLAGS="-arch x86_64" uv', "pip", "install", "-e", ".", "--no-build-isolation"])
-
-    # Change back to the original directory
-    os.chdir("..")
+    
+    print("Installing detectron2 from GitHub...")
+    subprocess.run([
+        "uv", 
+        "pip", 
+        "install", 
+        "detectron2 @ git+https://github.com/facebookresearch/detectron2.git"
+    ])
 
 
 def clean_detectron2() -> None:
-    root_dir = PROJECT_DIR
-
-    os.chdir(root_dir)
-    if not os.path.exists("install"):
-        return
-
-    os.chdir("install")
-
-    # Check if the repository already exists in the root
-    if os.path.exists("detectron2"):
-        subprocess.run(["rm", "-rf", "detectron2"])
-
-    # Change back to the original directory
-    os.chdir("..")
+    # Uninstall detectron2 package
+    print("Uninstalling detectron2...")
+    subprocess.run(["uv", "pip", "uninstall", "detectron2", "-y"])
 
 
 def install_mmdetection() -> None:
@@ -142,7 +101,7 @@ def install_mmdetection() -> None:
     # Change to the mmdetection directory
     os.chdir("mmdetection")
 
-    subprocess.run(["uv", "pip", "install", "--no-build-isolation", "-e", "."])
+    subprocess.run(["uv", "pip", "install", "--no-build-isolation", "."])
 
     # Change back to the original directory
     os.chdir("..")
@@ -570,7 +529,10 @@ def clean_all() -> None:
     clean_detectron2()
     clean_mmdetection()
 
-    subprocess.run(["rmdir", "install"])
+    # Try to remove install directory if it's empty
+    install_dir = os.path.join(PROJECT_DIR, "install")
+    if os.path.exists(install_dir) and not os.listdir(install_dir):
+        os.rmdir(install_dir)
 
 
 def main() -> None:

@@ -16,7 +16,6 @@ from graid.interfaces.ObjectDetectionI import (
     BBox_Format,
     ObjectDetectionModelI,
     ObjectDetectionResultI,
-    ObjectDetectionUtils,
 )
 
 
@@ -90,9 +89,9 @@ class Yolo(ObjectDetectionModelI):
                     score=box.conf.item(),
                     cls=int(box.cls.item()),
                     label=names[int(box.cls.item())],
-                    bbox=box.cpu(),
+                    bbox=box.xyxy.cpu().numpy().tolist()[0] if hasattr(box.xyxy, 'cpu') else box.xyxy.tolist()[0],
                     image_hw=box.orig_shape,
-                    bbox_format=BBox_Format.UltralyticsBox,
+                    bbox_format=BBox_Format.XYXY,
                 )
 
                 result_for_image.append(odr)
@@ -100,10 +99,7 @@ class Yolo(ObjectDetectionModelI):
             formatted_results.append(result_for_image)
 
         if debug:
-            # I think we can delete this code
-
-            # images are in BGR format and need to be converted to RGB
-            # also need to be scaled to [0, 255]
+            # Convert images from BGR to RGB format for visualization
             image = image[:, [2, 1, 0], ...]
             image = image * 255.0
             image = (
@@ -112,6 +108,7 @@ class Yolo(ObjectDetectionModelI):
             batch_size = image.shape[0]
             for i in range(batch_size):
                 curr_img = image[i]
+                from graid.interfaces.ObjectDetectionI import ObjectDetectionUtils
                 ObjectDetectionUtils.show_image_with_detections(
                     Image.fromarray(curr_img), formatted_results[i]
                 )
@@ -181,9 +178,9 @@ class Yolo(ObjectDetectionModelI):
                             score=box.conf.item(),
                             cls=int(box.cls.item()),
                             label=names[int(box.cls.item())],
-                            bbox=box,
+                            bbox=box.xyxy.cpu().numpy().tolist()[0] if hasattr(box.xyxy, 'cpu') else box.xyxy.tolist()[0],
                             image_hw=box.orig_shape,
-                            bbox_format=BBox_Format.UltralyticsBox,
+                            bbox_format=BBox_Format.XYXY,
                         )
 
                         per_frame_results.append(odr)
@@ -199,7 +196,7 @@ class Yolo(ObjectDetectionModelI):
         self.threshold = threshold
 
     def __str__(self):
-        return self.model_name.split(".")[0]
+        return str(self.model_name).split(".")[0]
 
 
 class RT_DETR(Yolo):
@@ -220,7 +217,7 @@ class RT_DETR(Yolo):
         return super().to(*args, **kwargs)
 
     def __str__(self):
-        return self.model_name.split(".")[0]
+        return str(self.model_name).split(".")[0]
 
 
 class Yolo_seg(InstanceSegmentationModelI):
@@ -275,9 +272,9 @@ class Yolo_seg(InstanceSegmentationModelI):
 
             for i in range(num_instances):
                 mask = masks[i]
-                cls_id = cls_ids[i].item()
+                cls_id = int(cls_ids[i].item())
                 cls_label = name_map[cls_id]
-                score = scores[i]
+                score = float(scores[i].item())
 
                 instance = InstanceSegmentationResultI(
                     score=score,
@@ -285,7 +282,7 @@ class Yolo_seg(InstanceSegmentationModelI):
                     label=cls_label,
                     instance_id=i,
                     mask=mask.unsqueeze(0),
-                    image_hw=result.orig_shape,
+                    image_hw=(result.orig_shape[0], result.orig_shape[1]),
                     mask_format=Mask_Format.BITMASK,
                 )
 

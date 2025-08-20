@@ -646,7 +646,7 @@ class HuggingFaceDatasetBuilder:
             # Build COCO annotation
             annotation = {
                 "bbox": [x, y, w, h],  # COCO format: [x, y, width, height]
-                "category_id": 1,  # Default category ID
+                "category_id": int(detection.cls),  # Use actual category ID from detection
                 "category": detection.label,  # Add category string
                 "iscrowd": 0,
                 "area": float(w * h),
@@ -777,7 +777,6 @@ class HuggingFaceDatasetBuilder:
                                 "annotations": annotations,
                                 "question": question_text,
                                 "answer": answer_text,
-                                "reasoning": None,
                                 "question_type": question.__class__.__name__,
                                 "source_id": source_id,
                             }
@@ -1143,7 +1142,7 @@ class HuggingFaceDatasetBuilder:
         within each batch for optimal performance.
         
         Yields:
-            Dict[str, Any]: Individual QA pair with embedded image bytes
+            Dict[str, Any]: Individual QA pair with embedded image bytes and unique ID
         """
         logger.debug("📋 Initializing data loader and processing components")
         data_loader = self._create_data_loader()
@@ -1155,6 +1154,7 @@ class HuggingFaceDatasetBuilder:
         total_batches = self._calculate_total_batches(data_loader)
         processed_images = 0
         total_qa_pairs = 0
+        unique_id_counter = 0  # Counter for unique IDs
         
         logger.info(
             "📊 Processing %d total batches (%d images per batch) with generator",
@@ -1195,6 +1195,9 @@ class HuggingFaceDatasetBuilder:
 
             # Yield individual QA pairs instead of accumulating
             for qa_pair in batch_results:
+                # Add unique ID to each QA pair
+                qa_pair["id"] = unique_id_counter
+                unique_id_counter += 1
                 yield qa_pair
                 total_qa_pairs += 1
 
@@ -1221,9 +1224,10 @@ class HuggingFaceDatasetBuilder:
         Returns:
             datasets.Features: Schema definition for the generated dataset
         """
-        from datasets import Features, Value, Sequence, Image as HFImage
+        from datasets import Features, Value, Sequence
         
         return Features({
+            "id": Value("int64"),  # Unique identifier for each QA pair
             "image": {
                 "bytes": Value("binary"),
                 "path": Value("string"),
@@ -1238,7 +1242,6 @@ class HuggingFaceDatasetBuilder:
             }),
             "question": Value("string"),
             "answer": Value("string"),
-            "reasoning": Value("string"),
             "question_type": Value("string"),
             "source_id": Value("string"),
         })
@@ -1411,6 +1414,7 @@ def generate_dataset(
         DatasetDict: HuggingFace dataset dictionary containing the generated
             VQA dataset. Keys correspond to the processed split(s). Each dataset
             contains:
+            - id: Unique identifier for each QA pair (row number)
             - image: PIL Image objects ready for VLM workflows
             - annotations: COCO-style bounding box annotations
             - question: Generated question text
@@ -1504,7 +1508,7 @@ def generate_dataset(
             raise ValueError("hub_repo_id is required when upload_to_hub=True")
 
         # Import Hub utilities locally
-        from huggingface_hub import create_repo, upload_large_folder
+        from huggingface_hub import create_repo
 
         logger.info(f"Uploading to HuggingFace Hub: {hub_repo_id}")
 
