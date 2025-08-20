@@ -46,8 +46,6 @@ from typing import Any, Optional
 
 import numpy as np
 import pandas as pd
-from sqlitedict import SqliteDict
-from tqdm import tqdm
 
 # Import evaluation components
 from graid.evaluator.metrics import Contains, ExactMatch, LLMJudge
@@ -69,6 +67,8 @@ from graid.evaluator.vlms import (
     Llama_CoT_CD,
 )
 from graid.utilities.common import project_root_dir
+from sqlitedict import SqliteDict
+from tqdm import tqdm
 
 # Set random seed for reproducibility
 random.seed(42)
@@ -560,14 +560,14 @@ def evaluate_vlm(
 
             # Process new samples if needed
             print(f"Processing table {table_idx}: {table_name}")
-            
+
             # Lists to store data for this table
             questions, answers, preds, correctness = [], [], [], []
-            
+
             for _, row in tqdm(df_to_process.iterrows(), total=len(df_to_process)):
                 d = row.to_dict()
                 image_path, v = d["key"], json.loads(d["value"])
-                
+
                 # Construct full image path
                 image_path = str(db_base_path / image_path)
 
@@ -575,21 +575,23 @@ def evaluate_vlm(
                 if not qa_list or qa_list == "Question not applicable":
                     continue
 
-                qa_pair = random.choice(qa_list) if isinstance(qa_list[0], list) else qa_list
+                qa_pair = (
+                    random.choice(qa_list) if isinstance(qa_list[0], list) else qa_list
+                )
                 q, a = qa_pair[0], qa_pair[1]
-                
+
                 # Generate prompt and unique cache key
                 annotated_image, messages = my_prompt.generate_prompt(image_path, q)
                 cache_key = f"{vlm_type}_{prompt}_{image_path}_{str(messages)}"
-                
+
                 if cache_key in vlm_cache:
                     pred = vlm_cache[cache_key]
                 else:
                     pred, _ = my_vlm.generate_answer(annotated_image, messages)
                     vlm_cache[cache_key] = pred
-                
+
                 correct = my_metric.evaluate(pred, a)
-                
+
                 questions.append(q)
                 answers.append(a)
                 preds.append(pred)

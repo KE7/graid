@@ -66,14 +66,16 @@ def clean_depth_pro() -> None:
 def install_detectron2() -> None:
     # Install detectron2 directly from GitHub using modern package management
     # https://detectron2.readthedocs.io/en/latest/tutorials/install.html
-    
+
     print("Installing detectron2 from GitHub...")
-    subprocess.run([
-        "uv", 
-        "pip", 
-        "install", 
-        "detectron2 @ git+https://github.com/facebookresearch/detectron2.git"
-    ])
+    subprocess.run(
+        [
+            "uv",
+            "pip",
+            "install",
+            "detectron2 @ git+https://github.com/facebookresearch/detectron2.git",
+        ]
+    )
 
 
 def clean_detectron2() -> None:

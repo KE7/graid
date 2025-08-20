@@ -4,7 +4,6 @@ from typing import Optional, Union
 import numpy as np
 import torch
 from ensemble_boxes import weighted_boxes_fusion
-
 from graid.interfaces.ObjectDetectionI import (
     BBox_Format,
     ObjectDetectionModelI,

@@ -219,11 +219,15 @@ class DatasetGenerationConfig:
             split_parts = [s.strip() for s in self.split.split("+")]
             for part in split_parts:
                 if part not in valid_individual_splits:
-                    raise ConfigurationError(f"Invalid split part: {part}. Valid splits: {valid_individual_splits}")
+                    raise ConfigurationError(
+                        f"Invalid split part: {part}. Valid splits: {valid_individual_splits}"
+                    )
         else:
             # Handle individual splits
             if self.split not in valid_individual_splits:
-                raise ConfigurationError(f"Invalid split: {self.split}. Valid splits: {valid_individual_splits}")
+                raise ConfigurationError(
+                    f"Invalid split: {self.split}. Valid splits: {valid_individual_splits}"
+                )
 
         # Validate models
         if not self.models:
@@ -452,4 +456,3 @@ def validate_config_file(config_path: Union[str, Path]) -> tuple[bool, Optional[
         return False, str(e)
     except Exception as e:
         return False, f"Unexpected error: {e}"
-

@@ -4,9 +4,6 @@ from typing import Iterator, List, Optional, Union
 
 import numpy as np
 import torch
-from PIL import Image
-from ultralytics import RTDETR, YOLO
-
 from graid.interfaces.InstanceSegmentationI import (
     InstanceSegmentationModelI,
     InstanceSegmentationResultI,
@@ -17,6 +14,8 @@ from graid.interfaces.ObjectDetectionI import (
     ObjectDetectionModelI,
     ObjectDetectionResultI,
 )
+from PIL import Image
+from ultralytics import RTDETR, YOLO
 
 
 class Yolo(ObjectDetectionModelI):
@@ -89,7 +88,11 @@ class Yolo(ObjectDetectionModelI):
                     score=box.conf.item(),
                     cls=int(box.cls.item()),
                     label=names[int(box.cls.item())],
-                    bbox=box.xyxy.cpu().numpy().tolist()[0] if hasattr(box.xyxy, 'cpu') else box.xyxy.tolist()[0],
+                    bbox=(
+                        box.xyxy.cpu().numpy().tolist()[0]
+                        if hasattr(box.xyxy, "cpu")
+                        else box.xyxy.tolist()[0]
+                    ),
                     image_hw=box.orig_shape,
                     bbox_format=BBox_Format.XYXY,
                 )
@@ -109,6 +112,7 @@ class Yolo(ObjectDetectionModelI):
             for i in range(batch_size):
                 curr_img = image[i]
                 from graid.interfaces.ObjectDetectionI import ObjectDetectionUtils
+
                 ObjectDetectionUtils.show_image_with_detections(
                     Image.fromarray(curr_img), formatted_results[i]
                 )
@@ -178,7 +182,11 @@ class Yolo(ObjectDetectionModelI):
                             score=box.conf.item(),
                             cls=int(box.cls.item()),
                             label=names[int(box.cls.item())],
-                            bbox=box.xyxy.cpu().numpy().tolist()[0] if hasattr(box.xyxy, 'cpu') else box.xyxy.tolist()[0],
+                            bbox=(
+                                box.xyxy.cpu().numpy().tolist()[0]
+                                if hasattr(box.xyxy, "cpu")
+                                else box.xyxy.tolist()[0]
+                            ),
                             image_hw=box.orig_shape,
                             bbox_format=BBox_Format.XYXY,
                         )

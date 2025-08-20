@@ -1,16 +1,16 @@
 """
 SAM (Segment Anything Model) utilities for object mask refinement.
 """
+
 from enum import Enum
-from typing import Optional, Tuple, List
+from typing import List, Optional, Tuple
 
-import torch
 import numpy as np
-from PIL import Image
-from segment_anything import SamPredictor, sam_model_registry, SamAutomaticMaskGenerator
-
+import torch
 from graid.interfaces.ObjectDetectionI import ObjectDetectionResultI
 from graid.utilities.common import get_default_device, project_root_dir
+from PIL import Image
+from segment_anything import SamAutomaticMaskGenerator, SamPredictor, sam_model_registry
 
 _sam_model = None
 
@@ -18,14 +18,14 @@ _sam_model = None
 def get_sam_model(**kwargs) -> torch.nn.Module:
     """
     Get a SAM model instance, loading it if necessary.
-    
+
     This function ensures that the SAM model is loaded only once.
-    
+
     Args:
         model_path: Path to SAM checkpoint (default: checkpoints/sam_vit_h_4b8939.pth)
         device: Device to use for inference
         model_type: SAM model type (default: vit_h)
-        
+
     Returns:
         The loaded SAM model.
     """
@@ -63,7 +63,7 @@ class SAMPredictor:
     def __init__(self, **kwargs):
         """
         Initialize SAM predictor.
-        
+
         Args:
             model_path: Path to SAM checkpoint (default: checkpoints/sam_vit_h_4b8939.pth)
             device: Device to use for inference
@@ -80,12 +80,12 @@ class SAMPredictor:
     ) -> Optional[torch.Tensor]:
         """
         Get refined mask for an object using its bounding box as prompt.
-        
+
         Args:
             image: PIL Image
             detection: ObjectDetectionResultI containing the bounding box
             return_type: Method to select the best mask from multiple predictions
-            
+
         Returns:
             Binary mask as torch.Tensor of shape (H, W), or None if no valid mask
         """
@@ -133,12 +133,12 @@ class SAMPredictor:
     ) -> List[Tuple[ObjectDetectionResultI, Optional[torch.Tensor]]]:
         """
         Get refined masks for multiple detections.
-        
+
         Args:
             image: PIL Image
             detections: List of ObjectDetectionResultI objects
             return_type: Method to select the best mask
-            
+
         Returns:
             List of (detection, mask) tuples where mask can be None if prediction failed
         """
@@ -149,9 +149,7 @@ class SAMPredictor:
         self.predictor.set_image(image_array)
 
         for detection in detections:
-            mask = self.get_mask_from_bbox(
-                image, detection, return_type=return_type
-            )
+            mask = self.get_mask_from_bbox(image, detection, return_type=return_type)
             results.append((detection, mask))
 
         return results
@@ -171,7 +169,7 @@ class SAMMaskGenerator:
     def __init__(self, **kwargs):
         """
         Initialize SAM mask generator.
-        
+
         Args:
             **kwargs: Arguments for SamAutomaticMaskGenerator and get_sam_model.
         """
@@ -181,10 +179,10 @@ class SAMMaskGenerator:
     def generate(self, image: np.ndarray) -> List[dict]:
         """
         Generate masks for the entire image.
-        
+
         Args:
             image: Image as a numpy array in RGB format.
-            
+
         Returns:
             A list of masks, where each mask is a dictionary containing segmentation data.
         """
@@ -196,11 +194,11 @@ def extract_average_depth_from_mask(
 ) -> Optional[float]:
     """
     Extract average depth value from pixels covered by the mask.
-    
+
     Args:
         depth_map: Depth map tensor of shape (H, W) with depth values in meters
         mask: Binary mask tensor of shape (H, W)
-        
+
     Returns:
         Average depth in meters, or None if mask is empty
     """
@@ -222,15 +220,15 @@ def compare_object_depths(
 ) -> Tuple[Optional[str], float, float]:
     """
     Compare relative depths of two objects using their masks.
-    
+
     Args:
         depth_map: Depth map tensor (H, W) with values in meters
         detection1: First object detection
         mask1: Mask for first object
-        detection2: Second object detection  
+        detection2: Second object detection
         mask2: Mask for second object
         margin_ratio: Required margin for reliable comparison
-        
+
     Returns:
         Tuple of:
         - Comparison result: "object1_front", "object2_front", or None if too close
@@ -254,4 +252,4 @@ def compare_object_depths(
     if avg_depth1 < avg_depth2:
         return "object1_front", avg_depth1, avg_depth2
     else:
-        return "object2_front", avg_depth1, avg_depth2 
+        return "object2_front", avg_depth1, avg_depth2

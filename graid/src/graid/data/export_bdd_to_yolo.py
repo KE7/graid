@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tqdm import tqdm
-
 from graid.data.ImageLoader import Bdd100kDataset
 from graid.interfaces.ObjectDetectionI import ObjectDetectionResultI
+from tqdm import tqdm
 
 
 def convert_bdd_to_yolo():
@@ -39,9 +38,7 @@ def convert_bdd_to_yolo():
         print(f"\nProcessing '{split}' split...")
 
         dataset = Bdd100kDataset(
-            split=split,
-            use_original_categories=True,
-            use_time_filtered=False
+            split=split, use_original_categories=True, use_time_filtered=False
         )
 
         output_dir = root_output_dir / split
@@ -80,14 +77,20 @@ def convert_bdd_to_yolo():
 
         if labels_generated == 0:
             print(f"\nWARNING: No label files were generated for the '{split}' split.")
-            print("This could be because the dataset split is empty, contains no annotations,")
+            print(
+                "This could be because the dataset split is empty, contains no annotations,"
+            )
             print("or all annotations were filtered out.")
-            print("This can cause errors during training/validation if the framework expects labels.")
+            print(
+                "This can cause errors during training/validation if the framework expects labels."
+            )
         else:
-            print(f"\nSuccessfully generated {labels_generated} label files for the '{split}' split.")
+            print(
+                f"\nSuccessfully generated {labels_generated} label files for the '{split}' split."
+            )
 
     print("\nConversion to YOLO format complete.")
 
 
 if __name__ == "__main__":
-    convert_bdd_to_yolo() 
+    convert_bdd_to_yolo()

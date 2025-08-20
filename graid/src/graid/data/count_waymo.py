@@ -5,8 +5,8 @@ import logging
 import os
 
 import pandas as pd
-from PIL import Image
 from graid.utilities.common import convert_to_xyxy, project_root_dir
+from PIL import Image
 from tqdm import tqdm
 
 logger = logging.getLogger(__name__)

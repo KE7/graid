@@ -1,25 +1,23 @@
 import os
 import tempfile
 import urllib.request
+from collections.abc import Iterator
 from itertools import islice
 from pathlib import Path
-from collections.abc import Iterator
 from typing import Optional, Union
 
 import cv2
 import numpy as np
 import torch
 from detectron2 import model_zoo
+from detectron2.checkpoint import DetectionCheckpointer
 from detectron2.config import LazyConfig, get_cfg, instantiate
 from detectron2.data import MetadataCatalog
+from detectron2.data import transforms as T
 from detectron2.engine import DefaultPredictor
 from detectron2.structures import BitMasks
 from detectron2.utils.logger import setup_logger
 from detectron2.utils.visualizer import Visualizer
-from PIL import Image
-from detectron2.checkpoint import DetectionCheckpointer
-from detectron2.data import transforms as T
-
 from graid.interfaces.InstanceSegmentationI import (
     InstanceSegmentationModelI,
     InstanceSegmentationResultI,
@@ -30,10 +28,8 @@ from graid.interfaces.ObjectDetectionI import (
     ObjectDetectionModelI,
     ObjectDetectionResultI,
 )
-from graid.utilities.common import (
-    convert_image_to_numpy,
-    get_default_device,
-)
+from graid.utilities.common import convert_image_to_numpy, get_default_device
+from PIL import Image
 
 setup_logger()
 
@@ -148,7 +144,9 @@ class DetectronBase:
                 )
             except (KeyError, IndexError, AttributeError) as e:
                 # Fallback to COCO metadata if dataset metadata not available
-                logger.warning(f"Could not get dataset metadata, using COCO fallback: {e}")
+                logger.warning(
+                    f"Could not get dataset metadata, using COCO fallback: {e}"
+                )
                 self._metadata = MetadataCatalog.get("coco_2017_train")
         else:
             self._metadata = MetadataCatalog.get(cfg.DATASETS.TRAIN[0])
@@ -560,7 +558,7 @@ class Detectron_seg(DetectronBase, InstanceSegmentationModelI):
         """Visualize segmentation results on an image."""
         # Local import to avoid loading matplotlib unless visualization is needed
         import matplotlib.pyplot as plt
-        
+
         image = convert_image_to_numpy(image)
         outputs = self._predictor(image)
         v = Visualizer(image[:, :, ::-1], self._metadata, scale=1.2)
@@ -593,10 +591,10 @@ class DetectronLazy(ObjectDetectionModelI):
         if hasattr(cfg.model, "roi_heads") and hasattr(cfg.model.roi_heads, "box_head"):
             # It's a cascade model, iterate through stages
             if isinstance(cfg.model.roi_heads.box_head, list):
-                 for head in cfg.model.roi_heads.box_head:
+                for head in cfg.model.roi_heads.box_head:
                     if hasattr(head, "test_score_thresh"):
                         head.test_score_thresh = threshold
-            else: # It's a single head
+            else:  # It's a single head
                 if hasattr(cfg.model.roi_heads, "box_predictor"):
                     if hasattr(cfg.model.roi_heads.box_predictor, "test_score_thresh"):
                         cfg.model.roi_heads.box_predictor.test_score_thresh = threshold
@@ -631,7 +629,9 @@ class DetectronLazy(ObjectDetectionModelI):
             dataset_names = cfg.dataloader.test.dataset.names
             self.metadata = MetadataCatalog.get(dataset_names)
         except (AttributeError, IndexError, KeyError):
-            print("Warning: Could not find dataset metadata in config. Fallback to COCO.")
+            print(
+                "Warning: Could not find dataset metadata in config. Fallback to COCO."
+            )
             self.metadata = MetadataCatalog.get("coco_2017_train")
 
     def to(self, device: Union[str, torch.device]):
@@ -643,15 +643,21 @@ class DetectronLazy(ObjectDetectionModelI):
         """Set confidence threshold for detections."""
         self.threshold = threshold
         # Also update the running model config
-        if hasattr(self.cfg.model, "roi_heads") and hasattr(self.cfg.model.roi_heads, "box_head"):
-             if isinstance(self.cfg.model.roi_heads.box_head, list):
-                 for head in self.cfg.model.roi_heads.box_head:
+        if hasattr(self.cfg.model, "roi_heads") and hasattr(
+            self.cfg.model.roi_heads, "box_head"
+        ):
+            if isinstance(self.cfg.model.roi_heads.box_head, list):
+                for head in self.cfg.model.roi_heads.box_head:
                     if hasattr(head, "test_score_thresh"):
                         head.test_score_thresh = threshold
-             else:
+            else:
                 if hasattr(self.cfg.model.roi_heads, "box_predictor"):
-                    if hasattr(self.cfg.model.roi_heads.box_predictor, "test_score_thresh"):
-                        self.cfg.model.roi_heads.box_predictor.test_score_thresh = threshold
+                    if hasattr(
+                        self.cfg.model.roi_heads.box_predictor, "test_score_thresh"
+                    ):
+                        self.cfg.model.roi_heads.box_predictor.test_score_thresh = (
+                            threshold
+                        )
 
     def __str__(self):
         return self.model_name

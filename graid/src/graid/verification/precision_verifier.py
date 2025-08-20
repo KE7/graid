@@ -1,10 +1,9 @@
 import logging
 from typing import Optional
 
-from PIL import Image
-
-from graid.evaluator.prompts import PromptingStrategy, PassthroughPrompt
+from graid.evaluator.prompts import PassthroughPrompt, PromptingStrategy
 from graid.evaluator.vlms import VLM
+from PIL import Image
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +65,9 @@ class PrecisionVerifier:
         answer_text, _ = self.vlm.generate_answer(annotated_image, messages)
 
         is_match = self._parse_answer(answer_text)
-        logger.debug("Label: '%s' | VLM: '%s' | Match: %s", label, answer_text, is_match)
+        logger.debug(
+            "Label: '%s' | VLM: '%s' | Match: %s", label, answer_text, is_match
+        )
         return is_match
 
     # ------------------------------------------------------------------
@@ -89,7 +90,9 @@ class PrecisionVerifier:
         """
         cleaned = answer_text.strip().lower()
         if "```" in cleaned:
-            cleaned = cleaned.split("```")[-2 if cleaned.endswith("```") else -1].strip()
+            cleaned = cleaned.split("```")[
+                -2 if cleaned.endswith("```") else -1
+            ].strip()
 
         # Extract first token (in case of longer sentences)
         first_token = cleaned.split()[0] if cleaned else ""
@@ -99,5 +102,7 @@ class PrecisionVerifier:
         if first_token in self._no_tokens:
             return False
 
-        logger.warning("Unrecognized VLM precision-verification answer '%s'", answer_text)
-        return False 
+        logger.warning(
+            "Unrecognized VLM precision-verification answer '%s'", answer_text
+        )
+        return False

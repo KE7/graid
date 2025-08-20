@@ -6,12 +6,6 @@ import mmdet
 import numpy as np
 import pycocotools.mask as mask_util
 import torch
-from mmdet.utils import collect_env as collect_base_env
-from mmengine.logging import print_log
-from mmengine.registry import Registry
-from mmengine.utils import get_git_hash
-from PIL import Image
-
 from graid.interfaces.InstanceSegmentationI import (
     InstanceSegmentationModelI,
     InstanceSegmentationResultI,
@@ -24,6 +18,11 @@ from graid.interfaces.ObjectDetectionI import (
 )
 from graid.utilities.coco import coco_labels, coco_panoptic_labels
 from graid.utilities.common import convert_batch_to_numpy, convert_image_to_numpy
+from mmdet.utils import collect_env as collect_base_env
+from mmengine.logging import print_log
+from mmengine.registry import Registry
+from mmengine.utils import get_git_hash
+from PIL import Image
 
 
 # https://github.com/open-mmlab/mmdetection/issues/12008

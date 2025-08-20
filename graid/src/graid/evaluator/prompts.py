@@ -4,9 +4,8 @@ import cv2
 import numpy as np
 import supervision as sv
 import torch
-from numpy.typing import NDArray
-
 from graid.utilities.common import get_default_device
+from numpy.typing import NDArray
 
 
 class PromptingStrategy:
@@ -299,9 +298,7 @@ class PassthroughPrompt(PromptingStrategy):
 
     def generate_prompt(self, image, question):  # noqa: D401, ANN001
         # Simply echo back the inputs as a message list for consistency
-        messages = [
-            {"role": "user", "content": question}
-        ]
+        messages = [{"role": "user", "content": question}]
         return image, messages
 
     def __str__(self):

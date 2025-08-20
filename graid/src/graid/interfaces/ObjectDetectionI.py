@@ -1,3 +1,4 @@
+import threading
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
@@ -13,7 +14,6 @@ from detectron2.structures.boxes import (
 )
 from PIL import Image
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
-import threading
 
 
 class BBox_Format(Enum):
@@ -30,9 +30,7 @@ class ObjectDetectionResultI:
         score: Union[float, torch.Tensor],
         cls: Union[int, torch.Tensor],
         label: Union[str, torch.Tensor],
-        bbox: Union[
-            Union[torch.Tensor, List[float]], Detectron2Boxes
-        ],
+        bbox: Union[Union[torch.Tensor, List[float]], Detectron2Boxes],
         image_hw: Tuple[int, int],
         bbox_format: BBox_Format = BBox_Format.XYXY,
         attributes: Optional[List[Dict]] = None,
@@ -62,7 +60,7 @@ class ObjectDetectionResultI:
         self._label = label
         self._attributes = attributes
         self._image_hw = image_hw
-        
+
         # Initialize _detectron2_boxes with proper type
         self._detectron2_boxes: Detectron2Boxes
 
@@ -85,10 +83,16 @@ class ObjectDetectionResultI:
                 pass
             elif bbox.shape[1] == 4:
                 # Check if we have single box with scalar score/cls (common for flatten)
-                if bbox.shape[0] == 1 and isinstance(score, (int, float)) and isinstance(cls, (int, str)):
+                if (
+                    bbox.shape[0] == 1
+                    and isinstance(score, (int, float))
+                    and isinstance(cls, (int, str))
+                ):
                     # This is okay - single box with scalar values
                     pass
-                elif not isinstance(score, torch.Tensor) or not isinstance(cls, torch.Tensor):
+                elif not isinstance(score, torch.Tensor) or not isinstance(
+                    cls, torch.Tensor
+                ):
                     raise ValueError(
                         f"Tried to initialize DetectionResult with {bbox.shape[0]} many "
                         "bounding boxes but only a single score and class provided."
@@ -101,12 +105,14 @@ class ObjectDetectionResultI:
                     f"{bbox.shape[1]} not supported for initializing DetectionResult"
                     " (should be 4, 6 or 7)"
                 )
-            
+
             # Extract just the bbox coordinates (first 4 columns)
             bbox_coords = bbox[:, :4] if bbox.shape[1] > 4 else bbox
-            
+
             # all x1 < x2 and y1 < y2
-            if torch.any(bbox_coords[:, 0] > bbox_coords[:, 2]) or torch.any(bbox_coords[:, 1] > bbox_coords[:, 3]):
+            if torch.any(bbox_coords[:, 0] > bbox_coords[:, 2]) or torch.any(
+                bbox_coords[:, 1] > bbox_coords[:, 3]
+            ):
                 raise ValueError(
                     f"Bounding box coordinates are not in the correct format. "
                     "All x1 < x2 and y1 < y2 but found some boxes with x1 > x2 or y1 > y2"
@@ -171,9 +177,19 @@ class ObjectDetectionResultI:
             return [
                 ObjectDetectionResultI(
                     score=float(self._score[i]),
-                    cls=int(self._class[i]) if isinstance(self._class, torch.Tensor) else self._class,
-                    label=str(self._label[i]) if isinstance(self._label, torch.Tensor) else self._label,
-                    bbox=self._detectron2_boxes.tensor[i:i+1],  # Extract tensor directly
+                    cls=(
+                        int(self._class[i])
+                        if isinstance(self._class, torch.Tensor)
+                        else self._class
+                    ),
+                    label=(
+                        str(self._label[i])
+                        if isinstance(self._label, torch.Tensor)
+                        else self._label
+                    ),
+                    bbox=self._detectron2_boxes.tensor[
+                        i : i + 1
+                    ],  # Extract tensor directly
                     image_hw=self._image_hw,
                     bbox_format=BBox_Format.XYXY,
                 )
@@ -294,6 +310,7 @@ class ObjectDetectionResultI:
 class ObjectDetectionUtils:
     # Thread-local storage for per-image context
     _ctx_local = threading.local()
+
     @staticmethod
     def pairwise_iou(
         boxes1: ObjectDetectionResultI, boxes2: ObjectDetectionResultI
@@ -496,7 +513,11 @@ class ObjectDetectionUtils:
         for det in flattened:
             # Label as string
             lbl = det.label
-            lbl_str = str(lbl) if isinstance(lbl, (str, int, float)) else str(lbl.item()) if hasattr(lbl, 'item') else str(lbl)
+            lbl_str = (
+                str(lbl)
+                if isinstance(lbl, (str, int, float))
+                else str(lbl.item()) if hasattr(lbl, "item") else str(lbl)
+            )
             labels.append(lbl_str)
             counts[lbl_str] = counts.get(lbl_str, 0) + 1
 
@@ -522,7 +543,11 @@ class ObjectDetectionUtils:
             boxes_xyxy.append(coords)
 
         # Stack xyxy to (N, 4)
-        bxyxy = torch.stack(boxes_xyxy) if boxes_xyxy else torch.empty((0, 4), dtype=torch.float32)
+        bxyxy = (
+            torch.stack(boxes_xyxy)
+            if boxes_xyxy
+            else torch.empty((0, 4), dtype=torch.float32)
+        )
 
         # Generate list-of-dicts format commonly used when writing out
         bbox_list: List[Dict[str, float]] = [
@@ -557,7 +582,10 @@ class ObjectDetectionUtils:
         if bxyxy.numel() > 0:
             widths = (bxyxy[:, 2] - bxyxy[:, 0]).clamp(min=1.0)
             heights = (bxyxy[:, 3] - bxyxy[:, 1]).clamp(min=1.0)
-            centers = torch.stack([(bxyxy[:, 0] + bxyxy[:, 2]) / 2.0, (bxyxy[:, 1] + bxyxy[:, 3]) / 2.0], dim=1)
+            centers = torch.stack(
+                [(bxyxy[:, 0] + bxyxy[:, 2]) / 2.0, (bxyxy[:, 1] + bxyxy[:, 3]) / 2.0],
+                dim=1,
+            )
             areas = widths * heights
             aspects = widths / heights
         else:
@@ -611,8 +639,16 @@ class ObjectDetectionUtils:
             if bbox.shape[0] > 1:
                 for i, box in enumerate(bbox):
                     x1, y1, x2, y2 = map(int, box)
-                    score = detection.score[i].item() if isinstance(detection.score, torch.Tensor) else detection.score
-                    label = str(detection.label[i] if isinstance(detection.label, torch.Tensor) else detection.label)
+                    score = (
+                        detection.score[i].item()
+                        if isinstance(detection.score, torch.Tensor)
+                        else detection.score
+                    )
+                    label = str(
+                        detection.label[i]
+                        if isinstance(detection.label, torch.Tensor)
+                        else detection.label
+                    )
 
                     # Choose a color and draw rectangle
                     if score > 0.8:
@@ -700,8 +736,16 @@ class ObjectDetectionUtils:
             if bbox.shape[0] > 1:
                 for i, box in enumerate(bbox):
                     x1, y1, x2, y2 = map(int, box)
-                    score = detection.score[i].item() if isinstance(detection.score, torch.Tensor) else detection.score
-                    label = str(detection.label[i] if isinstance(detection.label, torch.Tensor) else detection.label)
+                    score = (
+                        detection.score[i].item()
+                        if isinstance(detection.score, torch.Tensor)
+                        else detection.score
+                    )
+                    label = str(
+                        detection.label[i]
+                        if isinstance(detection.label, torch.Tensor)
+                        else detection.label
+                    )
                     # Choose a color and draw rectangle
                     if score > 0.8:
                         # orange
@@ -778,7 +822,11 @@ class ObjectDetectionUtils:
             if bbox.shape[0] > 1:
                 for i, box in enumerate(bbox):
                     x1, y1, x2, y2 = map(int, box)
-                    label = str(truth.label[i] if isinstance(truth.label, torch.Tensor) else truth.label)
+                    label = str(
+                        truth.label[i]
+                        if isinstance(truth.label, torch.Tensor)
+                        else truth.label
+                    )
                     # Draw bounding box
                     cv2.rectangle(
                         cv_image_with_boxes, (x1, y1), (x2, y2), (0, 255, 0), 2

@@ -11,13 +11,6 @@ from typing import Any, Callable, Literal, Optional, Union
 import numpy as np
 import pandas as pd
 import torch
-from PIL import Image
-from pycocotools import mask as cocomask
-from torch import Tensor
-from torch.utils.data import Dataset
-from torchvision import transforms
-from tqdm import tqdm
-
 from graid.interfaces.InstanceSegmentationI import (
     InstanceSegmentationResultI,
     Mask_Format,
@@ -25,6 +18,12 @@ from graid.interfaces.InstanceSegmentationI import (
 from graid.interfaces.ObjectDetectionI import BBox_Format, ObjectDetectionResultI
 from graid.utilities.coco import inverse_coco_label
 from graid.utilities.common import convert_to_xyxy, project_root_dir, read_image
+from PIL import Image
+from pycocotools import mask as cocomask
+from torch import Tensor
+from torch.utils.data import Dataset
+from torchvision import transforms
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -168,8 +167,7 @@ class Bdd10kDataset(ImageDataset):
         if self.target_transform:
             labels = self.target_transform(labels)
         if self.merge_transform:
-            image, labels, timestamp = self.merge_transform(
-                image, labels, timestamp)
+            image, labels, timestamp = self.merge_transform(image, labels, timestamp)
 
         return {
             "name": data["name"],
@@ -406,9 +404,15 @@ class Bdd100kDataset(ImageDataset):
             need_build = False
         if need_build:
             print(f"Building per-image pickle cache for BDD100K {self.split}...")
-            for idx, label in tqdm(enumerate(self.img_labels), total=len(self.img_labels), desc=f"Indexing BDD100K {self.split}..."):
+            for idx, label in tqdm(
+                enumerate(self.img_labels),
+                total=len(self.img_labels),
+                desc=f"Indexing BDD100K {self.split}...",
+            ):
                 # respect filtering flag when deciding to include
-                if self.use_time_filtered and (not self._meets_filtering_criteria(label)):
+                if self.use_time_filtered and (
+                    not self._meets_filtering_criteria(label)
+                ):
                     continue
                 name = label.get("name")
                 timestamp = label.get("timestamp", 0)
@@ -416,7 +420,9 @@ class Bdd100kDataset(ImageDataset):
                 save_path = pkl_root / f"{idx}.pkl"
                 try:
                     with open(save_path, "wb") as f:
-                        pickle.dump({"name": name, "labels": labels, "timestamp": timestamp}, f)
+                        pickle.dump(
+                            {"name": name, "labels": labels, "timestamp": timestamp}, f
+                        )
                     os.chmod(save_path, 0o777)
                 except Exception:
                     # best-effort; skip on failure
@@ -535,8 +541,7 @@ class Bdd100kDataset(ImageDataset):
         if self.target_transform:
             labels = self.target_transform(labels)
         if self.merge_transform:
-            image, labels, timestamp = self.merge_transform(
-                image, labels, timestamp)
+            image, labels, timestamp = self.merge_transform(image, labels, timestamp)
 
         return {
             "name": data["name"],
@@ -552,16 +557,12 @@ class Bdd100kDataset(ImageDataset):
         labels: list[dict[str, Any]],
         timestamp: str,
     ) -> Union[
-        tuple[
-            Tensor, list[Union[ObjectDetectionResultI,
-                               InstanceSegmentationResultI]]
-        ],
+        tuple[Tensor, list[Union[ObjectDetectionResultI, InstanceSegmentationResultI]]],
         tuple[
             Tensor,
             list[
                 tuple[
-                    Union[ObjectDetectionResultI,
-                          InstanceSegmentationResultI],
+                    Union[ObjectDetectionResultI, InstanceSegmentationResultI],
                     dict[str, Any],
                     str,
                 ]
@@ -976,10 +977,7 @@ class NuImagesDataset(ImageDataset):
         }
 
     def merge_transform(
-        self,
-        image: Tensor, 
-        labels: list[dict[str, Any]], 
-        timestamp: str
+        self, image: Tensor, labels: list[dict[str, Any]], timestamp: str
     ) -> tuple[
         Tensor,
         list[tuple[ObjectDetectionResultI, dict[str, Any], str]],
@@ -1161,8 +1159,7 @@ class NuImagesDataset_seg(ImageDataset):
         img_dir = root_dir
         mask_annotations_file = root_dir / f"v1.0-{split}" / "object_ann.json"
         categories_file = root_dir / f"v1.0-{split}" / "category.json"
-        sample_data_labels_file = root_dir / \
-            f"v1.0-{split}" / "sample_data.json"
+        sample_data_labels_file = root_dir / f"v1.0-{split}" / "sample_data.json"
         attributes_file = root_dir / f"v1.0-{split}" / "attribute.json"
 
         self.nuim = NuImages(
@@ -1251,10 +1248,7 @@ class NuImagesDataset_seg(ImageDataset):
         }
 
     def merge_transform(
-        self,
-        image: Tensor, 
-        labels: list[dict[str, Any]], 
-        timestamp: str
+        self, image: Tensor, labels: list[dict[str, Any]], timestamp: str
     ) -> tuple[
         Tensor,
         list[tuple[InstanceSegmentationResultI, dict[str, Any], str]],

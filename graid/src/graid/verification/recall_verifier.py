@@ -3,10 +3,9 @@ import logging
 from collections.abc import Sequence
 from typing import Optional
 
-from PIL import Image
-
 from graid.evaluator.prompts import PromptingStrategy
 from graid.evaluator.vlms import VLM
+from PIL import Image
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +62,7 @@ class RecallVerifier:
 
         # STEP 2: Generate the prompt, which may annotate the image
         annotated_image, messages = self.ps.generate_prompt(image, question)
-        
+
         # STEP 3: query the VLM using the standard interface and parse the answer
         answer_text, _ = self.vlm.generate_answer(annotated_image, messages)
         found_labels = self._parse_answer(answer_text)
@@ -113,4 +112,4 @@ class RecallVerifier:
             return [str(parsed)]
         except Exception as e:  # noqa: BLE001
             logger.warning("Failed to parse VLM answer '%s': %s", answer_text, e)
-        return [] 
+        return []
