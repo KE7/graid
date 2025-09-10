@@ -70,9 +70,9 @@ def install_detectron2() -> None:
     print("Installing detectron2 from GitHub...")
     subprocess.run(
         [
-            "uv",
             "pip",
             "install",
+            "--no-build-isolation",
             "detectron2 @ git+https://github.com/facebookresearch/detectron2.git",
         ]
     )
@@ -81,7 +81,7 @@ def install_detectron2() -> None:
 def clean_detectron2() -> None:
     # Uninstall detectron2 package
     print("Uninstalling detectron2...")
-    subprocess.run(["uv", "pip", "uninstall", "detectron2", "-y"])
+    subprocess.run(["pip", "uninstall", "detectron2", "-y"])
 
 
 def install_mmdetection() -> None:

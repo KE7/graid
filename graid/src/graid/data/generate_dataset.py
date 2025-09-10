@@ -1,7 +1,7 @@
 """
 GRAID HuggingFace Dataset Generation
 
-This module provides comprehensive functionality for generating HuggingFace datasets 
+This module provides comprehensive functionality for generating HuggingFace datasets
 from object detection data, supporting multiple model backends, ensemble methods,
 and flexible question-answer generation patterns.
 
@@ -25,6 +25,9 @@ Functions:
     generate_dataset: High-level API for dataset generation
     list_available_questions: Query available question types
     interactive_question_selection: Interactive question configuration
+
+# Example:
+    # GRAID_PROFILE_QUESTIONS=1 GRAID_DEBUG_VERBOSE=1 graid generate-dataset --config bdd_train_gt_dataset_config.json --no-interactive
 """
 
 import json
@@ -34,7 +37,8 @@ import time
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Optional, Union
+import threading
 
 import numpy as np
 import torch
@@ -43,7 +47,14 @@ from PIL import Image
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+
+from graid.questions.ObjectDetectionQ import Question, DEPTH_QUESTIONS
+
+
 logger = logging.getLogger(__name__)
+
+# Global thread-local storage to hold per-thread resources like models
+thread_local_storage = threading.local()
 
 
 class QABatchProcessor(ABC):
@@ -62,8 +73,8 @@ class QABatchProcessor(ABC):
 
     @abstractmethod
     def process_batch(
-        self, batch_data: List[Tuple[Image.Image, List[Any], str, int, int]]
-    ) -> List[Any]:
+        self, batch_data: list[tuple[Image.Image, list[Any], str, int, int]]
+    ) -> list[Any]:
         """
         Process a batch of image data and generate question-answer pairs.
 
@@ -80,8 +91,8 @@ class QABatchProcessor(ABC):
 
         Returns:
             List of QA results where each element is either:
-                - List[Dict[str, Any]]: QA pairs (when profiling disabled)
-                - Tuple[List[Dict[str, Any]], Dict[str, tuple[float, int]]]:
+                - List[dict[str, Any]]: QA pairs (when profiling disabled)
+                - Tuple[List[dict[str, Any]], dict[str, tuple[float, int]]]:
                   QA pairs with timing data (when profiling enabled)
 
         Raises:
@@ -124,8 +135,8 @@ class SequentialQAProcessor(QABatchProcessor):
         )
 
     def process_batch(
-        self, batch_data: List[Tuple[Image.Image, List[Any], str, int, int]]
-    ) -> List[Any]:
+        self, batch_data: list[tuple[Image.Image, list[Any], str, int, int]]
+    ) -> list[Any]:
         """
         Process QA generation sequentially for all images in the batch.
 
@@ -156,8 +167,7 @@ class SequentialQAProcessor(QABatchProcessor):
             except Exception as e:
                 logger.error("❌ Failed to process image %s: %s", source_id, e)
                 # Add empty result to maintain order
-                empty_result = ([], {}) if self.profile_questions else []
-                results.append(empty_result)
+                results.append([])
 
         logger.debug(
             "✅ Sequential batch processing completed: %d results", len(results)
@@ -209,8 +219,8 @@ class ParallelQAProcessor(QABatchProcessor):
         )
 
     def process_batch(
-        self, batch_data: List[Tuple[Image.Image, List[Any], str, int, int]]
-    ) -> List[Any]:
+        self, batch_data: list[tuple[Image.Image, list[Any], str, int, int]]
+    ) -> list[Any]:
         """
         Process QA generation in parallel with strict order preservation.
 
@@ -346,14 +356,14 @@ class HuggingFaceDatasetBuilder:
         self,
         dataset_name: str,
         split: str,
-        models: Optional[List[Any]] = None,
+        models: Optional[list[Any]] = None,
         use_wbf: bool = False,
-        wbf_config: Optional[Dict[str, Any]] = None,
+        wbf_config: Optional[dict[str, Any]] = None,
         conf_threshold: float = 0.2,
         batch_size: int = 1,
         device: Optional[Union[str, torch.device]] = None,
-        allowable_set: Optional[List[str]] = None,
-        question_configs: Optional[List[Dict[str, Any]]] = None,
+        allowable_set: Optional[list[str]] = None,
+        question_configs: Optional[list[dict[str, Any]]] = None,
         num_workers: int = 4,
         qa_workers: int = 4,
         num_samples: Optional[int] = None,
@@ -390,6 +400,7 @@ class HuggingFaceDatasetBuilder:
         self.conf_threshold = conf_threshold
         self.batch_size = batch_size
         self.device = device if device is not None else get_default_device()
+        logger.debug("✓ Initialized device: %s", self.device)
         self.allowable_set = allowable_set
         self.num_workers = num_workers
         self.qa_workers = qa_workers
@@ -400,11 +411,10 @@ class HuggingFaceDatasetBuilder:
 
         # Question profiling (timings)
         self.profile_questions: bool = bool(os.getenv("GRAID_PROFILE_QUESTIONS"))
-        self.question_timings: Dict[str, Tuple[float, int]] = {}
-        self.question_counts: Dict[str, int] = {}
+        self.question_counts: dict[str, int] = {}
 
         # Enhanced profiling for is_applicable vs apply efficiency
-        self.question_detailed_stats: Dict[str, Dict[str, Any]] = {}
+        self.question_detailed_stats: dict[str, dict[str, Any]] = {}
 
         # Validate allowable_set
         if allowable_set is not None:
@@ -414,14 +424,16 @@ class HuggingFaceDatasetBuilder:
             if not is_valid:
                 raise ValueError(f"Invalid allowable_set: {error_msg}")
 
-        # Initialize dataset transforms
         self.transform = self._get_dataset_transform()
 
-        # Initialize questions
         self.questions = self._initialize_questions(question_configs)
 
-        # Initialize dataset loader
         self._init_dataset_loader()
+
+        self.depth_model = None
+        if self._has_depth_questions(self.questions):
+            from graid.models.DepthPro import DepthPro
+            self.depth_model = DepthPro(device=self.device)
 
         # Note: No longer creating image directories - using embedded images in parquet
 
@@ -448,95 +460,31 @@ class HuggingFaceDatasetBuilder:
             raise ValueError(f"Unsupported dataset: {self.dataset_name}")
 
     def _initialize_questions(
-        self, question_configs: Optional[List[Dict[str, Any]]]
-    ) -> List[Any]:
-        """Initialize question objects from configuration."""
-        if question_configs is None:
-            # Use all available questions
-            from graid.questions.ObjectDetectionQ import ALL_QUESTION_CLASSES
+        self, question_configs: Optional[list[dict[str, Any]]]
+    ) -> list[Question]:
+        """Initialize question objects from configurations."""
+        from graid.questions.ObjectDetectionQ import ALL_QUESTION_CLASSES
 
-            return list(ALL_QUESTION_CLASSES.values())
+        if question_configs is None:
+            # If no specific questions are configured, use all available ones.
+            # We instantiate them with default parameters.
+            return [cls() for cls in ALL_QUESTION_CLASSES.values()]
 
         questions = []
-        from graid.questions.ObjectDetectionQ import (
-            AreMore,
-            HowMany,
-            IsObjectCentered,
-            LargestAppearance,
-            LeastAppearance,
-            LeftMost,
-            LeftMostWidthVsHeight,
-            LeftOf,
-            LessThanThresholdHowMany,
-            MoreThanThresholdHowMany,
-            MostAppearance,
-            MostClusteredObjects,
-            MultiChoiceHowMany,
-            ObjectsInLine,
-            ObjectsInRow,
-            Quadrants,
-            RankLargestK,
-            RightMost,
-            RightMostWidthVsHeight,
-            RightOf,
-            WhichMore,
-            WidthVsHeight,
-        )
-
-        # Map question names to classes
-        question_class_map = {
-            "IsObjectCentered": IsObjectCentered,
-            "WidthVsHeight": WidthVsHeight,
-            "LargestAppearance": LargestAppearance,
-            "RankLargestK": RankLargestK,
-            "MostAppearance": MostAppearance,
-            "LeastAppearance": LeastAppearance,
-            "LeftOf": LeftOf,
-            "RightOf": RightOf,
-            "LeftMost": LeftMost,
-            "RightMost": RightMost,
-            "HowMany": HowMany,
-            "MostClusteredObjects": MostClusteredObjects,
-            "WhichMore": WhichMore,
-            "AreMore": AreMore,
-            "Quadrants": Quadrants,
-            "LeftMostWidthVsHeight": LeftMostWidthVsHeight,
-            "RightMostWidthVsHeight": RightMostWidthVsHeight,
-            "ObjectsInRow": ObjectsInRow,
-            "ObjectsInLine": ObjectsInLine,
-            "MoreThanThresholdHowMany": MoreThanThresholdHowMany,
-            "LessThanThresholdHowMany": LessThanThresholdHowMany,
-            "MultiChoiceHowMany": MultiChoiceHowMany,
-        }
-
         for config in question_configs:
-            question_name = config.get("name")
-            question_params = config.get("params", {})
+            question_name = config["name"]
+            params = config.get("params", {})
+            question_class = ALL_QUESTION_CLASSES.get(question_name)
 
-            if question_name not in question_class_map:
-                logger.warning(f"Unknown question type: {question_name}")
-                continue
-
-            question_class = question_class_map[question_name]
-
-            # Handle questions that require parameters
-            if question_params:
+            if question_class:
                 try:
-                    question_instance = question_class(**question_params)
+                    questions.append(question_class(**params))
                 except Exception as e:
                     logger.error(
-                        f"Failed to initialize {question_name} with params {question_params}: {e}"
+                        f"Error initializing question '{question_name}' with params {params}: {e}"
                     )
-                    # Fall back to default initialization
-                    question_instance = question_class()
             else:
-                question_instance = question_class()
-
-            questions.append(question_instance)
-
-        if not questions:
-            raise ValueError("No valid questions configured")
-
+                logger.warning(f"Unknown question type: {question_name}")
         return questions
 
     def _init_dataset_loader(self):
@@ -552,6 +500,13 @@ class HuggingFaceDatasetBuilder:
         except Exception as e:
             logger.error(f"Failed to initialize dataset loader: {e}")
             raise
+
+    def _has_depth_questions(self, questions: list[Question]) -> bool:
+        for q in questions:
+            if q.__class__ in DEPTH_QUESTIONS:
+                logger.debug(f"Question {q.__class__.__name__} is a depth question")
+                return True
+        return False
 
     def _prepare_wbf_ensemble(self):
         """Prepare WBF ensemble from individual models."""
@@ -582,7 +537,7 @@ class HuggingFaceDatasetBuilder:
             **self.wbf_config,
         )
 
-    def _infer_source_name(self, example: Dict[str, Any]) -> Optional[str]:
+    def _infer_source_name(self, example: dict[str, Any]) -> Optional[str]:
         """Extract source filename from dataset example."""
         if isinstance(example, dict) and "name" in example:
             return example["name"]
@@ -620,8 +575,8 @@ class HuggingFaceDatasetBuilder:
         return Image.fromarray(image)
 
     def _build_coco_annotations(
-        self, detections: List[Any], image_width: int, image_height: int
-    ) -> List[Dict[str, Any]]:
+        self, detections: list[Any], image_width: int, image_height: int
+    ) -> list[dict[str, Any]]:
         """
         Build COCO-style annotations from detections.
 
@@ -658,17 +613,12 @@ class HuggingFaceDatasetBuilder:
     def _qa_for_image(
         self,
         pil_image: Image.Image,
-        detections: List[Any],
+        detections: list[Any],
         source_id: str,
         image_index: int,
-    ) -> Union[
-        List[Dict[str, Any]], tuple[List[Dict[str, Any]], Dict[str, tuple[float, int]]]
-    ]:
+    ) -> list[dict[str, Any]]:
         """Generate question-answer pairs for a single image with embedded image bytes."""
         qa_pairs = []
-        local_timings: Dict[str, tuple[float, int]] = (
-            {} if self.profile_questions else {}
-        )
 
         # Ensure image is in RGB format for consistency
         rgb_img = (
@@ -715,7 +665,26 @@ class HuggingFaceDatasetBuilder:
             detections, pil_image.width, pil_image.height
         )
 
+        # Normalize detections for consistent tensor shapes before question processing
+        if detections:
+            from graid.interfaces.ObjectDetectionI import ObjectDetectionUtils
+
+            normalized_data = ObjectDetectionUtils.normalize_detections(detections)
+            detections = normalized_data["detections"]
+
         # Generate questions and answers with enhanced profiling
+        # Shared context cache that reusable-heavy questions (e.g. depth) can populate / reuse
+        cache: dict[str, Any] = {}
+
+        # Lazily initialize and cache a SAM predictor for each thread.
+        if self._has_depth_questions(self.questions) and not hasattr(thread_local_storage, "sam_predictor"):
+            from graid.utilities.sam_utils import SAMPredictor
+            logger.debug("Initializing SAM predictor for thread %s...", threading.get_ident())
+            thread_local_storage.sam_predictor = SAMPredictor(device=self.device)
+        if self._has_depth_questions(self.questions):
+            cache["sam_predictor"] = thread_local_storage.sam_predictor
+            cache["depth_model"] = self.depth_model
+
         for question in self.questions:
             qname = question.__class__.__name__
 
@@ -737,7 +706,7 @@ class HuggingFaceDatasetBuilder:
                 is_applicable_start = (
                     time.perf_counter() if self.profile_questions else None
                 )
-                is_applicable_result = question.is_applicable(pil_image, detections)
+                is_applicable_result = question.is_applicable(rgb_img, detections)
 
                 if self.profile_questions and is_applicable_start is not None:
                     is_applicable_time = time.perf_counter() - is_applicable_start
@@ -760,7 +729,12 @@ class HuggingFaceDatasetBuilder:
                         time.perf_counter() if self.profile_questions else None
                     )
                     try:
-                        qa_results = question.apply(pil_image, detections)
+                        # Always use apply_with_cache: the base class provides a
+                        # transparent default wrapper, and specialised questions
+                        # override it for cache-aware behaviour.
+                        qa_results = question.apply_with_cache(
+                            rgb_img, detections, cache
+                        )
 
                         if self.profile_questions and apply_start is not None:
                             apply_time = time.perf_counter() - apply_start
@@ -771,11 +745,6 @@ class HuggingFaceDatasetBuilder:
                                 current_time + apply_time,
                                 current_count + 1,
                             )
-
-                            # Track legacy timing for backward compatibility
-                            dt = apply_time
-                            t_total, t_cnt = local_timings.get(qname, (0.0, 0))
-                            local_timings[qname] = (t_total + dt, t_cnt + 1)
 
                         # Check if apply returned empty results despite is_applicable=True
                         if not qa_results and self.profile_questions:
@@ -829,15 +798,9 @@ class HuggingFaceDatasetBuilder:
                         )
                         continue
 
-        if self.profile_questions:
-            return (qa_pairs, local_timings)
         return qa_pairs
 
-    def _qa_for_image_threadsafe(
-        self, batch_args: tuple
-    ) -> Union[
-        List[Dict[str, Any]], tuple[List[Dict[str, Any]], Dict[str, tuple[float, int]]]
-    ]:
+    def _qa_for_image_threadsafe(self, batch_args: tuple) -> list[dict[str, Any]]:
         """Thread-safe wrapper for _qa_for_image using source_id for uniqueness."""
         pil_image, detections, source_id, base_image_index, batch_j = batch_args
 
@@ -850,8 +813,8 @@ class HuggingFaceDatasetBuilder:
             )
         except Exception as e:
             logger.error(f"Error in threaded QA generation for {unique_image_key}: {e}")
-            # Return appropriate empty result based on profiling mode
-            return ([], {}) if self.profile_questions else []
+            # Return empty result
+            return []
 
     def _cleanup_images(self):
         """Clean up image files after successful dataset creation to avoid duplicate storage."""
@@ -936,8 +899,8 @@ class HuggingFaceDatasetBuilder:
         return total_batches
 
     def _get_batch_predictions(
-        self, batch: List[Any]
-    ) -> Tuple[torch.Tensor, List[Any]]:
+        self, batch: list[Any]
+    ) -> tuple[torch.Tensor, list[Any]]:
         """Extract images and predictions from batch data."""
         # Handle different dataset return formats
         if isinstance(batch[0], tuple):
@@ -967,10 +930,10 @@ class HuggingFaceDatasetBuilder:
     def _prepare_batch_data(
         self,
         batch_idx: int,
-        batch: List[Any],
+        batch: list[Any],
         batch_images: torch.Tensor,
-        labels: List[Any],
-    ) -> List[Tuple[Image.Image, List[Any], str, int, int]]:
+        labels: list[Any],
+    ) -> list[tuple[Image.Image, list[Any], str, int, int]]:
         """Prepare batch data for QA processing."""
         batch_data = []
 
@@ -1013,40 +976,26 @@ class HuggingFaceDatasetBuilder:
 
         return batch_data
 
-    def _process_qa_results(
-        self, batch_results_raw: List[Any]
-    ) -> Tuple[List[Dict[str, Any]], Dict[str, Tuple[float, int]]]:
-        """Process raw QA results and extract timings."""
-        batch_results: List[Dict[str, Any]] = []
-        batch_timings: Dict[str, Tuple[float, int]] = (
-            {} if self.profile_questions else {}
-        )
+    def _process_qa_results(self, batch_results_raw: list[Any]) -> list[dict[str, Any]]:
+        """Process raw QA results."""
+        batch_results: list[dict[str, Any]] = []
 
-        # Process results and collect timings
+        # Process results
         for ret in batch_results_raw:
-            if self.profile_questions and isinstance(ret, tuple) and len(ret) == 2:
-                qa_pairs, local_timings = ret
-                if isinstance(qa_pairs, list):
-                    batch_results.extend(qa_pairs)
-                if isinstance(local_timings, dict):
-                    for k, (t, n) in local_timings.items():
-                        T, N = batch_timings.get(k, (0.0, 0))
-                        batch_timings[k] = (T + t, N + n)
-            elif isinstance(ret, list):
+            if isinstance(ret, list):
                 batch_results.extend(ret)
             else:
                 logger.warning(
                     f"Unexpected return type from QA processing: {type(ret)}"
                 )
 
-        return batch_results, batch_timings
+        return batch_results
 
     def _update_progress_tracking(
         self,
-        batch_results: List[Dict[str, Any]],
-        batch_timings: Dict[str, Tuple[float, int]],
+        batch_results: list[dict[str, Any]],
     ):
-        """Update question counts and timings tracking."""
+        """Update question counts tracking."""
         # Update per-question counts
         for item in batch_results:
             try:
@@ -1055,12 +1004,6 @@ class HuggingFaceDatasetBuilder:
                     self.question_counts[qtype] = self.question_counts.get(qtype, 0) + 1
             except Exception:
                 pass
-
-        # Merge batch timings into builder-level aggregation
-        if self.profile_questions and batch_timings:
-            for k, (t, n) in batch_timings.items():
-                T, N = self.question_timings.get(k, (0.0, 0))
-                self.question_timings[k] = (T + t, N + n)
 
     def _log_progress(self, batch_idx: int, processed_images: int, total_qa_pairs: int):
         """Log progress every 10 batches."""
@@ -1084,7 +1027,7 @@ class HuggingFaceDatasetBuilder:
             DatasetDict containing the generated VQA dataset
         """
         logger.info(
-            "🚀 Building HuggingFace dataset for %s/%s with generator approach",
+            "🚀 Building HuggingFace dataset for %s/%s ",
             self.dataset_name,
             self.split,
         )
@@ -1118,16 +1061,7 @@ class HuggingFaceDatasetBuilder:
 
         logger.info(f"✅ Generated {len(dataset)} question-answer pairs")
 
-        # Log profiling information
-        if self.profile_questions and self.question_timings:
-            items = [
-                (k, t / max(n, 1), n) for k, (t, n) in self.question_timings.items()
-            ]
-            items.sort(key=lambda x: x[1], reverse=True)
-            top = ", ".join(
-                [f"{k}: avg {avg:.4f}s over {n}" for k, avg, n in items[:5]]
-            )
-            logger.info(f"[PROFILE] Top slow questions (avg): {top}")
+        # Log profiling information - using detailed stats only
 
         # Log per-question counts
         if self.question_counts:
@@ -1203,8 +1137,8 @@ class HuggingFaceDatasetBuilder:
             batch_results_raw = qa_processor.process_batch(batch_data)
 
             # Process results and update tracking
-            batch_results, batch_timings = self._process_qa_results(batch_results_raw)
-            self._update_progress_tracking(batch_results, batch_timings)
+            batch_results = self._process_qa_results(batch_results_raw)
+            self._update_progress_tracking(batch_results)
 
             # Yield individual QA pairs instead of accumulating
             for qa_pair in batch_results:
@@ -1263,7 +1197,7 @@ class HuggingFaceDatasetBuilder:
             }
         )
 
-    def _create_metadata(self) -> Dict[str, Any]:
+    def _create_metadata(self) -> dict[str, Any]:
         """Create metadata dictionary for the dataset."""
         metadata = {
             "dataset_name": self.dataset_name,
@@ -1302,14 +1236,14 @@ class HuggingFaceDatasetBuilder:
 def generate_dataset(
     dataset_name: str,
     split: str,
-    models: Optional[List[Any]] = None,
+    models: Optional[list[Any]] = None,
     use_wbf: bool = False,
-    wbf_config: Optional[Dict[str, Any]] = None,
+    wbf_config: Optional[dict[str, Any]] = None,
     conf_threshold: float = 0.2,
     batch_size: int = 1,
     device: Optional[Union[str, torch.device]] = None,
-    allowable_set: Optional[List[str]] = None,
-    question_configs: Optional[List[Dict[str, Any]]] = None,
+    allowable_set: Optional[list[str]] = None,
+    question_configs: Optional[list[dict[str, Any]]] = None,
     num_workers: int = 4,
     qa_workers: int = 4,
     save_path: str = "./graid-datasets",
@@ -1362,7 +1296,7 @@ def generate_dataset(
             to combine predictions from multiple models. Improves accuracy
             when multiple models are provided. Default: False
 
-        wbf_config (Optional[Dict[str, Any]]): Configuration for WBF ensemble:
+        wbf_config (Optional[dict[str, Any]]): Configuration for WBF ensemble:
             - iou_threshold: IoU threshold for box fusion
             - model_weights: List of weights for each model
             - confidence_threshold: Minimum confidence for fusion
@@ -1383,7 +1317,7 @@ def generate_dataset(
             object classes. Must be valid COCO category names. If None,
             includes all detected objects. Example: ["person", "car", "bicycle"]
 
-        question_configs (Optional[List[Dict[str, Any]]]): Configuration for
+        question_configs (Optional[list[dict[str, Any]]]): Configuration for
             question generation. Each dict contains:
             - name: Question type (e.g., "HowMany", "LeftOf", "Quadrants")
             - params: Question-specific parameters
@@ -1507,15 +1441,15 @@ def generate_dataset(
     dataset_dict = builder.build()
 
     # Save locally if requested
-    if save_path:
-        save_path_obj = Path(save_path)
-        data_dir = save_path_obj / "data"
-        data_dir.mkdir(parents=True, exist_ok=True)
+    # if save_path:
+    #     save_path_obj = Path(save_path)
+    #     data_dir = save_path_obj / "data"
+    #     data_dir.mkdir(parents=True, exist_ok=True)
 
-        for split_name, dataset in dataset_dict.items():
-            parquet_file = data_dir / f"{split_name}-00000-of-00001.parquet"
-            dataset.to_parquet(str(parquet_file))
-            logger.info(f"Dataset {split_name} split saved to {parquet_file}")
+    #     for split_name, dataset in dataset_dict.items():
+    #         parquet_file = data_dir / f"{split_name}-00000-of-00001.parquet"
+    #         dataset.to_parquet(str(parquet_file))
+    #         logger.info(f"Dataset {split_name} split saved to {parquet_file}")
 
     # Upload to HuggingFace Hub if requested
     if upload_to_hub:
@@ -1554,7 +1488,6 @@ def generate_dataset(
         dataset_dict.push_to_hub(
             repo_id=hub_repo_id,
             private=hub_private,
-            # embed_external_files=False,  # Critical: no byte duplication
             commit_message=f"Upload {dataset_name} {split} dataset",
             max_shard_size="5GB",
         )
@@ -1583,7 +1516,7 @@ def generate_dataset(
 
 
 # Compatibility functions for existing code
-def list_available_questions() -> Dict[str, Dict[str, Any]]:
+def list_available_questions() -> dict[str, dict[str, Any]]:
     """
     List all available question types with their descriptions and parameters.
 
@@ -1592,7 +1525,7 @@ def list_available_questions() -> Dict[str, Dict[str, Any]]:
     patterns for visual question answering based on object detection results.
 
     Returns:
-        Dict[str, Dict[str, Any]]: Dictionary mapping question names to their metadata:
+        dict[str, dict[str, Any]]: Dictionary mapping question names to their metadata:
             - "question": Human-readable description of the question type
             - "parameters": Dict of configurable parameters (currently empty,
               reserved for future parameter introspection)
@@ -1627,7 +1560,7 @@ def list_available_questions() -> Dict[str, Dict[str, Any]]:
     return question_info
 
 
-def interactive_question_selection() -> List[Dict[str, Any]]:
+def interactive_question_selection() -> list[dict[str, Any]]:
     """
     Interactive terminal interface for selecting and configuring question types.
 
@@ -1645,7 +1578,7 @@ def interactive_question_selection() -> List[Dict[str, Any]]:
         - "all": Select all available question types with default parameters
 
     Returns:
-        List[Dict[str, Any]]: List of question configuration dictionaries, each containing:
+        list[dict[str, Any]]: List of question configuration dictionaries, each containing:
             - "name": Question type name (e.g., "HowMany", "LeftOf")
             - "params": Parameter dictionary (currently empty, default parameters)
 
@@ -1724,7 +1657,7 @@ def interactive_question_selection() -> List[Dict[str, Any]]:
 
 def create_webdataset_archive(
     dataset_path: str, output_path: str, max_tar_size_mb: int = 1000
-) -> List[str]:
+) -> list[str]:
     """
     ALTERNATIVE SOLUTION: Convert existing dataset to WebDataset format (TAR archives).
 

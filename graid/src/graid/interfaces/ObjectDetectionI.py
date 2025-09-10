@@ -1,4 +1,3 @@
-import threading
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
@@ -308,8 +307,6 @@ class ObjectDetectionResultI:
 
 
 class ObjectDetectionUtils:
-    # Thread-local storage for per-image context
-    _ctx_local = threading.local()
 
     @staticmethod
     def pairwise_iou(
@@ -607,19 +604,7 @@ class ObjectDetectionUtils:
         }
         return ctx
 
-    @staticmethod
-    def set_current_context(ctx: Optional[Dict[str, Any]]) -> None:
-        ObjectDetectionUtils._ctx_local.value = ctx
 
-    @staticmethod
-    def get_current_context() -> Optional[Dict[str, Any]]:
-        return getattr(ObjectDetectionUtils._ctx_local, "value", None)
-
-    @staticmethod
-    def clear_current_context() -> None:
-        """Clear any previously set per-image QuestionContext."""
-        if hasattr(ObjectDetectionUtils._ctx_local, "value"):
-            ObjectDetectionUtils._ctx_local.value = None
 
     @staticmethod
     def show_image_with_detections(

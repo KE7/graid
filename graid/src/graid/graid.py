@@ -801,7 +801,22 @@ def generate_dataset_cmd(
         typer.secho(
             "🚀 Starting dataset generation...", fg=typer.colors.BLUE, bold=True
         )
-        dataset_dict = _process_dataset_generation(config, question_configs)
+        result = _process_dataset_generation(config, question_configs)
+        
+        # Handle tuple return (dataset_dict, stats) or just dataset_dict
+        if isinstance(result, tuple):
+            dataset_dict, stats = result
+        else:
+            dataset_dict = result
+            stats = None
+
+        # Log profiling stats if available
+        if stats:
+            from graid.utils.profiling import log_profiling_statistics
+
+            typer.echo()
+            typer.secho("📊 Question Generation Statistics", fg=typer.colors.BLUE, bold=True)
+            log_profiling_statistics(stats, "Single-Split Question Processing Statistics")
 
         # Success reporting
         typer.echo()

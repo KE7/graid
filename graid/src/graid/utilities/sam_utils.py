@@ -2,6 +2,7 @@
 SAM (Segment Anything Model) utilities for object mask refinement.
 """
 
+import logging
 from enum import Enum
 from typing import List, Optional, Tuple
 
@@ -14,6 +15,7 @@ from segment_anything import SamAutomaticMaskGenerator, SamPredictor, sam_model_
 
 _sam_model = None
 
+logger = logging.getLogger(__name__)
 
 def get_sam_model(**kwargs) -> torch.nn.Module:
     """
@@ -154,6 +156,73 @@ class SAMPredictor:
 
         return results
 
+    @torch.no_grad()
+    def get_masks_from_bboxes(
+        self,
+        image: Image.Image,
+        detections: List[ObjectDetectionResultI],
+        return_type: SAMMaskReturnType = SAMMaskReturnType.LARGEST_AREA,
+    ) -> List[Tuple[ObjectDetectionResultI, Optional[torch.Tensor]]]:
+        """Batch version of ``get_mask_from_bbox`` using predict_torch.
+
+        This uses a single SAM forward pass for all boxes. It also applies SAM's
+        box transform before inference and returns a single 2D mask per detection.
+        """
+        if not detections:
+            return []
+
+        # 1) Set the image once
+        img_np = np.array(image)
+        self.predictor.set_image(img_np)
+
+        # 2) Build a tensor of boxes (N, 4)
+        boxes_xyxy = torch.stack(
+            [det.as_xyxy().reshape(-1, 4)[0].to(torch.float32) for det in detections],
+            dim=0,
+        )  # (N,4)
+
+        # 3) Transform boxes to the predictor's coordinate space
+        img_h, img_w = img_np.shape[:2]
+        boxes_transformed = self.predictor.transform.apply_boxes_torch(
+            boxes_xyxy, (img_h, img_w)
+        )  # (N,4)
+        # Ensure boxes are on the same device as the model for predict_torch
+        model_device = next(self.predictor.model.parameters()).device
+        boxes_transformed = boxes_transformed.to(model_device)
+        
+
+        # 4) Inference (torch path). Return a single mask per box for speed
+        # Use mixed precision on Hopper (BF16 preferred) or FP16 otherwise
+        use_bf16 = torch.cuda.is_available() and hasattr(torch.cuda, "is_bf16_supported") and torch.cuda.is_bf16_supported()
+        autocast_dtype = torch.bfloat16 if use_bf16 else torch.float16
+        with torch.autocast(device_type="cuda", dtype=autocast_dtype):
+            masks_torch, scores_torch, _ = self.predictor.predict_torch(
+                point_coords=None,
+                point_labels=None,
+                boxes=boxes_transformed,
+                multimask_output=False,
+            )
+
+        # 5) Choose one mask per detection
+        outputs: List[Tuple[ObjectDetectionResultI, Optional[torch.Tensor]]] = []
+        N = masks_torch.shape[0]
+        for i in range(N):
+            mset: torch.Tensor = masks_torch[i]  # (1,H,W) when multimask_output=False
+            # Squeeze to 2D mask
+            chosen = mset.squeeze(0)
+
+            if chosen.ndim != 2:
+                outputs.append((detections[i], None))
+                continue
+
+            chosen_bool = chosen.to(dtype=torch.bool).cpu()
+            if chosen_bool.sum() == 0:
+                outputs.append((detections[i], None))
+            else:
+                outputs.append((detections[i], chosen_bool))
+
+        return outputs
+
     def to(self, device: torch.device) -> "SAMPredictor":
         """Move model to specified device."""
         self.device = device
@@ -205,8 +274,24 @@ def extract_average_depth_from_mask(
     if mask.sum() == 0:
         return None
 
-    # Apply mask to depth map and compute average
-    masked_depths = depth_map[mask]
+    # Apply mask to depth map and compute average with defensive logging
+    try:
+        masked_depths = depth_map[mask]
+    except Exception as e:
+        try:
+            logger.debug(
+                "extract_average_depth_from_mask error: depth_map.shape=%s dim=%d dtype=%s device=%s; mask.shape=%s dim=%d dtype=%s",
+                tuple(depth_map.shape),
+                depth_map.dim(),
+                str(depth_map.dtype),
+                str(depth_map.device) if hasattr(depth_map, "device") else "cpu",
+                tuple(mask.shape),
+                mask.dim(),
+                str(mask.dtype),
+            )
+        except Exception:
+            pass
+        raise
     return float(masked_depths.mean().item())
 
 

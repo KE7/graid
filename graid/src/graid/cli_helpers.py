@@ -692,11 +692,16 @@ class DatasetProcessor:
                 "license": "bsd-3-clause",
                 "tags": ["autonomous-driving", "bdd100k"],
                 "source_info": "BDD100K (Berkeley DeepDrive)",
-                "citation": """@inproceedings{bdd100k,
-    title={BDD100K: A Diverse Driving Dataset for Heterogeneous Multitask Learning},
+                "citation": """@INPROCEEDINGS{9156329,
     author={Yu, Fisher and Chen, Haofeng and Wang, Xin and Xian, Wenqi and Chen, Yingying and Liu, Fangchen and Madhavan, Vashisht and Darrell, Trevor},
-    booktitle={IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
-    year={2020}
+    booktitle={2020 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)}, 
+    title={BDD100K: A Diverse Driving Dataset for Heterogeneous Multitask Learning}, 
+    year={2020},
+    volume={},
+    number={},
+    pages={2633-2642},
+    keywords={Task analysis;Visualization;Roads;Image segmentation;Meteorology;Training;Benchmark testing},
+    doi={10.1109/CVPR42600.2020.00271}
 }""",
                 "license_text": "This dataset is derived from the BDD100K dataset. Please refer to the [BDD100K license terms](https://github.com/bdd100k/bdd100k) for usage restrictions.",
             },
@@ -721,11 +726,12 @@ class DatasetProcessor:
                 "license": "other",
                 "tags": ["autonomous-driving", "nuimages"],
                 "source_info": "NuImages Dataset",
-                "citation": """@article{nuimages,
-    title={nuImages: A large-scale multimodal dataset for autonomous driving},
-    author={Caesar, Holger and Kabzan, Juraj and Tan, Kok Seang and Fong, Whye Kit and Wolff, Eric and Lang, Alex and Fletcher, Luke and Beijbom, Oscar and Omari, Sammy},
-    journal={arXiv preprint arXiv:2008.09969},
-    year={2020}
+                "citation": """@InProceedings{Caesar_2020_CVPR,
+    author = {Caesar, Holger and Bankiti, Varun and Lang, Alex H. and Vora, Sourabh and Liong, Venice Erin and Xu, Qiang and Krishnan, Anush and Pan, Yu and Baldan, Giancarlo and Beijbom, Oscar},
+    title = {nuScenes: A Multimodal Dataset for Autonomous Driving},
+    booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+    month = {June},
+    year = {2020}
 }""",
                 "license_text": "This dataset is derived from the nuImages dataset. Please refer to the [nuImages license terms](https://www.nuscenes.org/terms-of-use) for usage restrictions.",
             },
@@ -736,9 +742,9 @@ class DatasetProcessor:
                 "tags": ["custom-dataset"],
                 "source_info": "Custom user dataset",
                 "citation": """@dataset{graid_custom,
-    title={GRAID Custom Question-Answer Dataset},
+    title={GRAID Generated Question-Answer Dataset},
     author={GRAID Framework},
-    year={2024},
+    year={2025},
     note={Generated using GRAID framework with custom dataset}
 }""",
                 "license_text": "Please refer to your original dataset's license terms for usage restrictions.",
@@ -892,7 +898,7 @@ If you use this dataset in your research, please cite both the original dataset 
 @dataset{{graid_{dataset_name},
     title={{GRAID {dataset_config['full_name']} Question-Answer Dataset}},
     author={{GRAID Framework}},
-    year={{2024}},
+    year={{2025}},
     note={{Generated using GRAID: Generating Reasoning questions from Analysis of Images via Discriminative artificial intelligence}}
 }}
 
