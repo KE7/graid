@@ -149,6 +149,11 @@ app = typer.Typer(
 def print_welcome():
     """Print welcome message and project info."""
     typer.echo()
+    typer.secho("⚖️ Licensing:", fg=typer.colors.BLUE, bold=True)
+    typer.echo(
+        "Licensed under CC BY-NC 4.0: Free for academic/non-commercial use. Commercial use requires a paid license from MESH."
+    )
+    typer.echo()
     typer.secho("🤖 Welcome to GRAID!", fg=typer.colors.CYAN, bold=True)
     typer.echo(
         "   Generating Reasoning questions from Analysis of Images via Discriminative artificial intelligence"
@@ -840,6 +845,12 @@ def generate_dataset_cmd(
 
         if config.upload_to_hub:
             typer.echo(f"🤗 Uploaded to HuggingFace Hub: {config.hub_repo_id}")
+
+        typer.echo()
+        typer.secho("⚖️ License:", fg=typer.colors.YELLOW, bold=True)
+        typer.echo(
+            "Licensed under CC BY-NC 4.0: Academic/non-commercial use is free. Commercial use requires a paid license from MESH."
+        )
 
     except ValidationError as e:
         ErrorHandler.handle_validation_error(e)

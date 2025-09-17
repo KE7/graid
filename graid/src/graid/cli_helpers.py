@@ -6,6 +6,7 @@ for all GRAID CLI commands.
 """
 
 import logging
+import json
 import os
 from pathlib import Path
 from typing import Any, List, Optional, Union
@@ -557,6 +558,33 @@ class DatasetProcessor:
                 )
                 logger.info("Notes: Aggregated across all processed splits")
 
+            # Persist README with profiling information for later uploads
+            try:
+                save_dir = Path(getattr(config, "save_path", "./graid-datasets"))
+                safe_mkdir(save_dir, description="save directory")
+
+                # If we have stats, generate and persist README and stats JSON
+                if question_stats:
+                    readme_content = DatasetProcessor._create_dataset_readme(
+                        combined_dict, config, question_stats
+                    )
+
+                    readme_disk_path = save_dir / "README.md"
+                    readme_disk_path.write_text(readme_content, encoding="utf-8")
+                    logger.info(
+                        f"📝 Saved README with profiling to disk: {readme_disk_path}"
+                    )
+
+                    # Persist raw stats for future regeneration if needed
+                    stats_disk_path = save_dir / "graid_profiling.json"
+                    with stats_disk_path.open("w", encoding="utf-8") as f:
+                        json.dump(question_stats, f, ensure_ascii=False, indent=2)
+                    logger.info(
+                        f"💾 Saved profiling statistics JSON: {stats_disk_path}"
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to persist README/stats for reuse: {e}")
+
             # Handle combined upload if requested
             if config.upload_to_hub and config.hub_repo_id:
                 DatasetProcessor.handle_hub_upload(
@@ -625,31 +653,81 @@ class DatasetProcessor:
                 exist_ok=True,
             )
 
-            # Generate and upload README if statistics are available
+            # Determine README source: prefer freshly generated, else persisted
+            persisted_readme_path = None
+            try:
+                save_dir = Path(getattr(config, "save_path", "./graid-datasets"))
+                persisted_readme_candidate = save_dir / "README.md"
+                if persisted_readme_candidate.exists():
+                    persisted_readme_path = persisted_readme_candidate
+            except Exception:
+                persisted_readme_path = None
+
+            readme_path_to_upload = None
+
             if question_stats:
+                # Generate fresh README and persist it for future runs
                 readme_content = DatasetProcessor._create_dataset_readme(
                     dataset_dict, config, question_stats
                 )
+                try:
+                    save_dir = Path(getattr(config, "save_path", "./graid-datasets"))
+                    safe_mkdir(save_dir, description="save directory")
+                    disk_readme = save_dir / "README.md"
+                    disk_readme.write_text(readme_content, encoding="utf-8")
+                    readme_path_to_upload = disk_readme
 
-                # Write README to temporary file
-                readme_path = Path("README.md")
-                readme_path.write_text(readme_content, encoding="utf-8")
+                    # Persist stats JSON as well
+                    stats_disk_path = save_dir / "graid_profiling.json"
+                    with stats_disk_path.open("w", encoding="utf-8") as f:
+                        json.dump(question_stats, f, ensure_ascii=False, indent=2)
+                    logger.info(
+                        f"📝 Generated and saved README + profiling stats to {save_dir}"
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to persist README/stats to disk, using temp file: {e}"
+                    )
+                    # Fallback: temp README in CWD
+                    tmp_path = Path("README.md")
+                    tmp_path.write_text(readme_content, encoding="utf-8")
+                    readme_path_to_upload = tmp_path
+            else:
+                # No fresh stats - try to regenerate from persisted stats JSON
+                if not persisted_readme_path:
+                    try:
+                        save_dir = Path(getattr(config, "save_path", "./graid-datasets"))
+                        stats_disk_path = save_dir / "graid_profiling.json"
+                        if stats_disk_path.exists():
+                            with stats_disk_path.open("r", encoding="utf-8") as f:
+                                persisted_stats = json.load(f)
+                            readme_content = DatasetProcessor._create_dataset_readme(
+                                dataset_dict, config, persisted_stats
+                            )
+                            disk_readme = save_dir / "README.md"
+                            disk_readme.write_text(readme_content, encoding="utf-8")
+                            persisted_readme_path = disk_readme
+                            logger.info(
+                                f"📝 Reconstructed README from persisted stats: {disk_readme}"
+                            )
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to reconstruct README from persisted stats: {e}"
+                        )
 
-                logger.info(
-                    "📝 Generated comprehensive README with question statistics"
-                )
+                # Use persisted README if available
+                if persisted_readme_path:
+                    readme_path_to_upload = persisted_readme_path
 
-                # Upload README first
+            # Upload README if we have a path ready
+            if readme_path_to_upload and readme_path_to_upload.exists():
                 upload_file(
-                    path_or_fileobj=str(readme_path),
+                    path_or_fileobj=str(readme_path_to_upload),
                     path_in_repo="README.md",
                     repo_id=config.hub_repo_id,
                     repo_type="dataset",
                     commit_message="Add comprehensive README with GRAID statistics",
                 )
-
-                # Clean up temporary README file
-                readme_path.unlink()
                 logger.info("📄 README uploaded successfully")
 
             # Push dataset with large shard size to avoid 10k file limit
@@ -662,6 +740,9 @@ class DatasetProcessor:
             )
 
             logger.info(f"Successfully uploaded to Hub: {config.hub_repo_id}")
+
+            # Note: Using CC BY-NC 4.0 license - no custom license file upload needed
+            # Commercial licensing information is included in the README
 
         except Exception as e:
             raise ProcessingError(f"Hub upload failed: {e}")
@@ -759,7 +840,7 @@ class DatasetProcessor:
 pretty_name: "GRAID {dataset_config['full_name']} Question-Answer Dataset"
 language:
 - en
-license: "{dataset_config['license']}"
+license: "cc-by-nc-4.0"
 task_categories:
 - visual-question-answering
 - object-detection
@@ -888,7 +969,15 @@ image.show()  # Display the image
 
 """
 
-        readme_content += f"""{dataset_config['license_text']} The GRAID-generated questions and metadata are provided under the same terms.
+        readme_content += f"""This generated dataset is licensed under **Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)**, which permits free use for non-commercial purposes including academic research and education.
+
+**Commercial Use Policy**: Commercial entities (including startups and companies) that wish to use this dataset for commercial purposes must obtain a paid license from **MESH**. The CC BY-NC license prohibits commercial use without explicit permission.
+
+To request a commercial license, please contact **Karim Elmaaroufi**.
+
+**Original Source Compliance**: The original source datasets and their licenses still apply to the underlying images and annotations. You must comply with both the CC BY-NC terms and the source dataset terms:
+
+{dataset_config['license_text']}
 
 ## Citation
 

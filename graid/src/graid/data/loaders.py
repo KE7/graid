@@ -68,7 +68,16 @@ class WaymoLoaderCreator(DatasetLoaderCreator):
         # Convert split name for Waymo's naming convention
         split_name = "validation" if split == "val" else split + "ing"
 
-        return WaymoDataset(split=split_name, transform=transform)
+        # Allow override of rebuild and time filtering behavior
+        rebuild = kwargs.get("rebuild", False)
+        use_time_filtered = kwargs.get("use_time_filtered", True)
+
+        return WaymoDataset(
+            split=split_name, # type: ignore
+            transform=transform,
+            rebuild=rebuild,
+            use_time_filtered=use_time_filtered,
+        )
 
 
 class DatasetLoaderFactory:

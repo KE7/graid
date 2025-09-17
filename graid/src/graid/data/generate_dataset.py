@@ -217,6 +217,15 @@ class ParallelQAProcessor(QABatchProcessor):
             qa_workers,
             profile_questions,
         )
+        # Persist a single executor across batches so worker threads keep
+        # their thread-local state (e.g., per-thread SAM predictors).
+        self._executor = ThreadPoolExecutor(max_workers=self.qa_workers)
+
+    def shutdown(self):
+        try:
+            self._executor.shutdown(wait=True, cancel_futures=False)
+        except Exception:
+            pass
 
     def process_batch(
         self, batch_data: list[tuple[Image.Image, list[Any], str, int, int]]
@@ -240,10 +249,9 @@ class ParallelQAProcessor(QABatchProcessor):
             self.qa_workers,
         )
 
-        with ThreadPoolExecutor(max_workers=self.qa_workers) as executor:
-            results = list(
-                executor.map(self.qa_generator._qa_for_image_threadsafe, batch_data)
-            )
+        results = list(
+            self._executor.map(self.qa_generator._qa_for_image_threadsafe, batch_data)
+        )
 
         logger.debug("✅ Parallel batch processing completed: %d results", len(results))
         return results
@@ -793,11 +801,21 @@ class HuggingFaceDatasetBuilder:
                                 ] += 1
 
                     except Exception as e:
-                        logger.warning(
-                            f"Question {question.__class__.__name__} failed on image {source_id}: {e}"
+                        # Temporary verbose trace to locate indexing bugs
+                        logger.exception(
+                            "Question %s failed on image %s",
+                            question.__class__.__name__,
+                            source_id,
                         )
                         continue
 
+        # Clear heavy per-image cache items after all questions
+        for k in ["sam_masks", "depth_map"]:
+            try:
+                if k in cache:
+                    del cache[k]
+            except Exception:
+                pass
         return qa_pairs
 
     def _qa_for_image_threadsafe(self, batch_args: tuple) -> list[dict[str, Any]]:
@@ -1160,6 +1178,13 @@ class HuggingFaceDatasetBuilder:
         # Close progress bar
         progress_bar.close()
 
+        # Ensure parallel executor is shut down cleanly
+        try:
+            if hasattr(qa_processor, "shutdown"):
+                qa_processor.shutdown()
+        except Exception:
+            pass
+
         logger.info(
             f"🎯 Generator completed: {total_qa_pairs} QA pairs from {processed_images} images"
         )
@@ -1210,6 +1235,11 @@ class HuggingFaceDatasetBuilder:
             "filename_prefix": self.filename_prefix,
             "models": [],
         }
+
+        # Add license metadata for downstream consumers
+        metadata["license"] = "cc-by-nc-4.0"
+        metadata["commercial_license_required"] = True
+        metadata["license_contact"] = "Karim Elmaaroufi for commercial licensing"
 
         # Add device info
         if not self.use_wbf:
@@ -1457,7 +1487,7 @@ def generate_dataset(
             raise ValueError("hub_repo_id is required when upload_to_hub=True")
 
         # Import Hub utilities locally
-        from huggingface_hub import create_repo
+        from huggingface_hub import create_repo, upload_file
 
         logger.info(f"Uploading to HuggingFace Hub: {hub_repo_id}")
 
@@ -1492,6 +1522,9 @@ def generate_dataset(
             max_shard_size="5GB",
         )
         logger.info(f"Dataset pushed to HuggingFace Hub: {hub_repo_id}")
+
+        # Note: Using CC BY-NC 4.0 license - no custom license file upload needed
+        # Commercial licensing information is included in the README
 
     # Clean up temporary image files only if we uploaded to hub
     # In multi-split scenarios, cleanup is deferred until all splits are processed
