@@ -1,42 +1,52 @@
-MESH Academic License v1.0
-=================================
+Creative Commons Attribution-NonCommercial 4.0 International Public License
+==============================================================================
 
-Summary
--------
-- Free for accredited academic institutions and universities for non-commercial research and education.
-- Commercial use by companies, startups, or for-profit organizations requires a paid license from MESH.
-- Contact: Karim Elmaaroufi <e.karim@live.com> to request a commercial license.
+GRAID-Generated Datasets Commercial Licensing Policy
+----------------------------------------------------
 
-Definitions
------------
-- "Academic Use" means use by accredited academic institutions and universities for non-commercial research, teaching, and publications.
-- "Commercial Use" means any use by or for a for-profit entity, or use with the primary intent of commercial advantage or monetary compensation.
+The GRAID-generated datasets are licensed under **Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)**.
 
-Grant
------
-Subject to compliance with this License and the applicable source dataset licenses, MESH grants you a non-exclusive, worldwide, royalty-free license to use, copy, modify, and create derivative works of the dataset solely for Academic Use.
+This license permits:
+- ✅ **Academic and University Use**: Free use for educational, research, and scholarly purposes
+- ✅ **Non-Commercial Use**: Free use for personal, educational, and non-profit purposes
+- ❌ **Commercial Use**: Prohibited without explicit commercial license from MESH
 
-Restrictions
-------------
-- Commercial Use requires a paid license from MESH. To obtain one, email Karim Elmaaroufi at <e.karim@live.com>.
-- You must not remove or obscure notices attributing MESH or the original source datasets.
-- You must comply with all licenses and terms of the original datasets from which this dataset is derived.
+For the full CC BY-NC 4.0 license text, see: https://creativecommons.org/licenses/by-nc/4.0/
+
+Commercial Licensing
+-------------------
+
+**Commercial entities** (including companies, startups, and for-profit organizations) that wish to use GRAID-generated datasets for commercial purposes must obtain a paid license from **MESH**.
+
+**To request a commercial license**, contact:
+- **Karim Elmaaroufi**
+- Email: Available upon request through repository contacts
+
+Commercial licensing includes:
+- Permission to use datasets for commercial products and services
+- Permission to create commercial derivative works
+- Support and legal protections for commercial use cases
+
+Original Source Dataset Compliance
+----------------------------------
+
+GRAID-generated datasets are derived from various source datasets (BDD100K, Waymo, nuImages, etc.). 
+
+**Important**: You must comply with both:
+1. The CC BY-NC 4.0 terms for the GRAID-generated questions and metadata
+2. The original source dataset license terms for the underlying images and annotations
+
+Each dataset's README contains specific information about source dataset license requirements.
 
 Attribution
------------
-In publications or derivative datasets, cite the dataset as described in the provided README, and include a reference to the MESH Academic License.
+----------
 
-No Warranty; Limitation of Liability
-------------------------------------
-THE DATASET IS PROVIDED "AS IS", WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, EXPRESS OR IMPLIED. IN NO EVENT WILL MESH OR CONTRIBUTORS BE LIABLE FOR ANY DAMAGES ARISING FROM USE OF THE DATASET.
-
-Termination
------------
-Any violation of these terms automatically terminates your rights under this License. Upon termination, you must cease use and destroy copies in your possession.
+When using these datasets, please cite:
+- The GRAID framework
+- The original source dataset
+- This license for commercial use clarification
 
 Contact
 -------
-For commercial licensing or questions, contact Karim Elmaaroufi.
 
-
-
+For questions about commercial licensing or compliance, contact the GRAID team through the project repository.

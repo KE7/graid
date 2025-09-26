@@ -8,20 +8,13 @@
   "device": null,
   "allowable_set": null,
   "num_workers": 8,
-  "qa_workers": 16,
+  "qa_workers": 12,
   "num_samples": 0,
   "question_configs": [
     {
       "name": "IsObjectCentered",
       "params": {
         "buffer_ratio": 0.05
-      }
-    },
-    {
-      "name": "WidthVsHeight",
-      "params": {
-        "threshold": 0.75,
-        "non_articulated_classes": ["car", "person", "stop sign"]
       }
     },
     {
@@ -149,36 +142,10 @@
     {
       "name": "MultiChoiceHowMany",
       "params": {}
-    },
-    {
-      "name": "Closer",
-      "params": {
-        "margin_ratio": 0.35
-      }
-    },
-    {
-      "name": "Farther",
-      "params": {
-        "margin_ratio": 0.35
-      }
-    },
-    {
-      "name": "DepthRanking",
-      "params": {
-        "k": 3,
-        "margin_ratio": 0.35
-      }
-    },
-    {
-      "name": "DepthRanking",
-      "params": {
-        "k": 2,
-        "margin_ratio": 0.35
-      }
     }
   ],
-  "save_path": "./waymo_gt_dataset",
+  "save_path": "./waymo_gt_dataset_unique",
   "upload_to_hub": true,
-  "hub_repo_id": "kd7/graid-waymo",
+  "hub_repo_id": "kd7/graid-waymo-unique",
   "hub_private": false
 } 

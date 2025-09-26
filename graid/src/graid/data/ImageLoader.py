@@ -1368,10 +1368,22 @@ class WaymoDataset(ImageDataset):
         split: Literal["training", "validation", "testing"] = "training",
         rebuild: bool = False,
         use_time_filtered: bool = True,
+        # New flags to decouple path selection from working-hours filtering
+        use_interesting_path: Optional[bool] = None,
+        filter_working_hours: Optional[bool] = None,
         **kwargs,
     ):
         self.split = split
+        # Backwards-compatible defaults:
+        # - use_interesting_path controls reading/writing under *_interesting
+        # - filter_working_hours controls whether we drop night frames when rebuilding
         self.use_time_filtered = use_time_filtered
+        self.use_interesting_path = (
+            use_interesting_path if use_interesting_path is not None else use_time_filtered
+        )
+        self.filter_working_hours = (
+            filter_working_hours if filter_working_hours is not None else use_time_filtered
+        )
 
         root_dir = project_root_dir() / "data" / "waymo"
         self.camera_img_dir = root_dir / f"{split}" / "camera_image"
@@ -1400,10 +1412,9 @@ class WaymoDataset(ImageDataset):
 
         if rebuild:
             save_path_parent = (
-                # project_root_dir() / "data" / f"waymo_{self.split}_interesting"
-                project_root_dir() / "data" / f"waymo_{self.split}_filtered"
-                if self.use_time_filtered
-                else f"waymo_{self.split}"
+                project_root_dir() / "data" / (
+                    f"waymo_{self.split}_interesting" if self.use_interesting_path else f"waymo_{self.split}"
+                )
             )
             save_path_parent.mkdir(parents=True, exist_ok=True)
             try:
@@ -1467,7 +1478,7 @@ class WaymoDataset(ImageDataset):
                     img_bytes = image_data["[CameraImageComponent].image"]
                     frame_timestamp_micros = image_data["key.frame_timestamp_micros"]
 
-                    if self.use_time_filtered and not self.is_time_in_working_hours(
+                    if self.filter_working_hours and not self.is_time_in_working_hours(
                         frame_timestamp_micros
                     ):
                         print("invalid")
@@ -1518,9 +1529,7 @@ class WaymoDataset(ImageDataset):
             project_root_dir()
             / "data"
             / (
-                f"waymo_{self.split}_interesting"
-                if self.use_time_filtered
-                else f"waymo_{self.split}"
+                f"waymo_{self.split}_interesting" if self.use_interesting_path else f"waymo_{self.split}"
             )
         )
         return len(os.listdir(save_path))
@@ -1536,9 +1545,7 @@ class WaymoDataset(ImageDataset):
             project_root_dir()
             / "data"
             / (
-                f"waymo_{self.split}_interesting"
-                if self.use_time_filtered
-                else f"waymo_{self.split}"
+                f"waymo_{self.split}_interesting" if self.use_interesting_path else f"waymo_{self.split}"
             )
         )
         file_path = os.path.join(save_path, f"{idx}.pkl")

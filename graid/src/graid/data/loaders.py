@@ -54,7 +54,13 @@ class NuImagesLoaderCreator(DatasetLoaderCreator):
         # Allow override of size parameter
         size = kwargs.get("size", "all")
 
-        return NuImagesDataset(split=split, size=size, transform=transform)
+        return NuImagesDataset(
+            split=split, 
+            size=size, 
+            transform=transform,
+            # rebuild=True,
+            use_time_filtered=False,
+        )
 
 
 class WaymoLoaderCreator(DatasetLoaderCreator):
@@ -68,16 +74,16 @@ class WaymoLoaderCreator(DatasetLoaderCreator):
         # Convert split name for Waymo's naming convention
         split_name = "validation" if split == "val" else split + "ing"
 
-        # Allow override of rebuild and time filtering behavior
-        rebuild = kwargs.get("rebuild", False)
-        use_time_filtered = kwargs.get("use_time_filtered", True)
-
         return WaymoDataset(
-            split=split_name, # type: ignore
+            split=split_name, 
             transform=transform,
-            rebuild=rebuild,
-            use_time_filtered=use_time_filtered,
-        )
+            # keep reading from *_interesting
+            use_interesting_path=True,
+            # never drop night frames at load time
+            filter_working_hours=False,
+            # maintain backward-compatible arg
+            use_time_filtered=True,
+        ) 
 
 
 class DatasetLoaderFactory:

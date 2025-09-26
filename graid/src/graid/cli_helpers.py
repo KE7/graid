@@ -787,11 +787,11 @@ class DatasetProcessor:
                 "license_text": "This dataset is derived from the BDD100K dataset. Please refer to the [BDD100K license terms](https://github.com/bdd100k/bdd100k) for usage restrictions.",
             },
             "waymo": {
-                "full_name": "Waymo Open Dataset",
+                "full_name": "Waymo Perception Dataset",
                 "description": "Waymo autonomous driving dataset",
                 "license": "other",
                 "tags": ["autonomous-driving", "waymo"],
-                "source_info": "Waymo Open Dataset",
+                "source_info": "Waymo Perception Dataset",
                 "citation": """@inproceedings{waymo,
     title={Scalability in Perception for Autonomous Driving: Waymo Open Dataset},
     author={Sun, Pei and Kretzschmar, Henrik and Dotiwalla, Xerxes and Chouard, Aurelien and Patnaik, Vijaysai and Tsui, Paul and Guo, James and Zhou, Yin and Chai, Yuning and Caine, Benjamin and others},
@@ -799,7 +799,7 @@ class DatasetProcessor:
     pages={2446--2454},
     year={2020}
 }""",
-                "license_text": "This dataset is derived from the Waymo Open Dataset. Please refer to the [Waymo Open Dataset license terms](https://waymo.com/open/terms/) for usage restrictions.",
+                "license_text": "This dataset is derived from the Waymo Perception Dataset. Please refer to the [Waymo Perception Dataset license terms](https://waymo.com/open/terms/) for usage restrictions.",
             },
             "nuimage": {
                 "full_name": "NuImages",

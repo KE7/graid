@@ -322,11 +322,11 @@ class WidthVsHeight(Question):
         # Skip if near-square within threshold band
         if abs(ratio_wh - 1.0) < self.threshold:
             return None
-        answer = "yes" if ratio_wh > 1.0 else "no"
+        answer = "Yes" if ratio_wh > 1.0 else "No"
         if reverse:
             if self.other_question is not None:
                 question = self.other_question.format(object_1=class_name)
-                answer = "no" if answer == "yes" else "yes"
+                answer = "No" if answer == "Yes" else "Yes"
             else:
                 return None
         else:
@@ -1546,7 +1546,7 @@ class MoreThanThresholdHowMany(Question):
 
         self.threshold: float = threshold
         super().__init__(
-            question="Are there more than {target} {object_1}(s) in this image? Respond Yes/No.",
+            question="Are there {target} or more {object_1}(s) in this image? Respond Yes/No.",
             variables=["object_1", "target"],
             predicates=[
                 lambda image, detections: ObjectDetectionPredicates.at_least_x_many_class_detections(

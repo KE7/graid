@@ -113,7 +113,7 @@ Before diving into specific questions, two general strategies can improve robust
 *   **IMPLEMENTED REPLACEMENTS:**
 
 #### 11a. `MoreThanThresholdHowMany` ✅ IMPLEMENTED
-*   **Question:** "Are there more than {target} {object_1}(s) in this image? Respond Yes/No."
+*   **Question:** "Are there {target} or more {object_1}(s) in this image? Respond Yes/No."
 *   **Robustness:** Uses multiplicative thresholds to create buffer zones. For detected count N, generates two questions:
     - Yes case: target = ⌊N / threshold⌋ (answer: "Yes")  
     - No case: target = ⌈N × threshold⌉ (answer: "No")

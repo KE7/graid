@@ -1060,6 +1060,7 @@ class HuggingFaceDatasetBuilder:
         dataset = Dataset.from_generator(
             self._qa_data_generator,
             # Let HuggingFace infer features from the first examples
+            writer_batch_size=200,
         )
 
         # Cast image column to HFImage format
@@ -1310,7 +1311,7 @@ def generate_dataset(
         dataset_name (str): Source dataset identifier. Supported values:
             - "bdd": BDD100K autonomous driving dataset
             - "nuimage": NuImages large-scale dataset
-            - "waymo": Waymo Open Dataset
+            - "waymo": Waymo Perception Dataset
             - "custom": User-provided PyTorch dataset
 
         split (str): Dataset split to process. Common values:
