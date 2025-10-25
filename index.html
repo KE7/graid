@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <!-- Meta tags for social media banners, these should be filled in appropriatly as they are your "business card" -->
+  <!-- Replace the content tag with appropriate information -->
+  <meta name="description" content="GRAID: A framework for generating high-fidelity spatial reasoning VQA data from 2D object detections. Achieves 91.16% human validation rate vs 57.6% for existing methods. 8.5M+ VQA pairs across BDD100k, NuImages, and Waymo datasets.">
+  <meta property="og:title" content="GRAID: Enhancing Spatial Reasoning of VLMs through High-Fidelity Data Generation"/>
+  <meta property="og:description" content="A framework generating 8.5M+ high-quality VQA pairs with 91.16% human validation. No 3D reconstruction, no architecture changes, proven benchmark improvements."/>
+  <meta property="og:url" content="https://graid.github.io"/>
+  <!-- Path to banner image, should be in the path listed below. Optimal dimenssions are 1200X630-->
+  <meta property="og:image" content="static/images/graid_social.png" />
+  <meta property="og:image:width" content="1200"/>
+  <meta property="og:image:height" content="630"/>
+
+
+  <meta name="twitter:title" content="GRAID: Enhancing Spatial Reasoning of VLMs through High-Fidelity Data Generation">
+  <meta name="twitter:description" content="91.16% human-validated spatial reasoning VQA data. 8.5M+ pairs. No 3D reconstruction. Open source framework.">
+  <!-- Path to banner image, should be in the path listed below. Optimal dimenssions are 1200X600-->
+  <meta name="twitter:image" content="static/images/graid_social.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <!-- Keywords for your paper to be indexed by-->
+  <meta name="keywords" content="vision language models, spatial reasoning, VQA, visual question answering, object detection, machine learning, computer vision, autonomous driving">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+
+  <title>GRAID: High-Fidelity Spatial Reasoning VQA Data</title>
+  <link rel="icon" type="image/x-icon" href="static/images/favicon.ico">
+  <link href="https://fonts.googleapis.com/css?family=Google+Sans|Noto+Sans|Castoro"
+  rel="stylesheet">
+
+  <link rel="stylesheet" href="static/css/bulma.min.css">
+  <link rel="stylesheet" href="static/css/bulma-carousel.min.css">
+  <link rel="stylesheet" href="static/css/bulma-slider.min.css">
+  <link rel="stylesheet" href="static/css/fontawesome.all.min.css">
+  <link rel="stylesheet"
+  href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
+  <link rel="stylesheet" href="static/css/index.css">
+
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+  <script src="https://documentcloud.adobe.com/view-sdk/main.js"></script>
+  <script defer src="static/js/fontawesome.all.min.js"></script>
+  <script src="static/js/bulma-carousel.min.js"></script>
+  <script src="static/js/bulma-slider.min.js"></script>
+  <script src="static/js/index.js"></script>
+</head>
+<body>
+
+
+  <section class="hero">
+    <div class="hero-body">
+      <div class="container is-max-desktop">
+        <div class="columns is-centered">
+          <div class="column has-text-centered">
+            <h1 class="title is-1 publication-title">GRAID: Enhancing Spatial Reasoning of VLMs through High-Fidelity Data Generation</h1>
+            <div class="is-size-5 publication-authors">
+              <!-- Paper authors -->
+              <span class="author-block">
+                <a href="https://kael.tech.blog/" target="_blank">Karim Elmaaroufi</a><sup>1,2</sup>,</span>
+                <span class="author-block">
+                  Liheng Lai<sup>1</sup>,</span>
+                <span class="author-block">
+                  <a href="https://justinsvegliato.com/" target="_blank">Justin Svegliato</a><sup>1</sup>,</span>
+                <span class="author-block">
+                  <a href="https://yutongbai.com/" target="_blank">Yutong Bai</a><sup>1</sup>,</span>
+                <span class="author-block">
+                  <a href="https://people.eecs.berkeley.edu/~sseshia/" target="_blank">Sanjit A. Seshia</a><sup>1</sup>,</span>
+                  <span class="author-block">
+                  <a href="https://people.eecs.berkeley.edu/~matei/" target="_blank">Matei Zaharia</a><sup>1</sup>
+                  </span>
+                  </div>
+
+                  <div class="is-size-5 publication-authors">
+              <span class="author-block"><sup>1</sup>University of California, Berkeley</span>
+              <span class="author-block"><sup>2</sup>Models for Embodied and Spatial Harmony</span>
+            </div>
+
+            <div class="is-size-6 publication-venue" style="margin-top: 10px;">
+
+
+                  </div>
+
+                  <div class="column has-text-centered">
+                    <div class="publication-links">
+                <!-- ArXiv PDF link -->
+                      <span class="link-block">
+                  <a href="https://arxiv.org/pdf/PLACEHOLDER.pdf" target="_blank"
+                        class="external-link button is-normal is-rounded is-dark">
+                        <span class="icon">
+                          <i class="fas fa-file-pdf"></i>
+                        </span>
+                        <span>Paper</span>
+                    </a>
+                  </span>
+
+                  <!-- Github link -->
+                  <span class="link-block">
+                <a href="https://github.com/PLACEHOLDER" target="_blank"
+                    class="external-link button is-normal is-rounded is-dark">
+                    <span class="icon">
+                      <i class="fab fa-github"></i>
+                    </span>
+                    <span>Code</span>
+                  </a>
+                </span>
+
+            <!-- Dataset link -->
+                <span class="link-block">
+              <a href="https://huggingface.co/collections/kd7/graid-68eeb4f8c77e908db37f7179" target="_blank"
+                  class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                <i class="fas fa-database"></i>
+                  </span>
+              <span>Datasets</span>
+                </a>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- Teaser Examples Carousel -->
+<section class="hero teaser">
+  <div class="container is-max-desktop">
+    <div class="hero-body">
+      <!-- <h2 class="title is-3 has-text-centered">High-Quality VQA Examples from GRAID</h2> -->
+      <div id="teaser-carousel" class="carousel results-carousel">
+        <div class="item teaser-item">
+          <img src="static/images/teaser1.jpg" alt="GRAID Teaser Example 1"/>
+          <div class="example-overlay">
+            <p class="example-question"><strong>Q:</strong> How many traffic light(s) are in the image? Choose one: A) 0-5, B) 19-31, C) 6-18, D) Unsure / Not Visible. Respond with the letter only.</p>
+            <div class="answer-comparison">
+              <div class="answer-box answer-wrong">
+                <span class="answer-label">GPT-5</span>
+                <span class="answer-text">A</span>
+              </div>
+              <div class="answer-box answer-correct">
+                <span class="answer-label">GRAID</span>
+                <span class="answer-text">C</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="item teaser-item">
+          <img src="static/images/teaser2.jpg" alt="GRAID Teaser Example 2"/>
+          <div class="example-overlay">
+            <p class="example-question"><strong>Q:</strong> Divide the image into thirds. In which third does the bicycle primarily appear? Respond with the letter only: A) left third, B) middle third, C) right third.</p>
+            <div class="answer-comparison">
+              <div class="answer-box answer-wrong">
+                <span class="answer-label">Gemini 2.5 Pro</span>
+                <span class="answer-text">There is no bicycle visible in the image. The objects in the right third include a shipping container, a ladder, a white plastic chair, and what appears to be a stack of tires.</span>
+              </div>
+              <div class="answer-box answer-correct">
+                <span class="answer-label">GRAID</span>
+                <span class="answer-text">C</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="item teaser-item">
+          <img src="static/images/teaser3.jpg" alt="GRAID Teaser Example 3"/>
+          <div class="example-overlay">
+            <p class="example-question"><strong>Q:</strong> Is there at least one traffic light to the right of any traffic sign?            </p>
+            <div class="answer-comparison">
+              <div class="answer-box answer-wrong">
+                <span class="answer-label">Claude 4.5 Sonnet</span>
+                <span class="answer-text">No.
+                  The red traffic light visible on the left side of the image is positioned to the left of the traffic signs in the scene, including the directional sign on the right side showing lane directions. I don't see any traffic lights positioned to the right of any traffic signs in this image.
+                </span>
+              </div>
+              <div class="answer-box answer-correct">
+                <span class="answer-label">GRAID</span>
+                <span class="answer-text">Yes</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="item teaser-item">
+          <img src="static/images/teaser4.jpg" alt="GRAID Teaser Example 4"/>
+          <div class="example-overlay">
+            <p class="example-question"><strong>Q:</strong> Is there at least one car to the right of any person?
+            </p>
+            <div class="answer-comparison">
+              <div class="answer-box answer-wrong">
+                <span class="answer-label">Qwen3-Max</span>
+                <span class="answer-text">Yes, there is at least one car to the right of a person.
+                  <br>
+                  Looking at the image:
+                  <br>
+                  • On the far right side of the scene, near the building entrance, there is a person walking on the sidewalk.
+                  <br>
+                  • In the center of the road, there is a silver sedan driving toward the camera.
+                  <br>
+                  • From the viewer’s perspective, the car is positioned to the left of that person — not to the right.
+                  <br>
+                  However, if we look more carefully at the background on the right side, behind the trees and near the building, there are parked cars visible in the distance. One of these parked cars appears to be located to the right of the person walking on the sidewalk.
+                  <br>
+                  Therefore, yes — there is at least one car (a parked one in the background) to the right of a person.</span>
+              </div>
+              <div class="answer-box answer-correct">
+                <span class="answer-label">GRAID</span>
+                <span class="answer-text">No</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <h2 class="subtitle has-text-centered" style="margin-top: 20px;">
+        <strong>91.16% human-validated accuracy</strong> 
+        <br>GRAID generates high-quality spatial reasoning questions from simple 2D geometric relationships
+      </h2>
+    </div>
+  </div>
+</section>
+<!-- End teaser carousel -->
+
+<!-- What is GRAID Section -->
+<section class="section hero is-light" style="padding-top: 3rem; padding-bottom: 3rem;">
+  <div class="container is-max-desktop">
+    <h2 class="title is-3 has-text-centered">What is GRAID?</h2>
+    
+    <!-- Key Insight Box -->
+    <div class="key-insight-box">
+      <p class="has-text-centered is-size-5">
+        <strong>Key Insight:</strong> Qualitative spatial relationships can be reliably determined from 2D geometric primitives alone. No need for 3D reconstruction or generative models.
+      </p>
+    </div>
+
+    <!-- Three Highlight Boxes -->
+    <div class="columns is-centered" style="margin-top: 2rem;">
+      <div class="column is-one-third">
+        <div class="highlight-box">
+          <div class="highlight-icon">📊</div>
+          <h3 class="title is-5 has-text-centered">8.5M+ High-Quality VQA Pairs</h3>
+          <p class="has-text-centered">Across 3 datasets with 91.16% human-validated accuracy on GRAID-BDD</p>
+        </div>
+      </div>
+      <div class="column is-one-third">
+        <div class="highlight-box">
+          <div class="highlight-icon">✅</div>
+          <h3 class="title is-5 has-text-centered">No Architecture Changes</h3>
+          <p class="has-text-centered">Works with any VLM—just add to your object detector to generate GRAID training data</p>
+        </div>
+      </div>
+      <div class="column is-one-third">
+        <div class="highlight-box">
+          <div class="highlight-icon">🚀</div>
+          <h3 class="title is-5 has-text-centered">Proven Transfer</h3>
+          <p class="has-text-centered">Generalizes across datasets and benchmarks with significant improvements</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- End What is GRAID Section -->
+
+<!-- Paper abstract -->
+<section class="section">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered has-text-centered">
+      <div class="column is-four-fifths">
+        <h2 class="title is-3">Abstract</h2>
+        <div class="content has-text-justified">
+          <p>
+            Vision Language Models (VLMs) achieve strong performance on many vision-language tasks but often struggle with spatial reasoning—a prerequisite for many applications. Empirically, we find that a dataset produced by a current training data generation pipeline has a 57.6% human validation rate. These rates stem from current limitations: single-image 3D reconstruction introduces cascading modeling errors and requires wide answer tolerances, while caption-based methods require hyper-detailed annotations and suffer from generative hallucinations.
+          </p>
+          <p>
+            We present <strong>GRAID</strong>, built on the key insight that qualitative spatial relationships can be reliably determined from 2D geometric primitives alone. By operating exclusively on 2D bounding boxes from standard object detectors, GRAID avoids both 3D reconstruction errors and generative hallucinations, resulting in datasets that are of higher quality than existing tools that produce similar datasets as validated by human evaluations.
+          </p>
+          <p>
+            We apply our framework to the BDD100k, NuImages, and Waymo datasets, generating over 8.5 million high-quality VQA pairs creating questions spanning spatial relations, counting, ranking, and size comparisons. We evaluate one of the datasets and find it achieves <strong>91.16% human-validated accuracy</strong>—compared to 57.6% on a dataset generated by recent work.
+          </p>
+          <p>
+            Critically, we demonstrate that when trained on GRAID data, models learn spatial reasoning concepts that generalize: models fine-tuned on 6 question types improve on over 10 held-out types, with accuracy gains of <strong>47.5% on BDD</strong> and <strong>37.9% on NuImages</strong> for Llama 3.2 11B, and when trained on all question types, achieve improvements on several existing benchmarks such as BLINK.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- End paper abstract -->
+
+
+<!-- GRAID Advantages: Comparison & Quality -->
+<section class="section hero is-light">
+  <div class="container is-max-desktop">
+    <!-- Comparison Table -->
+    <h2 class="title is-3 has-text-centered">GRAID vs. Existing Frameworks</h2>
+    <p class="subtitle has-text-centered">Comparison of spatial reasoning data generation approaches</p>
+    
+    <div class="comparison-table-wrapper">
+      <table class="comparison-table">
+        <thead>
+          <tr>
+            <th>Feature</th>
+            <th>GRAID</th>
+            <th>SpatialVLM</th>
+            <th>SpatialRGPT</th>
+            <th>SpaRE</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Can operate on images only</td>
+            <td class="check-cell">✓</td>
+            <td class="check-cell">✓</td>
+            <td class="check-cell">✓</td>
+            <td class="cross-cell">✗</td>
+          </tr>
+          <tr>
+            <td>No VLM architecture changes needed</td>
+            <td class="check-cell">✓</td>
+            <td class="check-cell">✓</td>
+            <td class="cross-cell">✗</td>
+            <td class="check-cell">✓</td>
+          </tr>
+          <tr>
+            <td>No lengthy captions required</td>
+            <td class="check-cell">✓</td>
+            <td class="check-cell">✓</td>
+            <td class="check-cell">✓</td>
+            <td class="cross-cell">✗</td>
+          </tr>
+          <tr>
+            <td>Avoids single-view 3D reconstruction</td>
+            <td class="check-cell">✓</td>
+            <td class="cross-cell">✗</td>
+            <td class="cross-cell">✗</td>
+            <td class="check-cell">✓</td>
+          </tr>
+          <tr>
+            <td>Avoids LLM-based QA generation</td>
+            <td class="check-cell">✓</td>
+            <td class="check-cell">✓</td>
+            <td class="check-cell">✓</td>
+            <td class="cross-cell">✗</td>
+          </tr>
+          <tr>
+            <td>Open-source implementation by authors</td>
+            <td class="check-cell">✓</td>
+            <td class="cross-cell">✗</td>
+            <td class="check-cell">✓</td>
+            <td class="cross-cell">✗</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    
+    <!-- Human Validation Stats -->
+    <div style="margin-top: 5rem;">
+      <h2 class="title is-3 has-text-centered">Dataset Quality: Human Validation</h2>
+      
+      <div class="columns is-centered" style="margin-top: 2rem;">
+        <div class="column is-half">
+          <div class="stat-box stat-box-bad">
+            <div class="stat-number">57.6%</div>
+            <div class="stat-label">Existing Methods</div>
+            <div class="stat-sublabel">SpatialVLM community implementation</div>
+          </div>
+        </div>
+        <div class="column is-half">
+          <div class="stat-box stat-box-good">
+            <div class="stat-number">91.16%</div>
+            <div class="stat-label">GRAID</div>
+            <div class="stat-sublabel">Human evals on GRAID-BDD VQA pairs</div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="content has-text-centered" style="margin-top: 2rem; max-width: 700px; margin-left: auto; margin-right: auto;">
+        <p>
+          We evaluated 317 VQA pairs from GRAID-BDD with four human evaluators and 250 examples from OpenSpaces, a dataset created by the community implementation of SpatialVLM. Our evaluators found less than 9% of VQA pairs to be either invalid or confusing, compared to over 42% for existing methods. This significant improvement stems from GRAID's principled 2D geometric approach that avoids cascading errors from 3D reconstruction and hallucinations from generative models.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- End GRAID Advantages Section -->
+
+
+
+
+<!-- How GRAID Works -->
+<section class="section">
+  <div class="container is-max-desktop">
+    <h2 class="title is-3 has-text-centered">How GRAID Works</h2>
+    <p class="subtitle has-text-centered">A simple, three-step framework</p>
+    
+    <div class="columns is-centered method-steps" style="margin-top: 2rem;">
+      <div class="column is-one-third">
+        <div class="method-box">
+          <div class="method-number">1</div>
+          <h3 class="title is-5 has-text-centered">Input</h3>
+          <p class="has-text-centered">Images + Object Detector<br/>→ Bounding Boxes</p>
+        </div>
+      </div>
+      <div class="column is-one-third">
+        <div class="method-box">
+          <div class="method-number">2</div>
+          <h3 class="title is-5 has-text-centered">SPARQ</h3>
+          <p class="has-text-centered">Predicates filter candidates<br/>+ Question templates</p>
+        </div>
+          </div>
+      <div class="column is-one-third">
+        <div class="method-box">
+          <div class="method-number">3</div>
+          <h3 class="title is-5 has-text-centered">Output</h3>
+          <p class="has-text-centered">High-quality<br/>VQA pairs</p>
+        </div>
+      </div>
+    </div>
+    
+    <div class="content has-text-centered" style="margin-top: 2rem; max-width: 800px; margin-left: auto; margin-right: auto;">
+      <p>
+        <strong>SPARQ (Sieve Predicates And Realize Questions)</strong> provides lightweight checks before attempting to generate questions, achieving up to <strong>1400× speedup</strong> by filtering out computationally expensive templates when they are not possible. This enables scalable generation of millions of VQA pairs in hours.
+      </p>
+</div>
+</div>
+</section>
+<!-- End How GRAID Works -->
+
+<!-- Question Diversity, Datasets & Results -->
+<section class="section">
+  <div class="container is-max-desktop">
+    <!-- Question Diversity -->
+    <h2 class="title is-3 has-text-centered">Question Diversity</h2>
+    <p class="subtitle has-text-centered">5.3M questions across 5 cognitive categories in GRAID-BDD</p>
+    
+    <div class="columns is-centered" style="margin-top: 2rem;">
+      <div class="column is-three-fifths has-text-centered">
+        <img src="static/images/question_distribution.png" alt="Question types distribution" style="max-width: 100%;"/>
+      </div>
+    </div>
+    
+    <div class="columns is-multiline question-breakdown" style="margin-top: 2rem;">
+      <!-- Top row: 3 boxes -->
+      <div class="column is-one-third">
+        <div class="question-category-box">
+          <h4 class="title is-6">Spatial Relations (54.0%)</h4>
+          <p class="is-size-7">LeftOf, RightOf, Closer, Farther, etc.</p>
+        </div>
+      </div>
+      <div class="column is-one-third">
+        <div class="question-category-box">
+          <h4 class="title is-6">Counting (26.9%)</h4>
+          <p class="is-size-7">HowMany, AreMore, WhichMore, etc.</p>
+        </div>
+      </div>
+      <div class="column is-one-third">
+        <div class="question-category-box">
+          <h4 class="title is-6">Ranking & Extremes (15.1%)</h4>
+          <p class="is-size-7">LargestAppearance, MostAppearance, LeftMost, RightMost, etc.</p>
+        </div>
+      </div>
+      
+      <!-- Bottom row: 2 centered boxes with offset -->
+      <div class="column is-one-third is-offset-2">
+        <div class="question-category-box">
+          <h4 class="title is-6">Localization (2.6%)</h4>
+          <p class="is-size-7">IsObjectCentered, Quadrants, Grid Location, Thirds Location, etc.</p>
+        </div>
+      </div>
+      <div class="column is-one-third">
+        <div class="question-category-box">
+          <h4 class="title is-6">Size & Aspect (1.4%)</h4>
+          <p class="is-size-7">WidthVsHeight, Biggest Box, Leftmost/Rightmost Dimensions, etc.</p>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Datasets -->
+    <div style="margin-top: 5rem;">
+      <h2 class="title is-3 has-text-centered">GRAID Datasets</h2>
+      <p class="subtitle has-text-centered">Autonomous driving datasets are among the largest and most accurately labeled object detection datasets available so we use 3 as input to GRAID to generate over 8.5M high-quality VQA pairs</p>
+      
+      <div class="columns is-multiline dataset-cards" style="margin-top: 2rem;">
+        <!-- BDD Without Depth -->
+        <div class="column is-half">
+          <div class="dataset-card">
+            <h4 class="title is-5">GRAID-BDD</h4>
+            <p class="dataset-stats"><strong>3.82M</strong> VQA pairs</p>
+            <p class="dataset-stats-detail">3.34M train / 485k val</p>
+            <p class="dataset-description">18 question types without depth</p>
+            <a href="https://huggingface.co/datasets/kd7/graid-bdd100k" target="_blank" class="button is-primary is-small">
+              <span class="icon"><i class="fas fa-download"></i></span>
+              <span>Download</span>
+            </a>
+          </div>
+        </div>
+        
+        <!-- BDD With Depth -->
+        <div class="column is-half">
+          <div class="dataset-card">
+            <h4 class="title is-5">GRAID-BDD (with depth)</h4>
+            <p class="dataset-stats"><strong>5.30M</strong> VQA pairs</p>
+            <p class="dataset-stats-detail">4.63M train / 672k val</p>
+            <p class="dataset-description">22 question types with depth</p>
+            <a href="https://huggingface.co/datasets/kd7/graid-bdd" target="_blank" class="button is-primary is-small">
+              <span class="icon"><i class="fas fa-download"></i></span>
+              <span>Download</span>
+            </a>
+          </div>
+        </div>
+        
+        <!-- NuImages Without Depth -->
+        <div class="column is-half">
+          <div class="dataset-card">
+            <h4 class="title is-5">GRAID-NuImages</h4>
+            <p class="dataset-stats"><strong>2.41M</strong> VQA pairs</p>
+            <p class="dataset-stats-detail">1.94M train / 478k val</p>
+            <p class="dataset-description">18 question types without depth</p>
+            <a href="https://huggingface.co/datasets/kd7/graid-nuimages" target="_blank" class="button is-primary is-small">
+              <span class="icon"><i class="fas fa-download"></i></span>
+              <span>Download</span>
+            </a>
+          </div>
+        </div>
+        
+        <!-- NuImages With Depth -->
+        <div class="column is-half">
+          <div class="dataset-card">
+            <h4 class="title is-5">GRAID-NuImages (with depth)</h4>
+            <p class="dataset-stats"><strong>3.29M</strong> VQA pairs</p>
+            <p class="dataset-stats-detail">2.65M train / 641k val</p>
+            <p class="dataset-description">22 question types with depth</p>
+            <a href="https://huggingface.co/datasets/kd7/graid-nuimages-wd" target="_blank" class="button is-primary is-small">
+              <span class="icon"><i class="fas fa-download"></i></span>
+              <span>Download</span>
+            </a>
+          </div>
+        </div>
+        
+        <!-- Waymo Without Depth -->
+        <div class="column is-half">
+          <div class="dataset-card">
+            <h4 class="title is-5">GRAID-Waymo Unique</h4>
+            <p class="dataset-stats"><strong>13.8k</strong> VQA pairs</p>
+            <p class="dataset-stats-detail">10.9k train / 2.79k val</p>
+            <p class="dataset-description">18 question types without depth</p>
+            <a href="https://huggingface.co/datasets/kd7/graid-waymo-unique" target="_blank" class="button is-primary is-small">
+              <span class="icon"><i class="fas fa-download"></i></span>
+              <span>Download</span>
+            </a>
+          </div>
+        </div>
+        
+        <!-- Waymo With Depth -->
+        <div class="column is-half">
+          <div class="dataset-card">
+            <h4 class="title is-5">GRAID-Waymo Unique (with depth)</h4>
+            <p class="dataset-stats"><strong>16.4k</strong> VQA pairs</p>
+            <p class="dataset-stats-detail">13.1k train / 3.33k val</p>
+            <p class="dataset-description">22 question types with depth</p>
+            <a href="https://huggingface.co/datasets/kd7/graid-waymo-unique-wd" target="_blank" class="button is-primary is-small">
+              <span class="icon"><i class="fas fa-download"></i></span>
+              <span>Download</span>
+            </a>
+          </div>
+        </div>
+      </div>
+      
+      <div class="has-text-centered" style="margin-top: 2rem;">
+        <a href="https://huggingface.co/collections/kd7/graid-68eeb4f8c77e908db37f7179" target="_blank" class="button is-large is-link">
+          <span class="icon"><i class="fas fa-database"></i></span>
+          <span>View All Datasets on HuggingFace</span>
+        </a>
+      </div>
+    </div>
+    
+    <!-- Experimental Results -->
+    <div style="margin-top: 5rem;">
+      <h2 class="title is-3 has-text-centered">Experimental Results</h2>
+      
+      <!-- Generalization Results -->
+      <div class="content" style="margin-top: 2rem;">
+        <h3 class="title is-4 has-text-centered">Generalization: Learning Transferable Spatial Concepts</h3>
+        <p class="subtitle has-text-centered" style="margin-top: 0.5rem;">
+          Fine-tuning <strong>Llama 3.2 Vision 11B</strong> with LoRA on just 6 question types from GRAID-BDD
+        </p>
+        
+        <div class="columns is-centered" style="margin-top: 1.5rem;">
+          <div class="column is-two-thirds">
+            <img src="static/images/generalization_results.png" alt="Generalization results" style="max-width: 100%;"/>
+          </div>
+        </div>
+        
+        <div class="result-highlights">
+          <div class="columns is-multiline">
+            <div class="column is-one-third">
+              <div class="result-box">
+                <div class="result-value">+47.5%</div>
+                <div class="result-label">Overall improvement<br/>on GRAID-BDD</div>
+                <div class="result-detail">Trained on only 6 types</div>
+              </div>
+            </div>
+            <div class="column is-one-third">
+              <div class="result-box">
+                <div class="result-value">4/5 → 5/5</div>
+                <div class="result-label">Cognitive categories trained<br/> on vs. improved</div>
+                <div class="result-detail">Generalizes to unseen categories</div>
+              </div>
+            </div>
+            <div class="column is-one-third">
+              <div class="result-box">
+                <div class="result-value">+38.0%</div>
+                <div class="result-label">Cross-dataset transfer<br/>to NuImages</div>
+                <div class="result-detail">New dataset with different scenes</div>
+              </div>
+            </div>
+          </div>
+          
+          <p class="has-text-centered" style="margin-top: 1.5rem;">
+            Models trained on <strong>only 6 of 19 kinds of questions representing 4 cognitive categories from GRAID-BDD</strong> show improvements across <strong>all 19 kinds of questions across all 5 categories</strong> and generalize to <strong>NuImages</strong>—a completely different dataset with distinct scene distributions. This demonstrates that GRAID teaches fundamental spatial reasoning concepts that transfer, rather than template memorization.
+          </p>
+        </div>
+      </div>
+      
+      <!-- Benchmark Results -->
+      <div class="content" style="margin-top: 3rem;">
+        <h3 class="title is-4 has-text-centered">Benchmark Performance</h3>
+        <p class="subtitle has-text-centered">Fine-tuning Llama 3.2 Vision 11B on GRAID-BDD improves performance across multiple benchmarks</p>
+        
+        <div class="benchmark-results" style="margin-top: 1.5rem;">
+          <div class="columns is-multiline">
+            <div class="column is-one-third">
+              <div class="benchmark-box">
+                <h4 class="title is-6">A-OKVQA</h4>
+                <div class="benchmark-improvement">+32.5%</div>
+                <p class="benchmark-detail">64.02% → 84.80%</p>
+              </div>
+            </div>
+            <div class="column is-one-third">
+              <div class="benchmark-box">
+                <h4 class="title is-6">RealWorldQA</h4>
+                <div class="benchmark-improvement">+26.28%</div>
+                <p class="benchmark-detail">35.16% → 61.44%</p>
+              </div>
+            </div>
+            <div class="column is-one-third">
+              <div class="benchmark-box">
+                <h4 class="title is-6">BLINK (Overall)</h4>
+                <div class="benchmark-improvement">+15.94%</div>
+                <p class="benchmark-detail">25.72% → 41.66%</p>
+              </div>
+            </div>
+          </div>
+          
+          <div class="blink-breakdown" style="margin-top: 1.5rem;">
+            <h5 class="title is-6 has-text-centered">Notable BLINK Task Improvements:</h5>
+            <div class="columns is-multiline is-mobile">
+              <div class="column is-half-mobile is-one-quarter-tablet">
+                <div class="blink-task">
+                  <strong>Relative Depth:<br> </strong> <span class="gain">+41.13%</span>
+                </div>
+              </div>
+              <div class="column is-half-mobile is-one-quarter-tablet">
+                <div class="blink-task">
+                  <strong>Visual Correspondence:<br> </strong> <span class="gain">+31.98%</span>
+                </div>
+              </div>
+              <div class="column is-half-mobile is-one-quarter-tablet">
+                <div class="blink-task">
+                  <strong>Spatial Relations:<br> </strong> <span class="gain">+30.77%</span>
+                </div>
+              </div>
+              <div class="column is-half-mobile is-one-quarter-tablet">
+                <div class="blink-task">
+                  <strong>Relative Reflectance:<br> </strong> <span class="gain">+28.36%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- End Question Diversity, Datasets & Results -->
+
+<!-- Qualitative Examples Carousel -->
+<section class="section hero is-light">
+  <div class="container is-max-desktop">
+    <h2 class="title is-3 has-text-centered">Example VQA Pairs</h2>
+    <p class="subtitle has-text-centered">from GRAID-BDD dataset</p>
+    
+    <div id="examples-carousel" class="carousel results-carousel" style="margin-top: 2rem;">
+      <div class="item">
+        <img src="static/images/qualitative1.jpg" alt="Example 1"/>
+        <div class="caption">
+          <p><strong>Q:</strong> Are there less than 4 car(s) in this image? Respond Yes/No.</p>
+          <p><strong>A:</strong> Yes</p>
+        </div>
+      </div>
+      <div class="item">
+        <img src="static/images/qualitative2.jpg" alt="Example 2"/>
+        <div class="caption">
+          <p><strong>Q:</strong> Does the leftmost object in the image appear to be wider than it is tall?</p>
+          <p><strong>A:</strong> Yes</p>
+        </div>
+      </div>
+      <div class="item">
+        <img src="static/images/qualitative3.jpg" alt="Example 3"/>
+        <div class="caption">
+          <p><strong>Q:</strong> Is there at least one truck to the right of any traffic sign?</p>
+          <p><strong>A:</strong> Yes</p>
+        </div>
+      </div>
+      <div class="item">
+        <img src="static/images/qualitative4.jpg" alt="Example 4"/>
+        <div class="caption">
+          <p><strong>Q:</strong> Are there less than 2 car(s) in this image? Respond Yes/No.</p>
+          <p><strong>A:</strong> No</p>
+        </div>
+      </div>
+      <div class="item">
+        <img src="static/images/qualitative5.jpg" alt="Example 5"/>
+        <div class="caption">
+          <p><strong>Q:</strong> Are there less than 3 traffic light(s) in this image? Respond Yes/No.</p>
+          <p><strong>A:</strong> No</p>
+        </div>
+      </div>
+      <div class="item">
+        <img src="static/images/qualitative6.jpg" alt="Example 6"/>
+        <div class="caption">
+          <p><strong>Q:</strong> Rank the 2 kinds of objects that appear the largest (by pixel area) in the image from largest to smallest. Provide your answer as a comma-separated list of object names only.</p>
+          <p><strong>A:</strong> car, traffic sign
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- End Qualitative Examples -->
+
+<!--BibTex citation -->
+  <section class="section" id="BibTeX">
+    <div class="container is-max-desktop content">
+    <h2 class="title has-text-centered">BibTeX</h2>
+    <pre><code>@article{elmaaroufi2025graid,
+  title={GRAID: Enhancing Spatial Reasoning of VLMs through High-Fidelity Data Generation},
+  author={Elmaaroufi, Karim and Lai, Liheng and Svegliato, Justin and Bai, Yutong and Seshia, Sanjit A. and Zaharia, Matei},
+  journal={arXiv preprint arXiv:PLACEHOLDER},
+  year={2025}
+}</code></pre>
+    </div>
+</section>
+<!--End BibTex citation -->
+
+
+  <footer class="footer">
+  <div class="container">
+    <div class="columns is-centered">
+      <div class="column is-8">
+        <div class="content">
+
+          <p style="font-size: 0.75rem; color: #666; line-height: 1.5;">
+            This page was built using the <a href="https://github.com/eliahuhorwitz/Academic-project-page-template" target="_blank">Academic Project Page Template</a> which was adopted from the <a href="https://nerfies.github.io" target="_blank">Nerfies</a> project page.
+            You are free to borrow the source code of this website, we just ask that you link back to this page in the footer. <br> This website is licensed under a <a rel="license"  href="http://creativecommons.org/licenses/by-sa/4.0/" target="_blank">Creative Commons Attribution-ShareAlike 4.0 International License</a>.
+          </p>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<!-- Statcounter tracking code -->
+  
+<!-- You can add a tracker to track page visits by creating an account at statcounter.com -->
+
+    <!-- End of Statcounter Code -->
+
+  </body>
+  </html>
