@@ -11,13 +11,6 @@ from typing import Any, Callable, Literal, Optional, Union
 import numpy as np
 import pandas as pd
 import torch
-from PIL import Image
-from pycocotools import mask as cocomask
-from torch import Tensor
-from torch.utils.data import Dataset
-from torchvision import transforms
-from tqdm import tqdm
-
 from graid.interfaces.InstanceSegmentationI import (
     InstanceSegmentationResultI,
     Mask_Format,
@@ -25,6 +18,12 @@ from graid.interfaces.InstanceSegmentationI import (
 from graid.interfaces.ObjectDetectionI import BBox_Format, ObjectDetectionResultI
 from graid.utilities.coco import inverse_coco_label
 from graid.utilities.common import convert_to_xyxy, project_root_dir, read_image
+from PIL import Image
+from pycocotools import mask as cocomask
+from torch import Tensor
+from torch.utils.data import Dataset
+from torchvision import transforms
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -168,8 +167,7 @@ class Bdd10kDataset(ImageDataset):
         if self.target_transform:
             labels = self.target_transform(labels)
         if self.merge_transform:
-            image, labels, timestamp = self.merge_transform(
-                image, labels, timestamp)
+            image, labels, timestamp = self.merge_transform(image, labels, timestamp)
 
         return {
             "name": data["name"],
@@ -406,9 +404,15 @@ class Bdd100kDataset(ImageDataset):
             need_build = False
         if need_build:
             print(f"Building per-image pickle cache for BDD100K {self.split}...")
-            for idx, label in tqdm(enumerate(self.img_labels), total=len(self.img_labels), desc=f"Indexing BDD100K {self.split}..."):
+            for idx, label in tqdm(
+                enumerate(self.img_labels),
+                total=len(self.img_labels),
+                desc=f"Indexing BDD100K {self.split}...",
+            ):
                 # respect filtering flag when deciding to include
-                if self.use_time_filtered and (not self._meets_filtering_criteria(label)):
+                if self.use_time_filtered and (
+                    not self._meets_filtering_criteria(label)
+                ):
                     continue
                 name = label.get("name")
                 timestamp = label.get("timestamp", 0)
@@ -416,7 +420,9 @@ class Bdd100kDataset(ImageDataset):
                 save_path = pkl_root / f"{idx}.pkl"
                 try:
                     with open(save_path, "wb") as f:
-                        pickle.dump({"name": name, "labels": labels, "timestamp": timestamp}, f)
+                        pickle.dump(
+                            {"name": name, "labels": labels, "timestamp": timestamp}, f
+                        )
                     os.chmod(save_path, 0o777)
                 except Exception:
                     # best-effort; skip on failure
@@ -535,8 +541,7 @@ class Bdd100kDataset(ImageDataset):
         if self.target_transform:
             labels = self.target_transform(labels)
         if self.merge_transform:
-            image, labels, timestamp = self.merge_transform(
-                image, labels, timestamp)
+            image, labels, timestamp = self.merge_transform(image, labels, timestamp)
 
         return {
             "name": data["name"],
@@ -552,16 +557,12 @@ class Bdd100kDataset(ImageDataset):
         labels: list[dict[str, Any]],
         timestamp: str,
     ) -> Union[
-        tuple[
-            Tensor, list[Union[ObjectDetectionResultI,
-                               InstanceSegmentationResultI]]
-        ],
+        tuple[Tensor, list[Union[ObjectDetectionResultI, InstanceSegmentationResultI]]],
         tuple[
             Tensor,
             list[
                 tuple[
-                    Union[ObjectDetectionResultI,
-                          InstanceSegmentationResultI],
+                    Union[ObjectDetectionResultI, InstanceSegmentationResultI],
                     dict[str, Any],
                     str,
                 ]
@@ -976,10 +977,7 @@ class NuImagesDataset(ImageDataset):
         }
 
     def merge_transform(
-        self,
-        image: Tensor, 
-        labels: list[dict[str, Any]], 
-        timestamp: str
+        self, image: Tensor, labels: list[dict[str, Any]], timestamp: str
     ) -> tuple[
         Tensor,
         list[tuple[ObjectDetectionResultI, dict[str, Any], str]],
@@ -1161,8 +1159,7 @@ class NuImagesDataset_seg(ImageDataset):
         img_dir = root_dir
         mask_annotations_file = root_dir / f"v1.0-{split}" / "object_ann.json"
         categories_file = root_dir / f"v1.0-{split}" / "category.json"
-        sample_data_labels_file = root_dir / \
-            f"v1.0-{split}" / "sample_data.json"
+        sample_data_labels_file = root_dir / f"v1.0-{split}" / "sample_data.json"
         attributes_file = root_dir / f"v1.0-{split}" / "attribute.json"
 
         self.nuim = NuImages(
@@ -1251,10 +1248,7 @@ class NuImagesDataset_seg(ImageDataset):
         }
 
     def merge_transform(
-        self,
-        image: Tensor, 
-        labels: list[dict[str, Any]], 
-        timestamp: str
+        self, image: Tensor, labels: list[dict[str, Any]], timestamp: str
     ) -> tuple[
         Tensor,
         list[tuple[InstanceSegmentationResultI, dict[str, Any], str]],
@@ -1374,10 +1368,22 @@ class WaymoDataset(ImageDataset):
         split: Literal["training", "validation", "testing"] = "training",
         rebuild: bool = False,
         use_time_filtered: bool = True,
+        # New flags to decouple path selection from working-hours filtering
+        use_interesting_path: Optional[bool] = None,
+        filter_working_hours: Optional[bool] = None,
         **kwargs,
     ):
         self.split = split
+        # Backwards-compatible defaults:
+        # - use_interesting_path controls reading/writing under *_interesting
+        # - filter_working_hours controls whether we drop night frames when rebuilding
         self.use_time_filtered = use_time_filtered
+        self.use_interesting_path = (
+            use_interesting_path if use_interesting_path is not None else use_time_filtered
+        )
+        self.filter_working_hours = (
+            filter_working_hours if filter_working_hours is not None else use_time_filtered
+        )
 
         root_dir = project_root_dir() / "data" / "waymo"
         self.camera_img_dir = root_dir / f"{split}" / "camera_image"
@@ -1406,10 +1412,9 @@ class WaymoDataset(ImageDataset):
 
         if rebuild:
             save_path_parent = (
-                # project_root_dir() / "data" / f"waymo_{self.split}_interesting"
-                project_root_dir() / "data" / f"waymo_{self.split}_filtered"
-                if self.use_time_filtered
-                else f"waymo_{self.split}"
+                project_root_dir() / "data" / (
+                    f"waymo_{self.split}_interesting" if self.use_interesting_path else f"waymo_{self.split}"
+                )
             )
             save_path_parent.mkdir(parents=True, exist_ok=True)
             try:
@@ -1473,7 +1478,7 @@ class WaymoDataset(ImageDataset):
                     img_bytes = image_data["[CameraImageComponent].image"]
                     frame_timestamp_micros = image_data["key.frame_timestamp_micros"]
 
-                    if self.use_time_filtered and not self.is_time_in_working_hours(
+                    if self.filter_working_hours and not self.is_time_in_working_hours(
                         frame_timestamp_micros
                     ):
                         print("invalid")
@@ -1524,9 +1529,7 @@ class WaymoDataset(ImageDataset):
             project_root_dir()
             / "data"
             / (
-                f"waymo_{self.split}_interesting"
-                if self.use_time_filtered
-                else f"waymo_{self.split}"
+                f"waymo_{self.split}_interesting" if self.use_interesting_path else f"waymo_{self.split}"
             )
         )
         return len(os.listdir(save_path))
@@ -1542,9 +1545,7 @@ class WaymoDataset(ImageDataset):
             project_root_dir()
             / "data"
             / (
-                f"waymo_{self.split}_interesting"
-                if self.use_time_filtered
-                else f"waymo_{self.split}"
+                f"waymo_{self.split}_interesting" if self.use_interesting_path else f"waymo_{self.split}"
             )
         )
         file_path = os.path.join(save_path, f"{idx}.pkl")

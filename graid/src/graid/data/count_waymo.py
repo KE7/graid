@@ -1,12 +1,52 @@
+"""
+Waymo best-frame generation (metric-based) – end-to-end steps we use
+
+Overview
+  This script selects ONE "best" front-camera (camera 1) frame per Waymo segment
+  (one segment ≈ one camera_image parquet file). The score favors frames with
+  more/larger bounding boxes: metric = 0.5 * (N/Nmax + A/Amax).
+
+What we run in practice (training + validation)
+  1) Build base PKL caches from raw Waymo (all hours; no time filter):
+       python - <<'PY'
+       from graid.data.ImageLoader import WaymoDataset
+       WaymoDataset(split='training',   rebuild=True, use_time_filtered=False)
+       WaymoDataset(split='validation', rebuild=True, use_time_filtered=False)
+       PY
+
+  2) Generate best-frame JSONs (one entry per scene/parquet):
+       # writes training_best_frames.json and validation_best_frames.json
+       python graid/src/graid/data/count_waymo.py --split both
+
+  3) Copy those exact frames into data/waymo_{split}_interesting/ (identity-based):
+       # selection matches by (segment_context_name, key.frame_timestamp_micros, camera=1)
+       python graid/src/graid/data/select_waymo.py --split training
+       python graid/src/graid/data/select_waymo.py --split validation
+
+  4) Verify counts match number of scenes:
+       # training: 798   validation: 202 (Waymo v1 split sizes)
+       ls data/waymo_training_interesting/*.pkl   | wc -l
+       ls data/waymo_validation_interesting/*.pkl | wc -l
+
+Notes and pitfalls
+  - Do NOT select by numeric index alone. If caches are rebuilt/filtered, PKL
+    numbering changes. Our selector now matches by identity (segment+timestamp+camera)
+    so counts stay in sync with the JSON.
+  - Timestamps are UTC. Local “night” may correspond to hours 05–09 UTC in US
+    timezones. To find true night scenes, prefer a luminance/solar-elevation
+    heuristic rather than raw UTC hour.
+"""
+
 import base64
+import argparse
 import io
 import json
 import logging
 import os
 
 import pandas as pd
-from PIL import Image
 from graid.utilities.common import convert_to_xyxy, project_root_dir
+from PIL import Image
 from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
@@ -144,36 +184,49 @@ def choose_best(camera_image_files, split):
 
 if __name__ == "__main__":
 
-    split = "training"
-    root_dir = project_root_dir() / "data" / "waymo"
-    camera_img_dir = root_dir / f"{split}" / "camera_image"
-    camera_box_dir = root_dir / f"{split}" / "camera_box"
+    parser = argparse.ArgumentParser(
+        description="Compute best Waymo frames per file and write <split>_best_frames.json"
+    )
+    parser.add_argument(
+        "--split",
+        type=str,
+        choices=["training", "validation", "both"],
+        default="training",
+        help="Waymo split to process (or 'both')",
+    )
+    args = parser.parse_args()
+    splits = ["training", "validation"] if args.split == "both" else [args.split]
 
-    if not os.path.exists(camera_img_dir) or not os.path.exists(camera_box_dir):
-        raise FileNotFoundError(
-            f"Directories not found: {camera_img_dir}, {camera_box_dir}"
-        )
+    for split in splits:
+        root_dir = project_root_dir() / "data" / "waymo"
+        camera_img_dir = root_dir / f"{split}" / "camera_image"
+        camera_box_dir = root_dir / f"{split}" / "camera_box"
 
-    camera_image_files = [
-        f for f in os.listdir(camera_img_dir) if f.endswith(".parquet")
-    ]
+        if not os.path.exists(camera_img_dir) or not os.path.exists(camera_box_dir):
+            raise FileNotFoundError(
+                f"Directories not found: {camera_img_dir}, {camera_box_dir}"
+            )
 
-    input_file = f"{split}_best_frames.json"
+        camera_image_files = [
+            f for f in os.listdir(camera_img_dir) if f.endswith(".parquet")
+        ]
 
-    if os.path.exists(input_file):
-        with open(input_file, "r") as f:
-            data = json.load(f)
-    else:
-        data = choose_best(camera_image_files, split)
+        input_file = f"{split}_best_frames.json"
 
-    import matplotlib.pyplot as plt
+        if os.path.exists(input_file):
+            with open(input_file, "r") as f:
+                data = json.load(f)
+        else:
+            data = choose_best(camera_image_files, split)
 
-    for image_file, image_data in data.items():
-        img_bytes = base64.b64decode(image_data["image"])
-        img = Image.open(io.BytesIO(img_bytes))
-        plt.imshow(img)
-        plt.title(f"Score: {image_data['score']}")
-        plt.show()
+        import matplotlib.pyplot as plt
+
+        for image_file, image_data in data.items():
+            img_bytes = base64.b64decode(image_data["image"])
+            img = Image.open(io.BytesIO(img_bytes))
+            plt.imshow(img)
+            plt.title(f"{split}: Score {image_data['score']}")
+            plt.show()
 
 
 # add bounding boxes to the image

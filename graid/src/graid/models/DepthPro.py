@@ -3,12 +3,9 @@ from typing import Iterator, List, Union
 
 import depth_pro
 import torch
-from PIL import Image
-from graid.interfaces.DepthPerceptionI import (
-    DepthPerceptionI,
-    DepthPerceptionResult,
-)
+from graid.interfaces.DepthPerceptionI import DepthPerceptionI, DepthPerceptionResult
 from graid.utilities.common import get_default_device, project_root_dir
+from PIL import Image
 
 
 class DepthPro(DepthPerceptionI):
@@ -33,30 +30,30 @@ class DepthPro(DepthPerceptionI):
     def predict_depth(self, image: Image.Image) -> DepthPerceptionResult:
         """
         Predict depth for a single image.
-        
+
         Args:
             image: PIL Image to process
-            
+
         Returns:
             DepthPerceptionResult containing depth prediction and focal length
         """
         # Convert PIL Image to numpy array for direct processing
         # (bypassing depth_pro.load_rgb which expects file paths)
         import numpy as np
-        
+
         # Convert to RGB if needed
-        if image.mode != 'RGB':
-            image = image.convert('RGB')
-        
+        if image.mode != "RGB":
+            image = image.convert("RGB")
+
         # Convert to numpy array
         image_array = np.array(image)
-        
+
         # Apply transform directly to the image array
         # depth_pro.load_rgb normally returns (image_array, icc_profile, f_px)
         # We'll set f_px to None and let the model estimate it
         image_tensor = self.transform(image_array)
         f_px = None  # Let the model estimate focal length
-        
+
         prediction = self.model.infer(image_tensor, f_px=f_px)
         depth_prediction = prediction["depth"]
         focallength_px = prediction["focallength_px"]
@@ -74,7 +71,7 @@ class DepthPro(DepthPerceptionI):
     ) -> Iterator[DepthPerceptionResult]:
         """
         Predicts the depth of each frame in the input video.
-        
+
         Args:
             video: An iterator or list of PIL images
             batch_size: The number of frames to predict in one forward pass
@@ -93,7 +90,7 @@ class DepthPro(DepthPerceptionI):
         for batch in video_iterator:
             if not batch:  # End of iterator
                 break
-                
+
             images, f_px_list = [], []
             for img in batch:
                 img_tensor, _, f_px = depth_pro.load_rgb(img)
@@ -105,7 +102,7 @@ class DepthPro(DepthPerceptionI):
             f_px_batch = torch.stack(f_px_list)
 
             predictions = self.model.infer(images_batch, f_px=f_px_batch)
-            
+
             # Extract individual results from batch
             depth_batch = predictions["depth"]  # shape: (batch_size, H, W)
             focallength_batch = predictions["focallength_px"]  # shape: (batch_size,)
@@ -122,5 +119,3 @@ class DepthPro(DepthPerceptionI):
         self.device = device
         self.model = self.model.to(device)
         return self
-
-

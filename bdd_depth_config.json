@@ -1,0 +1,45 @@
+{
+  "dataset_name": "bdd",
+  "split": "train+val",
+  "models": [],
+  "use_wbf": false,
+  "confidence_threshold": 0.0,
+  "batch_size": 16,
+  "device": null,
+  "allowable_set": null,
+  "num_workers": 4,
+  "qa_workers": 4,
+  "num_samples": 0,
+  "question_configs": [
+    {
+      "name": "FrontOf",
+      "params": {
+        "margin_ratio": 0.3
+      }
+    },
+    {
+      "name": "BehindOf",
+      "params": {
+        "margin_ratio": 0.3
+      }
+    },
+    {
+      "name": "DepthRanking",
+      "params": {
+        "k": 3,
+        "margin_ratio": 0.3
+      }
+    },
+    {
+      "name": "DepthRanking",
+      "params": {
+        "k": 2,
+        "margin_ratio": 0.3
+      }
+    }
+  ],
+  "save_path": "./bdd_train_gt_dataset_depth",
+  "upload_to_hub": true,
+  "hub_repo_id": "kd7/graid-bdd100k-depth",
+  "hub_private": false
+}

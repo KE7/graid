@@ -63,6 +63,17 @@ def draw_boxes(
         (128, 128, 0),
     ]
 
+    # Ensure image is in a format that PIL can handle
+    if image.dtype != np.uint8:
+        image = (image * 255).astype(np.uint8)
+    if len(image.shape) == 2:  # Grayscale
+        image = np.stack([image] * 3, axis=-1)
+    elif image.shape[0] in [1, 3]:  # PyTorch tensor format (C, H, W)
+        image = image.transpose(1, 2, 0)
+    
+    # Ensure it's a contiguous array
+    image = np.ascontiguousarray(image)
+
     pil_img = Image.fromarray(image)
     draw = ImageDraw.Draw(pil_img, "RGBA")
 
@@ -90,91 +101,54 @@ def draw_boxes(
 
     return np.array(pil_img)
 
-def create_mock_data():
-    """Create mock detection data for testing when dataset is not available"""
-    # Create a simple test image (640x480)
-    image = Image.new('RGB', (640, 480), color=(135, 206, 235))  # Sky blue background
-    
-    # Convert to numpy for drawing simple shapes
-    img_array = np.array(image)
-    
-    # Draw some simple rectangles to represent objects
-    # Traffic light (closer, left side)
-    img_array[100:200, 150:200] = [255, 255, 0]  # Yellow rectangle
-    
-    # Traffic sign (further, right side) 
-    img_array[120:180, 450:500] = [255, 0, 0]  # Red rectangle
-    
-    # Person (middle depth, center)
-    img_array[250:400, 300:350] = [139, 69, 19]  # Brown rectangle
-    
-    # Car (closest, bottom)
-    img_array[350:450, 200:400] = [0, 0, 255]  # Blue rectangle
-    
-    image = Image.fromarray(img_array)
-    
-    # Create mock detections
-    detections = [
-        ObjectDetectionResultI(
-            score=0.9, cls=9, label="traffic light", 
-            bbox=[150, 100, 200, 200], image_hw=(480, 640)
-        ),
-        ObjectDetectionResultI(
-            score=0.85, cls=11, label="traffic sign",
-            bbox=[450, 120, 500, 180], image_hw=(480, 640)
-        ),
-        ObjectDetectionResultI(
-            score=0.8, cls=0, label="person",
-            bbox=[300, 250, 350, 400], image_hw=(480, 640)  
-        ),
-        ObjectDetectionResultI(
-            score=0.95, cls=2, label="car",
-            bbox=[200, 350, 400, 450], image_hw=(480, 640)
-        ),
-    ]
-    
-    return image, detections
 
 def test_depth_questions():
     """Test depth questions and create stacked visualization"""
     print("=== Testing Depth Questions ===")
-    
+
     # Initialize results storage
     all_results = []
-    
-    if DATASET_AVAILABLE:
-        print("Loading dataset...")
-        try:
-            # Load dataset
-            dataset = Bdd100kDataset(split="val", n_images=3)
-            images_and_detections = [dataset[i] for i in range(min(3, len(dataset)))]
-        except Exception as e:
-            print(f"Error loading dataset: {e}")
-            print("Falling back to mock data...")
-            images_and_detections = [(create_mock_data())]
-    else:
-        print("Using mock data...")
-        images_and_detections = [create_mock_data()]
-    
+
+    if not DATASET_AVAILABLE:
+        print("Bdd100kDataset not available, skipping test.")
+        return
+
+    print("Loading dataset...")
+    try:
+        # Load dataset
+        dataset = Bdd100kDataset(split="val")
+        images_and_detections = []
+        for i in range(min(3, len(dataset))):
+            data = dataset[i]
+            # Convert tensor image to PIL Image for processing
+            pil_image = Image.fromarray(
+                (data["image"].permute(1, 2, 0).numpy() * 255).astype(np.uint8)
+            )
+            images_and_detections.append((pil_image, data["labels"]))
+
+    except Exception as e:
+        print(f"Error loading dataset: {e}")
+        return
+
     # Initialize question classes
     try:
         front_question = FrontOf(margin_ratio=0.1)
-        behind_question = BehindOf(margin_ratio=0.1) 
+        behind_question = BehindOf(margin_ratio=0.1)
         depth_ranking = DepthRanking(k=3, margin_ratio=0.1)
-        
-        print(f"✅ Successfully initialized depth questions")
+
+        print("✅ Successfully initialized depth questions")
     except Exception as e:
         print(f"❌ Error initializing questions: {e}")
         return
-    
+
     # Process each image
     for idx, (pil_image, detections) in enumerate(images_and_detections):
         print(f"\nProcessing image {idx+1}...")
-        
+
         # Filter detections to only include relevant classes
         relevant_classes = ["traffic light", "traffic sign", "person", "car", "bus", "truck"]
         filtered_detections = []
-        
+
         for detection in detections:
             if isinstance(detection.label, str):
                 if detection.label in relevant_classes:
@@ -185,59 +159,51 @@ def test_depth_questions():
                 for flat_det in flattened:
                     if str(flat_det.label) in relevant_classes:
                         filtered_detections.append(flat_det)
-        
+
         print(f"Found {len(filtered_detections)} relevant detections")
-        
+
         if len(filtered_detections) < 2:
             print("Not enough detections for depth questions, skipping...")
             continue
-            
-        # Set up question context for proper predicate evaluation
-        try:
-            ObjectDetectionUtils.set_current_context(
-                ObjectDetectionUtils.build_question_context(pil_image, filtered_detections)
-            )
-        except Exception as e:
-            print(f"Warning: Could not set question context: {e}")
-        
+
         # Test each question type
         questions_to_test = [
             ("FrontOf", front_question),
-            ("BehindOf", behind_question), 
-            ("DepthRanking", depth_ranking)
+            ("BehindOf", behind_question),
+            ("DepthRanking", depth_ranking),
         ]
-        
+
         image_results = {
-            'image': pil_image,
-            'detections': filtered_detections,
-            'questions': {}
+            "image": pil_image,
+            "detections": filtered_detections,
+            "questions": {},
         }
-        
+
         for question_name, question in questions_to_test:
             try:
                 print(f"  Testing {question_name}...")
-                
+
                 # Check if question is applicable
                 if question.is_applicable(pil_image, filtered_detections):
                     # Apply the question
                     qa_pairs = question.apply(pil_image, filtered_detections)
                     print(f"    Generated {len(qa_pairs)} question-answer pairs")
-                    
+
                     for q, a in qa_pairs:
                         print(f"      Q: {q}")
                         print(f"      A: {a}")
-                    
-                    image_results['questions'][question_name] = qa_pairs
+
+                    image_results["questions"][question_name] = qa_pairs
                 else:
                     print(f"    {question_name} not applicable to this image")
-                    image_results['questions'][question_name] = []
-                    
+                    image_results["questions"][question_name] = []
+
             except Exception as e:
                 print(f"    ❌ Error with {question_name}: {e}")
-                image_results['questions'][question_name] = []
-        
+                image_results["questions"][question_name] = []
+
         all_results.append(image_results)
-    
+
     # Create stacked visualization
     create_stacked_visualization(all_results)
 

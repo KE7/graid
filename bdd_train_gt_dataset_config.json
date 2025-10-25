@@ -4,11 +4,11 @@
   "models": [],
   "use_wbf": false,
   "confidence_threshold": 0.0,
-  "batch_size": 128,
+  "batch_size": 16,
   "device": null,
   "allowable_set": null,
-  "num_workers": 16,
-  "qa_workers": 32,
+  "num_workers": 8,
+  "qa_workers": 16,
   "num_samples": 0,
   "question_configs": [
     {
@@ -149,10 +149,36 @@
     {
       "name": "MultiChoiceHowMany",
       "params": {}
+    },
+    {
+      "name": "Closer",
+      "params": {
+        "margin_ratio": 0.35
+      }
+    },
+    {
+      "name": "Farther",
+      "params": {
+        "margin_ratio": 0.35
+      }
+    },
+    {
+      "name": "DepthRanking",
+      "params": {
+        "k": 3,
+        "margin_ratio": 0.35
+      }
+    },
+    {
+      "name": "DepthRanking",
+      "params": {
+        "k": 2,
+        "margin_ratio": 0.35
+      }
     }
   ],
   "save_path": "./bdd_train_gt_dataset",
   "upload_to_hub": true,
-  "hub_repo_id": "kd7/graid-bdd100k-ground-truth",
+  "hub_repo_id": "kd7/graid-bdd",
   "hub_private": false
 } 

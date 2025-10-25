@@ -3,7 +3,7 @@ import math
 import random
 import numpy as np
 from abc import ABC, abstractmethod
-from typing import Callable, Optional
+from typing import Callable, Optional, Any
 
 import torch
 from PIL import Image
@@ -43,47 +43,6 @@ class Question(ABC):
         """
         return all(predicate(image, detections) for predicate in self.predicates)
 
-    # TODO: cache the results of the predicates to avoid recomputing them.
-    #   because we need them when converting the question to a string.
-
-    def _find_extremes(
-        self,
-        image: Image.Image,
-        detections: list[ObjectDetectionResultI],
-    ) -> list[dict[str, tuple[torch.Tensor, torch.Tensor]]]:
-        # Compute extremes using precomputed context
-        ctx = ObjectDetectionUtils.get_current_context()
-        if ctx is None:
-            ctx = ObjectDetectionUtils.build_question_context(image, detections)
-            ObjectDetectionUtils.set_current_context(ctx)
-
-        labels: list[str] = ctx.get("labels", [])
-        centers: torch.Tensor = ctx.get("centers", torch.empty((0, 2)))
-        bxyxy: torch.Tensor = ctx.get("bboxes_xyxy", torch.empty((0, 4)))
-
-        left_most: dict[str, tuple[torch.Tensor, torch.Tensor]] = {}
-        right_most: dict[str, tuple[torch.Tensor, torch.Tensor]] = {}
-        top_most: dict[str, tuple[torch.Tensor, torch.Tensor]] = {}
-        bottom_most: dict[str, tuple[torch.Tensor, torch.Tensor]] = {}
-
-        for idx, cls in enumerate(labels):
-            c = centers[idx]
-            bb = bxyxy[idx]
-            # Left-most (min x-center)
-            if cls not in left_most or c[0] < left_most[cls][0][0]:
-                left_most[cls] = (c, bb)
-            # Right-most (max x-center)
-            if cls not in right_most or c[0] > right_most[cls][0][0]:
-                right_most[cls] = (c, bb)
-            # Top-most (min y-center)
-            if cls not in top_most or c[1] < top_most[cls][0][1]:
-                top_most[cls] = (c, bb)
-            # Bottom-most (max y-center)
-            if cls not in bottom_most or c[1] > bottom_most[cls][0][1]:
-                bottom_most[cls] = (c, bb)
-
-        return [left_most, right_most, top_most, bottom_most]
-
     @abstractmethod
     def apply(
         self,
@@ -120,74 +79,17 @@ class Question(ABC):
 
         return representation
 
-    # Helper utilities to reduce duplication across questions
-    def _get_ctx(self, image: Image.Image, detections: list[ObjectDetectionResultI]):
-        ctx = ObjectDetectionUtils.get_current_context()
-        if ctx is None:
-            # Build on-demand if missing (e.g., tests)
-            ctx = ObjectDetectionUtils.build_question_context(image, detections)
-            ObjectDetectionUtils.set_current_context(ctx)
-        return ctx
-
-    def iterate_labels(self, image: Image.Image, detections: list[ObjectDetectionResultI]):
-        """Yield (label_str, detection) over flattened detections."""
-        ctx = self._get_ctx(image, detections)
-        flat = ctx.get("detections", [])
-        labels = ctx.get("labels", [])
-        for det, lbl in zip(flat, labels):
-            yield lbl, det
-
-    def iterate_label_indices(self, image: Image.Image, detections: list[ObjectDetectionResultI]):
-        """Yield (idx, label_str, detection) aligned with context order."""
-        ctx = self._get_ctx(image, detections)
-        flat = ctx.get("detections", [])
-        labels = ctx.get("labels", [])
-        for idx, (det, lbl) in enumerate(zip(flat, labels)):
-            yield idx, lbl, det
-
-    def classes_with_single_detection(self, image: Image.Image, detections: list[ObjectDetectionResultI]) -> set[str]:
-        ctx = self._get_ctx(image, detections)
-        counts: dict[str, int] = ctx.get("counts", {})
-        return {k for k, v in counts.items() if v == 1}
-
-    def sort_detections_by(self, image: Image.Image, detections: list[ObjectDetectionResultI], key: str, reverse: bool = False) -> list[int]:
-        """Sort detection indices by key: 'x1'|'x2'|'cx'|'cy'."""
-        ctx = self._get_ctx(image, detections)
-        bxyxy: torch.Tensor = ctx.get("bboxes_xyxy", torch.empty((0, 4)))
-        centers: torch.Tensor = ctx.get("centers", torch.empty((0, 2)))
-        if key == "x1":
-            metric = bxyxy[:, 0]
-        elif key == "x2":
-            metric = bxyxy[:, 2]
-        elif key == "cx":
-            metric = centers[:, 0]
-        elif key == "cy":
-            metric = centers[:, 1]
-        else:
-            raise ValueError(f"Unsupported sort key: {key}")
-        values = metric.cpu().tolist()
-        return sorted(range(len(values)), key=lambda i: values[i], reverse=reverse)
-
-    def per_class_reduce(self, image: Image.Image, detections: list[ObjectDetectionResultI], tensor_key: str, reduce: str = "max") -> dict[str, float]:
-        """Reduce per-class over a tensor from ctx: 'areas'|'aspects'."""
-        ctx = self._get_ctx(image, detections)
-        values: torch.Tensor = ctx.get(tensor_key, torch.empty((0,)))
-        class_to_indices: dict[str, list[int]] = ctx.get("class_to_indices", {})
-        result: dict[str, float] = {}
-        for cls, idxs in class_to_indices.items():
-            if not idxs:
-                continue
-            v = values[idxs]
-            if reduce == "max":
-                agg = float(v.max().item())
-            elif reduce == "min":
-                agg = float(v.min().item())
-            elif reduce == "sum":
-                agg = float(v.sum().item())
-            else:
-                raise ValueError(f"Unsupported reduce op: {reduce}")
-            result[cls] = agg
-        return result
+    # New optional hook for questions that can benefit from a shared cache of expensive
+    # per-image objects (e.g. depth map, SAM predictor).  By default this simply calls
+    # the original `apply` implementation so subclasses are not required to override it.
+    # Sub-classes that need the cache should implement their own version.
+    def apply_with_cache(
+        self,
+        image: Image.Image,
+        detections: list[ObjectDetectionResultI],
+        cache: dict[str, Any],
+    ) -> list[tuple[str, str]]:  # noqa: D401 – simple wrapper
+        return self.apply(image, detections)
 
 
 class ObjectDetectionPredicates:
@@ -195,15 +97,6 @@ class ObjectDetectionPredicates:
     def at_least_one_single_detection(
         image: Image.Image, detections: list[ObjectDetectionResultI]
     ) -> bool:
-        ctx = ObjectDetectionUtils.get_current_context()
-        if ctx is not None:
-            counts = ctx.get("counts", {})
-            if not counts and "detections" in ctx:
-                # No detections
-                return False
-            return any(c == 1 for c in counts.values()) or (len(ctx.get("detections", [])) == 1)
-
-        # Fallback without context
         if len(detections) <= 1:
             return len(detections) == 1
         counts: dict[str, int] = {}
@@ -211,7 +104,7 @@ class ObjectDetectionPredicates:
             lbl = det.label
             if isinstance(lbl, torch.Tensor):
                 for l in lbl:
-                    key = str(l.item())
+                    key = str(l)
                     counts[key] = counts.get(key, 0) + 1
             else:
                 key = str(lbl)
@@ -222,17 +115,12 @@ class ObjectDetectionPredicates:
     def at_least_x_many_class_detections(
         image: Image.Image, detections: list[ObjectDetectionResultI], x: int
     ) -> bool:
-        ctx = ObjectDetectionUtils.get_current_context()
-        if ctx is not None:
-            counts = ctx.get("counts", {})
-            return len(counts) >= x
-
         counts: dict[str, int] = {}
         for det in detections:
             lbl = det.label
             if isinstance(lbl, torch.Tensor):
                 for l in lbl:
-                    key = str(l.item())
+                    key = str(l)
                     counts[key] = counts.get(key, 0) + 1
             else:
                 key = str(lbl)
@@ -243,46 +131,12 @@ class ObjectDetectionPredicates:
     def at_least_x_detections(
         image: Image.Image, detections: list[ObjectDetectionResultI], x: int
     ) -> bool:
-        from graid.interfaces.ObjectDetectionI import ObjectDetectionUtils
-        ctx = ObjectDetectionUtils.get_current_context()
-        if ctx is not None:
-            return len(ctx.get("detections", [])) >= x
         return len(detections) >= x
 
     @staticmethod
     def exists_non_overlapping_detections(
         image: Image.Image, detections: list[ObjectDetectionResultI]
     ) -> bool:
-        from graid.interfaces.ObjectDetectionI import ObjectDetectionUtils
-        ctx = ObjectDetectionUtils.get_current_context()
-        # Use cached computation
-        if ctx is not None:
-            cache = ctx.setdefault("pred_cache", {})
-            key = ("exists_non_overlapping_detections",)
-            if key in cache:
-                return cache[key]
-
-            # Work on flattened detections for clarity
-            flat: list[ObjectDetectionResultI] = ctx.get("detections", [])
-            # Group by label
-            by_label: dict[str, list[ObjectDetectionResultI]] = {}
-            for det in flat:
-                lbl = str(det.label) if not isinstance(det.label, torch.Tensor) else str(det.label.item())
-                by_label.setdefault(lbl, []).append(det)
-            labels = list(by_label.keys())
-            # Try pairs of different classes; early out on first non-overlap
-            for i in range(len(labels)):
-                for j in range(i + 1, len(labels)):
-                    for d1 in by_label[labels[i]]:
-                        for d2 in by_label[labels[j]]:
-                            iou = ObjectDetectionUtils.pairwise_iou(d1, d2)
-                            if iou.max() == 0:
-                                cache[key] = True
-                                return True
-            cache[key] = False
-            return False
-
-        # Fallback without context
         for i, d1 in enumerate(detections):
             for j in range(i + 1, len(detections)):
                 d2 = detections[j]
@@ -297,33 +151,27 @@ class ObjectDetectionPredicates:
         image: Image.Image, detections: list[ObjectDetectionResultI], threshold=50
     ) -> bool:
         import numpy as np
-        ctx = ObjectDetectionUtils.get_current_context()
-        if ctx is not None:
-            cache = ctx.setdefault("pred_cache", {})
-            key = ("has_clusters", float(threshold))
-            if key in cache:
-                return cache[key]
-            centers_t: torch.Tensor = ctx.get("centers", torch.empty((0, 2)))
-            if centers_t.numel() == 0 or centers_t.shape[0] < 2:
-                cache[key] = False
-                return False
-            centers = centers_t.cpu().numpy()
-            # Simple O(n^2) proximity check; no heavy scipy
-            n = centers.shape[0]
-            clustered = False
-            for i in range(n):
-                for j in range(i + 1, n):
-                    dx = centers[i, 0] - centers[j, 0]
-                    dy = centers[i, 1] - centers[j, 1]
-                    if (dx * dx + dy * dy) ** 0.5 < threshold:
-                        clustered = True
-                        break
-                if clustered:
-                    break
-            cache[key] = clustered
-            return clustered
 
-        # Fallback: trivial no-cluster without context
+        if len(detections) < 2:
+            return False
+
+        # Compute centers from detections
+        centers = []
+        for det in detections:
+            bbox = det.as_xyxy()[0]  # Get first bbox
+            center_x = float((bbox[0] + bbox[2]) / 2.0)
+            center_y = float((bbox[1] + bbox[3]) / 2.0)
+            centers.append([center_x, center_y])
+
+        centers = np.array(centers)
+        # Simple O(n^2) proximity check; no heavy scipy
+        n = centers.shape[0]
+        for i in range(n):
+            for j in range(i + 1, n):
+                dx = centers[i, 0] - centers[j, 0]
+                dy = centers[i, 1] - centers[j, 1]
+                if (dx * dx + dy * dy) ** 0.5 < threshold:
+                    return True
         return False
 
 
@@ -352,7 +200,8 @@ class IsObjectCentered(Question):
         )
         if buffer_ratio < 0 or buffer_ratio > 0.5:
             raise ValueError(
-                "Buffer ratio provided does not make sense. Must be between 0 (no buffer) and 0.5 (half the image width)")
+                "Buffer ratio provided does not make sense. Must be between 0 (no buffer) and 0.5 (half the image width)"
+            )
         self.buffer_ratio: float = buffer_ratio
 
     def apply(
@@ -361,50 +210,83 @@ class IsObjectCentered(Question):
         detections: list[ObjectDetectionResultI],
     ) -> list[tuple[str, str]]:
         # @precondition: at_least_one_single_detection(image, detections) == True
-        ctx = self._get_ctx(image, detections)
-        counts: dict[str, int] = ctx.get("counts", {})
-        bxyxy: torch.Tensor = ctx.get("bboxes_xyxy", torch.empty((0, 4)))
+        # Count detections per class
+        counts: dict[str, int] = {}
+        for det in detections:
+            lbl = det.label
+            if isinstance(lbl, torch.Tensor):
+                for l in lbl:
+                    key = str(l)
+                    counts[key] = counts.get(key, 0) + 1
+            else:
+                key = str(lbl)
+                counts[key] = counts.get(key, 0) + 1
+
         # classes with single instance
         single_classes = {k for k, v in counts.items() if v == 1}
 
         image_width, _ = image.size
 
         question_answer_pairs = []
-        for idx, lbl, _det in self.iterate_label_indices(image, detections):
-            if lbl not in single_classes:
-                continue
-            x_min = float(bxyxy[idx, 0])
-            x_max = float(bxyxy[idx, 2])
-            class_name = lbl
-            question = self.question.format(object_1=class_name)
-
-            left_line = image_width / 3
-            right_line = 2 * image_width / 3
-            buffer = self.buffer_ratio * image_width
-
-            # Discard if bbox is too close to a boundary (ambiguous)
-            if (
-                abs(x_min - left_line) < buffer
-                or abs(x_max - left_line) < buffer
-                or abs(x_min - right_line) < buffer
-                or abs(x_max - right_line) < buffer
-            ):
-                logger.debug("IsObjectCentered skipped due to ambiguity buffer")
-                continue
-
-            # Determine third based on buffered grid
-            if x_max < left_line - buffer:
-                answer = "A"
-            elif x_min > left_line + buffer and x_max < right_line - buffer:
-                answer = "B"
-            elif x_min > right_line + buffer:
-                answer = "C"
+        for det in detections:
+            lbl = det.label
+            if isinstance(lbl, torch.Tensor):
+                for i, l in enumerate(lbl):
+                    key = str(l)
+                    if key not in single_classes:
+                        continue
+                    bbox = det.as_xyxy()[i]
+                    x_min, x_max = float(bbox[0]), float(bbox[2])
+                    self._process_single_detection(
+                        key, x_min, x_max, image_width, question_answer_pairs
+                    )
             else:
-                # Large object spans multiple thirds – ambiguous
-                continue
-            question_answer_pairs.append((question, answer))
+                key = str(lbl)
+                if key not in single_classes:
+                    continue
+                bbox = det.as_xyxy()[0]
+                x_min, x_max = float(bbox[0]), float(bbox[2])
+                self._process_single_detection(
+                    key, x_min, x_max, image_width, question_answer_pairs
+                )
 
         return question_answer_pairs
+
+    def _process_single_detection(
+        self,
+        class_name: str,
+        x_min: float,
+        x_max: float,
+        image_width: int,
+        question_answer_pairs: list,
+    ):
+        question = self.question.format(object_1=class_name)
+
+        left_line = image_width / 3
+        right_line = 2 * image_width / 3
+        buffer = self.buffer_ratio * image_width
+
+        # Discard if bbox is too close to a boundary (ambiguous)
+        if (
+            abs(x_min - left_line) < buffer
+            or abs(x_max - left_line) < buffer
+            or abs(x_min - right_line) < buffer
+            or abs(x_max - right_line) < buffer
+        ):
+            logger.debug("IsObjectCentered skipped due to ambiguity buffer")
+            return
+
+        # Determine third based on buffered grid
+        if x_max < left_line - buffer:
+            answer = "A"
+        elif x_min > left_line + buffer and x_max < right_line - buffer:
+            answer = "B"
+        elif x_min > right_line + buffer:
+            answer = "C"
+        else:
+            # Large object spans multiple thirds – ambiguous
+            return
+        question_answer_pairs.append((question, answer))
 
 
 class WidthVsHeight(Question):
@@ -440,10 +322,13 @@ class WidthVsHeight(Question):
         # Skip if near-square within threshold band
         if abs(ratio_wh - 1.0) < self.threshold:
             return None
-        answer = "yes" if ratio_wh > 1.0 else "no"
+        answer = "Yes" if ratio_wh > 1.0 else "No"
         if reverse:
-            question = self.other_question.format(object_1=class_name)
-            answer = "no" if answer == "yes" else "yes"
+            if self.other_question is not None:
+                question = self.other_question.format(object_1=class_name)
+                answer = "No" if answer == "Yes" else "Yes"
+            else:
+                return None
         else:
             question = self.question.format(object_1=class_name)
         return (question, answer)
@@ -455,29 +340,54 @@ class WidthVsHeight(Question):
         reverse: bool = False,
     ) -> list[tuple[str, str]]:
         # @precondition: at_least_one_single_detection(image, detections) == True
-        ctx = self._get_ctx(image, detections)
-        counts: dict[str, int] = ctx.get("counts", {})
-        aspects: torch.Tensor = ctx.get("aspects", torch.empty((0,)))
+        # Count detections per class
+        counts: dict[str, int] = {}
+        for det in detections:
+            lbl = det.label
+            if isinstance(lbl, torch.Tensor):
+                for l in lbl:
+                    key = str(l)
+                    counts[key] = counts.get(key, 0) + 1
+            else:
+                key = str(lbl)
+                counts[key] = counts.get(key, 0) + 1
+
         qa: list[tuple[str, str]] = []
-        for idx, lbl, _ in self.iterate_label_indices(image, detections):
-            if counts.get(lbl, 0) != 1:
-                continue
-            if self.non_articulated_classes is not None and lbl not in self.non_articulated_classes:
-                continue
-            ratio = float(aspects[idx]) if aspects.numel() > idx else None
-            if ratio is None:
-                # Fallback using bbox
-                bboxes_xyxy = ctx.get("bboxes_xyxy")
-                if bboxes_xyxy is not None:
-                    b = bboxes_xyxy[idx]
-                    w = float(b[2] - b[0])
-                    h = float(b[3] - b[1])
+        for det in detections:
+            lbl = det.label
+            if isinstance(lbl, torch.Tensor):
+                for i, l in enumerate(lbl):
+                    key = str(l)
+                    if counts.get(key, 0) != 1:
+                        continue
+                    if (
+                        self.non_articulated_classes is not None
+                        and key not in self.non_articulated_classes
+                    ):
+                        continue
+                    bbox = det.as_xyxy()[i]
+                    w = float(bbox[2] - bbox[0])
+                    h = float(bbox[3] - bbox[1])
                     ratio = w / max(h, 1e-6)
-                else:
-                    continue  # Skip if no bbox data available
-            qa_pair = self._question_answer_ratio(lbl, ratio, reverse=reverse)
-            if qa_pair is not None:
-                qa.append(qa_pair)
+                    qa_pair = self._question_answer_ratio(key, ratio, reverse=reverse)
+                    if qa_pair is not None:
+                        qa.append(qa_pair)
+            else:
+                key = str(lbl)
+                if counts.get(key, 0) != 1:
+                    continue
+                if (
+                    self.non_articulated_classes is not None
+                    and key not in self.non_articulated_classes
+                ):
+                    continue
+                bbox = det.as_xyxy()[0]
+                w = float(bbox[2] - bbox[0])
+                h = float(bbox[3] - bbox[1])
+                ratio = w / max(h, 1e-6)
+                qa_pair = self._question_answer_ratio(key, ratio, reverse=reverse)
+                if qa_pair is not None:
+                    qa.append(qa_pair)
         return qa
 
 
@@ -489,12 +399,13 @@ class Quadrants(Question):
             raise ValueError("N * M must be less than or equal to 12")
         if margin_ratio < 0 or margin_ratio > 0.5:
             raise ValueError(
-                "Margin ratio must be between 0 (no margin) and 0.5 (half the quadrant width/height)")
+                "Margin ratio must be between 0 (no margin) and 0.5 (half the quadrant width/height)"
+            )
         self.rows: int = N
         self.cols: int = M
         self.margin_ratio: float = margin_ratio
         super().__init__(
-            question="Divide the image into a {N} x {M} grid. Number the quadrants from left to right, top to bottom, starting with 1. In what quadrant does the {object_1} appear?",
+            question="Divide the image into a grid of {N} rows x {M} columns. Number the cells from left to right, then top to bottom, starting with 1. In what cell does the {object_1} appear?",
             variables=["object_1", "N", "M"],
             predicates=[
                 ObjectDetectionPredicates.at_least_one_single_detection,
@@ -502,9 +413,9 @@ class Quadrants(Question):
         )
 
     def _question_answer(
-        self, image: Image.Image, class_name: str, detection: ObjectDetectionResultI
+        self, image: Image.Image, class_name: str, bbox: torch.Tensor
     ) -> Optional[tuple[str, str]]:
-        x_min, y_min, x_max, y_max = detection.as_xyxy()[0]
+        x_min, y_min, x_max, y_max = bbox
         detection_width = x_max - x_min
         detection_height = y_max - y_min
 
@@ -526,12 +437,12 @@ class Quadrants(Question):
 
         # calculate the quadrant the object is in
         # if it is in multiple quadrants, ignore that object
-        row = math.floor(y_min / quadrant_height)
-        if row != math.floor(y_max / quadrant_height):
+        row = math.floor(float(y_min) / quadrant_height)
+        if row != math.floor(float(y_max) / quadrant_height):
             logger.debug("Object spans multiple rows")
             return None
-        col = math.floor(x_min / quadrant_width)
-        if col != math.floor(x_max / quadrant_width):
+        col = math.floor(float(x_min) / quadrant_width)
+        if col != math.floor(float(x_max) / quadrant_width):
             logger.debug("Object spans multiple columns")
             return None
 
@@ -561,17 +472,40 @@ class Quadrants(Question):
         detections: list[ObjectDetectionResultI],
     ) -> list[tuple[str, str]]:
         # @precondition: at_least_one_single_detection(image, detections) == True
-        ctx = self._get_ctx(image, detections)
-        counts: dict[str, int] = ctx.get("counts", {})
+        # Count detections per class
+        counts: dict[str, int] = {}
+        for det in detections:
+            lbl = det.label
+            if isinstance(lbl, torch.Tensor):
+                for l in lbl:
+                    key = str(l)
+                    counts[key] = counts.get(key, 0) + 1
+            else:
+                key = str(lbl)
+                counts[key] = counts.get(key, 0) + 1
+
         single_classes = {k for k, v in counts.items() if v == 1}
 
         question_answer_pairs = []
-        for _, lbl, det in self.iterate_label_indices(image, detections):
-            if lbl not in single_classes:
-                continue
-            qa = self._question_answer(image, lbl, det)
-            if qa is not None:
-                question_answer_pairs.append(qa)
+        for det in detections:
+            lbl = det.label
+            if isinstance(lbl, torch.Tensor):
+                for i, l in enumerate(lbl):
+                    key = str(l)
+                    if key not in single_classes:
+                        continue
+                    bbox = det.as_xyxy()[i]
+                    qa = self._question_answer(image, key, bbox)
+                    if qa is not None:
+                        question_answer_pairs.append(qa)
+            else:
+                key = str(lbl)
+                if key not in single_classes:
+                    continue
+                bbox = det.as_xyxy()[0]
+                qa = self._question_answer(image, key, bbox)
+                if qa is not None:
+                    question_answer_pairs.append(qa)
 
         return question_answer_pairs
 
@@ -579,7 +513,7 @@ class Quadrants(Question):
 class LargestAppearance(Question):
     def __init__(self, threshold: float = 0.3) -> None:
         super().__init__(
-            question="Which kind of object appears the largest in the image?",
+            question="If you were to draw a tight box around each object in the image, which type of object would have the biggest box?",
             variables=[],
             predicates=[
                 lambda image, detections: ObjectDetectionPredicates.at_least_x_many_class_detections(
@@ -587,7 +521,7 @@ class LargestAppearance(Question):
                 ),
             ],
         )
-        # in the R.O.S. verifier, black out every single box then ask 
+        # in the R.O.S. verifier, black out every single box then ask
         self.threshold = threshold
 
     def __repr__(self):
@@ -599,19 +533,40 @@ class LargestAppearance(Question):
         detections: list[ObjectDetectionResultI],
     ) -> list[tuple[str, str]]:
         # @precondition: at_least_x_many_class_detections(image, detections, 2) == True
-        ctx = self._get_ctx(image, detections)
-        areas: torch.Tensor = ctx.get("areas", torch.empty((0,)))
-        labels: list[str] = ctx.get("labels", [])
-        if areas.numel() == 0:
+        # Calculate areas for all detections
+        areas = []
+        labels = []
+        for det in detections:
+            lbl = det.label
+            if isinstance(lbl, torch.Tensor):
+                for i, l in enumerate(lbl):
+                    bbox = det.as_xyxy()[i]
+                    area = float((bbox[2] - bbox[0]) * (bbox[3] - bbox[1]))
+                    areas.append(area)
+                    labels.append(str(l))
+            else:
+                bbox = det.as_xyxy()[0]
+                area = float((bbox[2] - bbox[0]) * (bbox[3] - bbox[1]))
+                areas.append(area)
+                labels.append(str(lbl))
+
+        if len(areas) == 0:
             return []
-        order = torch.argsort(areas, descending=True)
-        if order.numel() < 2:
+
+        # Sort by area descending
+        area_label_pairs = list(zip(areas, labels))
+        area_label_pairs.sort(key=lambda x: x[0], reverse=True)
+
+        if len(area_label_pairs) < 2:
             return []
-        i0 = int(order[0].item())
-        i1 = int(order[1].item())
-        if float(areas[i0]) <= (1 + self.threshold) * float(areas[i1]):
+
+        largest_area, largest_label = area_label_pairs[0]
+        second_area, _ = area_label_pairs[1]
+
+        if largest_area <= (1 + self.threshold) * second_area:
             return []
-        return [(self.question, str(labels[i0]))]
+
+        return [(self.question, largest_label)]
 
 
 class RankLargestK(Question):
@@ -662,9 +617,23 @@ class RankLargestK(Question):
         image: Image.Image,
         detections: list[ObjectDetectionResultI],
     ) -> list[tuple[str, str]]:
-        ctx = self._get_ctx(image, detections)
-        # per-class max of areas
-        class_max_area = self.per_class_reduce(image, detections, tensor_key="areas", reduce="max")
+        # Calculate max area per class
+        class_max_area: dict[str, float] = {}
+
+        for det in detections:
+            lbl = det.label
+            if isinstance(lbl, torch.Tensor):
+                for i, l in enumerate(lbl):
+                    key = str(l)
+                    bbox = det.as_xyxy()[i]
+                    area = float((bbox[2] - bbox[0]) * (bbox[3] - bbox[1]))
+                    class_max_area[key] = max(class_max_area.get(key, 0), area)
+            else:
+                key = str(lbl)
+                bbox = det.as_xyxy()[0]
+                area = float((bbox[2] - bbox[0]) * (bbox[3] - bbox[1]))
+                class_max_area[key] = max(class_max_area.get(key, 0), area)
+
         if len(class_max_area) < self.k:
             logger.debug("Not enough unique classes for RankLargestK question")
             return []
@@ -681,7 +650,10 @@ class RankLargestK(Question):
             area_next = top_k[i + 1][1]
             if area_i < (1 + self.margin_ratio) * area_next:
                 logger.debug(
-                    "RankLargestK margin threshold not met between %s and %s", top_k[i][0], top_k[i + 1][0])
+                    "RankLargestK margin threshold not met between %s and %s",
+                    top_k[i][0],
+                    top_k[i + 1][0],
+                )
                 return []
 
         top_k_labels = [cls for cls, _ in top_k]
@@ -704,7 +676,8 @@ class MostAppearance(Question):
         )
         if margin_ratio < 0 or margin_ratio >= 1:
             raise ValueError(
-                "The margin ratio between the classes that appear most frequently must be non-negative and less than 1")
+                "The margin ratio between the classes that appear most frequently must be non-negative and less than 1"
+            )
         self.margin_ratio: float = margin_ratio
 
     def apply(
@@ -713,8 +686,18 @@ class MostAppearance(Question):
         detections: list[ObjectDetectionResultI],
     ) -> list[tuple[str, str]]:
         # @precondition: at_least_x_many_class_detections(image, detections, 2) == True
-        ctx = self._get_ctx(image, detections)
-        counts: dict[str, int] = ctx.get("counts", {})
+        # Count detections per class
+        counts: dict[str, int] = {}
+        for det in detections:
+            lbl = det.label
+            if isinstance(lbl, torch.Tensor):
+                for l in lbl:
+                    key = str(l)
+                    counts[key] = counts.get(key, 0) + 1
+            else:
+                key = str(lbl)
+                counts[key] = counts.get(key, 0) + 1
+
         if len(counts) < 2:
             return []
         sorted_counts = sorted(counts.items(), key=lambda x: x[1], reverse=True)
@@ -739,15 +722,26 @@ class LeastAppearance(Question):
         )
         if margin_ratio < 0 or margin_ratio >= 1:
             raise ValueError(
-                "The margin ratio between the classes that appear least frequently must be non-negative and less than 1")
+                "The margin ratio between the classes that appear least frequently must be non-negative and less than 1"
+            )
         self.margin_ratio: float = margin_ratio
 
     def apply(
         self, image: Image.Image, detections: list[ObjectDetectionResultI]
     ) -> list[tuple[str, str]]:
         # @precondition: at_least_x_many_class_detections(image, detections, 2) == True
-        ctx = self._get_ctx(image, detections)
-        counts: dict[str, int] = ctx.get("counts", {})
+        # Count detections per class
+        counts: dict[str, int] = {}
+        for det in detections:
+            lbl = det.label
+            if isinstance(lbl, torch.Tensor):
+                for l in lbl:
+                    key = str(l)
+                    counts[key] = counts.get(key, 0) + 1
+            else:
+                key = str(lbl)
+                counts[key] = counts.get(key, 0) + 1
+
         if len(counts) < 2:
             return []
         sorted_counts = sorted(counts.items(), key=lambda x: x[1])
@@ -779,33 +773,74 @@ class LeftOf(Question):
     ) -> list[tuple[str, str]]:
         # @precondition: at_least_x_many_class_detections(image, detections, 2) == True
         # @precondition: exists_non_overlapping_detections(image, detections) == True
-        ctx = self._get_ctx(image, detections)
-        counts: dict[str, int] = ctx.get("counts", {})
-        labels = list(counts.keys())
-        bxyxy: torch.Tensor = ctx.get("bboxes_xyxy", torch.empty((0, 4)))
-        # Group indices per class
-        class_to_indices: dict[str, list[int]] = ctx.get("class_to_indices", {})
+
+        # Group detections by class
+        class_detections: dict[str, list[tuple[ObjectDetectionResultI, int]]] = {}
+        for det in detections:
+            lbl = det.label
+            if isinstance(lbl, torch.Tensor):
+                for i, l in enumerate(lbl):
+                    key = str(l)
+                    if key not in class_detections:
+                        class_detections[key] = []
+                    class_detections[key].append((det, i))
+            else:
+                key = str(lbl)
+                if key not in class_detections:
+                    class_detections[key] = []
+                class_detections[key].append((det, 0))
+
         qa = []
-        for i in range(len(labels)):
-            for j in range(len(labels)):
+        classes = list(class_detections.keys())
+        for i in range(len(classes)):
+            for j in range(len(classes)):
                 if i == j:
                     continue
-                c1, c2 = labels[i], labels[j]
+                c1, c2 = classes[i], classes[j]
                 found_yes = False
-                for idx1 in class_to_indices.get(c1, []):
-                    x2_1 = float(bxyxy[idx1, 2])
-                    for idx2 in class_to_indices.get(c2, []):
-                        x1_2 = float(bxyxy[idx2, 0])
-                        if x2_1 < x1_2:
-                            # Check non-overlap via IOU 0 using cached detections
-                            det1 = ctx["detections"][idx1]
-                            det2 = ctx["detections"][idx2]
-                            if ObjectDetectionUtils.pairwise_iou(det1, det2).max() == 0:
-                                qa.append((self.question.format(object_1=c1, object_2=c2), "Yes"))
+
+                for det1, idx1 in class_detections[c1]:
+                    bbox1 = det1.as_xyxy()[idx1]
+                    x2_1 = float(bbox1[2])  # right edge of object 1
+
+                    for det2, idx2 in class_detections[c2]:
+                        bbox2 = det2.as_xyxy()[idx2]
+                        x1_2 = float(bbox2[0])  # left edge of object 2
+
+                        if x2_1 < x1_2:  # object 1 is to the left of object 2
+                            # Check non-overlap via IOU
+                            # Create single detection objects for IOU check
+                            single_det1 = ObjectDetectionResultI(
+                                score=det1.score,
+                                cls=det1.cls,
+                                label=c1,
+                                bbox=bbox1.unsqueeze(0),
+                                image_hw=(image.height, image.width),
+                            )
+                            single_det2 = ObjectDetectionResultI(
+                                score=det2.score,
+                                cls=det2.cls,
+                                label=c2,
+                                bbox=bbox2.unsqueeze(0),
+                                image_hw=(image.height, image.width),
+                            )
+                            if (
+                                ObjectDetectionUtils.pairwise_iou(
+                                    single_det1, single_det2
+                                ).max()
+                                == 0
+                            ):
+                                qa.append(
+                                    (
+                                        self.question.format(object_1=c1, object_2=c2),
+                                        "Yes",
+                                    )
+                                )
                                 found_yes = True
                                 break
                     if found_yes:
                         break
+
                 if not found_yes:
                     qa.append((self.question.format(object_1=c1, object_2=c2), "No"))
         return qa
@@ -831,31 +866,74 @@ class RightOf(Question):
     ) -> list[tuple[str, str]]:
         # @precondition: at_least_x_many_class_detections(image, detections, 2) == True
         # @precondition: exists_non_overlapping_detections(image, detections) == True
-        ctx = self._get_ctx(image, detections)
-        counts: dict[str, int] = ctx.get("counts", {})
-        labels = list(counts.keys())
-        bxyxy: torch.Tensor = ctx.get("bboxes_xyxy", torch.empty((0, 4)))
-        class_to_indices: dict[str, list[int]] = ctx.get("class_to_indices", {})
+
+        # Group detections by class
+        class_detections: dict[str, list[tuple[ObjectDetectionResultI, int]]] = {}
+        for det in detections:
+            lbl = det.label
+            if isinstance(lbl, torch.Tensor):
+                for i, l in enumerate(lbl):
+                    key = str(l)
+                    if key not in class_detections:
+                        class_detections[key] = []
+                    class_detections[key].append((det, i))
+            else:
+                key = str(lbl)
+                if key not in class_detections:
+                    class_detections[key] = []
+                class_detections[key].append((det, 0))
+
         qa = []
-        for i in range(len(labels)):
-            for j in range(len(labels)):
+        classes = list(class_detections.keys())
+        for i in range(len(classes)):
+            for j in range(len(classes)):
                 if i == j:
                     continue
-                c1, c2 = labels[i], labels[j]
+                c1, c2 = classes[i], classes[j]
                 found_yes = False
-                for idx1 in class_to_indices.get(c1, []):
-                    x1_1 = float(bxyxy[idx1, 0])
-                    for idx2 in class_to_indices.get(c2, []):
-                        x2_2 = float(bxyxy[idx2, 2])
-                        if x1_1 > x2_2:
-                            det1 = ctx["detections"][idx1]
-                            det2 = ctx["detections"][idx2]
-                            if ObjectDetectionUtils.pairwise_iou(det1, det2).max() == 0:
-                                qa.append((self.question.format(object_1=c1, object_2=c2), "Yes"))
+
+                for det1, idx1 in class_detections[c1]:
+                    bbox1 = det1.as_xyxy()[idx1]
+                    x1_1 = float(bbox1[0])  # left edge of object 1
+
+                    for det2, idx2 in class_detections[c2]:
+                        bbox2 = det2.as_xyxy()[idx2]
+                        x2_2 = float(bbox2[2])  # right edge of object 2
+
+                        if x1_1 > x2_2:  # object 1 is to the right of object 2
+                            # Check non-overlap via IOU
+                            # Create single detection objects for IOU check
+                            single_det1 = ObjectDetectionResultI(
+                                score=det1.score,
+                                cls=det1.cls,
+                                label=c1,
+                                bbox=bbox1.unsqueeze(0),
+                                image_hw=(image.height, image.width),
+                            )
+                            single_det2 = ObjectDetectionResultI(
+                                score=det2.score,
+                                cls=det2.cls,
+                                label=c2,
+                                bbox=bbox2.unsqueeze(0),
+                                image_hw=(image.height, image.width),
+                            )
+                            if (
+                                ObjectDetectionUtils.pairwise_iou(
+                                    single_det1, single_det2
+                                ).max()
+                                == 0
+                            ):
+                                qa.append(
+                                    (
+                                        self.question.format(object_1=c1, object_2=c2),
+                                        "Yes",
+                                    )
+                                )
                                 found_yes = True
                                 break
                     if found_yes:
                         break
+
                 if not found_yes:
                     qa.append((self.question.format(object_1=c1, object_2=c2), "No"))
         return qa
@@ -872,7 +950,7 @@ class RightOf(Question):
 
 
 class LeftMost(Question):
-    def __init__(self) -> None:
+    def __init__(self, margin_ratio: float = 0.05) -> None:
         super().__init__(
             question="What is the leftmost object in the image?",
             variables=[],
@@ -880,6 +958,9 @@ class LeftMost(Question):
                 ObjectDetectionPredicates.at_least_one_single_detection,
             ],
         )
+        if margin_ratio < 0 or margin_ratio > 1:
+            raise ValueError("margin_ratio must be between 0 and 1")
+        self.margin_ratio = margin_ratio
 
     def apply(
         self,
@@ -887,34 +968,59 @@ class LeftMost(Question):
         detections: list[ObjectDetectionResultI],
     ) -> list[tuple[str, str]]:
         # @precondition: at_least_one_single_detection(image, detections) == True
-        ctx = self._get_ctx(image, detections)
-        if len(ctx.get("detections", [])) == 0:
+        # Create list of all individual detections with their positions
+        all_detections = []
+        for det in detections:
+            lbl = det.label
+            if isinstance(lbl, torch.Tensor):
+                for i, l in enumerate(lbl):
+                    bbox = det.as_xyxy()[i]
+                    all_detections.append((bbox, str(l), det, i))
+            else:
+                bbox = det.as_xyxy()[0]
+                all_detections.append((bbox, str(lbl), det, 0))
+
+        if len(all_detections) == 0:
             return []
-        bxyxy: torch.Tensor = ctx.get("bboxes_xyxy", torch.empty((0, 4)))
-        labels: list[str] = ctx.get("labels", [])
-        order = self.sort_detections_by(image, detections, key="x1", reverse=False)
-        if len(order) < 2:
+
+        # Sort by left edge (x1)
+        all_detections.sort(key=lambda x: float(x[0][0]))
+
+        if len(all_detections) < 2:
             # Single detection case: ensure it's on the left half fully
-            idx = order[0]
-            x1, x2 = float(bxyxy[idx, 0]), float(bxyxy[idx, 2])
+            bbox, label, _, _ = all_detections[0]
+            x1, x2 = float(bbox[0]), float(bbox[2])
             if x1 < image.size[0] / 2 and x2 < image.size[0] / 2:
-                return [(self.question, str(labels[idx]))]
+                return [(self.question, label)]
             return []
-        i0, i1 = order[0], order[1]
-        # Overlap check using IOU 0 between first two leftmost
-        det0 = ctx["detections"][i0]
-        det1 = ctx["detections"][i1]
-        if ObjectDetectionUtils.pairwise_iou(det0, det1).max() > 0:
+
+        # Check overlap between first two leftmost
+        bbox1, label1, det1, idx1 = all_detections[0]
+        bbox2, label2, det2, idx2 = all_detections[1]
+
+        im_width = image.size[0]
+        margin = self.margin_ratio * im_width
+        right_edge_of_left_most = float(bbox1[2])
+        left_edge_of_second_left_most = float(bbox2[0])
+        overlap = right_edge_of_left_most + margin > left_edge_of_second_left_most
+        if overlap:
+            # Not enough horizontal gap – ambiguous
             return []
+
         # Ensure leftmost is on left half fully
-        x1, x2 = float(bxyxy[i0, 0]), float(bxyxy[i0, 2])
-        if not (x1 < image.size[0] / 2 and x2 < image.size[0] / 2):
+        left_edge_of_left_most, right_edge_of_left_most = float(bbox1[0]), float(
+            bbox1[2]
+        )
+        if not (
+            left_edge_of_left_most < image.size[0] / 2
+            and right_edge_of_left_most < image.size[0] / 2
+        ):
             return []
-        return [(self.question, str(labels[i0]))]
+        return [(self.question, label1)]
 
 
 class RightMost(Question):
-    def __init__(self) -> None:
+    def __init__(self, margin_ratio: float = 0.05) -> None:
         super().__init__(
             question="What is the rightmost object in the image?",
             variables=[],
@@ -922,6 +1028,9 @@ class RightMost(Question):
                 ObjectDetectionPredicates.at_least_one_single_detection,
             ],
         )
+        if margin_ratio < 0 or margin_ratio > 1:
+            raise ValueError("margin_ratio must be between 0 and 1")
+        self.margin_ratio = margin_ratio
 
     def apply(
         self,
@@ -929,27 +1038,60 @@ class RightMost(Question):
         detections: list[ObjectDetectionResultI],
     ) -> list[tuple[str, str]]:
         # @precondition: at_least_one_single_detection(image, detections) == True
-        ctx = self._get_ctx(image, detections)
-        if len(ctx.get("detections", [])) == 0:
+        # Create list of all individual detections with their positions
+        all_detections = []
+        for det in detections:
+            lbl = det.label
+            if isinstance(lbl, torch.Tensor):
+                for i, l in enumerate(lbl):
+                    bbox = det.as_xyxy()[i]
+                    all_detections.append((bbox, str(l), det, i))
+            else:
+                bbox = det.as_xyxy()[0]
+                all_detections.append((bbox, str(lbl), det, 0))
+
+        if len(all_detections) == 0:
             return []
-        bxyxy: torch.Tensor = ctx.get("bboxes_xyxy", torch.empty((0, 4)))
-        labels: list[str] = ctx.get("labels", [])
-        order = self.sort_detections_by(image, detections, key="x2", reverse=True)
-        if len(order) < 2:
-            idx = order[0]
-            x1, x2 = float(bxyxy[idx, 0]), float(bxyxy[idx, 2])
-            if x1 > image.size[0] / 2 and x2 > image.size[0] / 2:
-                return [(self.question, str(labels[idx]))]
+
+        # Sort by right edge (x2) descending
+        all_detections.sort(key=lambda x: float(x[0][2]), reverse=True)
+
+        if len(all_detections) < 2:
+            # Single detection case: ensure it's on the right half fully
+            bbox, label, _, _ = all_detections[0]
+            left_edge_of_right_most, right_edge_of_right_most = float(bbox[0]), float(
+                bbox[2]
+            )
+            if (
+                left_edge_of_right_most > image.size[0] / 2
+                and right_edge_of_right_most > image.size[0] / 2
+            ):
+                return [(self.question, label)]
             return []
-        i0, i1 = order[0], order[1]
-        det0 = ctx["detections"][i0]
-        det1 = ctx["detections"][i1]
-        if ObjectDetectionUtils.pairwise_iou(det0, det1).max() > 0:
+
+        # Check overlap between first two rightmost
+        bbox1, label1, det1, idx1 = all_detections[0]
+        bbox2, label2, det2, idx2 = all_detections[1]
+
+        im_width = image.size[0]
+        margin = self.margin_ratio * im_width
+        left_edge_of_right_most = float(bbox1[0])
+        right_edge_of_second_right_most = float(bbox2[2])
+        overlap = left_edge_of_right_most - margin < right_edge_of_second_right_most
+        if overlap:
+            # Not enough horizontal gap – ambiguous
             return []
-        x1, x2 = float(bxyxy[i0, 0]), float(bxyxy[i0, 2])
-        if not (x1 > image.size[0] / 2 and x2 > image.size[0] / 2):
+
+        # Ensure rightmost is on right half fully
+        left_edge_of_right_most, right_edge_of_right_most = float(bbox1[0]), float(
+            bbox1[2]
+        )
+        if not (
+            left_edge_of_right_most > image.size[0] / 2
+            and right_edge_of_right_most > image.size[0] / 2
+        ):
             return []
-        return [(self.question, str(labels[i0]))]
+        return [(self.question, label1)]
 
 
 class HowMany(Question):
@@ -971,10 +1113,21 @@ class HowMany(Question):
         detections: list[ObjectDetectionResultI],
     ) -> list[tuple[str, str]]:
         # @precondition: at_least_x_many_class_detections(image, detections, 1) == True
-        ctx = self._get_ctx(image, detections)
-        counts: dict[str, int] = ctx.get("counts", {})
+        # Count detections per class
+        counts: dict[str, int] = {}
+        for det in detections:
+            lbl = det.label
+            if isinstance(lbl, torch.Tensor):
+                for l in lbl:
+                    key = str(l)
+                    counts[key] = counts.get(key, 0) + 1
+            else:
+                key = str(lbl)
+                counts[key] = counts.get(key, 0) + 1
+
         return [
-            (self.question.format(object_1=cls), str(cnt)) for cls, cnt in counts.items()
+            (self.question.format(object_1=cls), str(cnt))
+            for cls, cnt in counts.items()
         ]
 
 
@@ -982,7 +1135,7 @@ class AreMore(Question):
     # TODO: Create a version of this question that is multiple choice
     def __init__(self, margin_ratio: float = 0.2) -> None:
         """AreMore question with margin-based count filtering.
-        
+
         Args:
             margin_ratio: Required margin between counts. Only asks question if
                 the larger count exceeds the smaller by at least this ratio.
@@ -1006,8 +1159,18 @@ class AreMore(Question):
         image: Image.Image,
         detections: list[ObjectDetectionResultI],
     ) -> list[tuple[str, str]]:
-        ctx = self._get_ctx(image, detections)
-        counts: dict[str, int] = ctx.get("counts", {})
+        # Count detections per class
+        counts: dict[str, int] = {}
+        for det in detections:
+            lbl = det.label
+            if isinstance(lbl, torch.Tensor):
+                for l in lbl:
+                    key = str(l)
+                    counts[key] = counts.get(key, 0) + 1
+            else:
+                key = str(lbl)
+                counts[key] = counts.get(key, 0) + 1
+
         classes = list(counts.keys())
         qa: list[tuple[str, str]] = []
         for i in range(len(classes)):
@@ -1016,17 +1179,21 @@ class AreMore(Question):
                 c1, c2 = counts[o1], counts[o2]
                 if c1 > c2:
                     if c1 >= (1 + self.margin_ratio) * c2:
-                        qa.append((self.question.format(object_1=o1, object_2=o2), "Yes"))
+                        qa.append(
+                            (self.question.format(object_1=o1, object_2=o2), "Yes")
+                        )
                 elif c2 > c1:
                     if c2 >= (1 + self.margin_ratio) * c1:
-                        qa.append((self.question.format(object_1=o1, object_2=o2), "No"))
+                        qa.append(
+                            (self.question.format(object_1=o1, object_2=o2), "No")
+                        )
         return qa
 
 
 class WhichMore(Question):
     def __init__(self, margin_ratio: float = 0.2) -> None:
         """WhichMore question with margin-based count filtering.
-        
+
         Args:
             margin_ratio: Required margin for clear winner. Only asks question if
                 the winning count exceeds the second-highest by at least this ratio.
@@ -1059,8 +1226,7 @@ class WhichMore(Question):
                         detection_counts.get(single_class_name, 0) + 1
                     )
             else:
-                detection_counts[class_name] = detection_counts.get(
-                    class_name, 0) + 1
+                detection_counts[class_name] = detection_counts.get(class_name, 0) + 1
         question_answer_pairs = []
         detected_classes = list(detection_counts.keys())
 
@@ -1082,12 +1248,12 @@ class WhichMore(Question):
                     # Sort counts to find second highest
                     sorted_counts = sorted([count_1, count_2, count_3], reverse=True)
                     second_highest_count = sorted_counts[1]
-                    
+
                     # Check if winner has significant margin over second place
                     if max_count < (1 + self.margin_ratio) * second_highest_count:
                         # Winner not clear enough - skip question
                         continue
-                    
+
                     max_objects = []
                     if count_1 == max_count:
                         max_objects.append(object_1)
@@ -1112,9 +1278,11 @@ class WhichMore(Question):
 
 
 class LeftMostWidthVsHeight(WidthVsHeight):
-    def __init__(self, threshold: float = 0.75, spatial_margin_ratio: float = 0.05) -> None:
+    def __init__(
+        self, threshold: float = 0.75, spatial_margin_ratio: float = 0.05
+    ) -> None:
         """LeftMostWidthVsHeight with spatial stability checks.
-        
+
         Args:
             threshold: Aspect ratio threshold
             spatial_margin_ratio: Required spatial separation as fraction of image width.
@@ -1139,51 +1307,106 @@ class LeftMostWidthVsHeight(WidthVsHeight):
         reverse: bool = False,
     ) -> list[tuple[str, str]]:
         # @precondition: at_least_one_single_detection(image, detections) == True
-        ctx = self._get_ctx(image, detections)
-        counts: dict[str, int] = ctx.get("counts", {})
-        bxyxy: torch.Tensor = ctx.get("bboxes_xyxy", torch.empty((0, 4)))
-        aspects: torch.Tensor = ctx.get("aspects", torch.empty((0,)))
-        labels: list[str] = ctx.get("labels", [])
-        order = self.sort_detections_by(image, detections, key="x1", reverse=False)
+        # Count detections per class
+        counts: dict[str, int] = {}
+        for det in detections:
+            lbl = det.label
+            if isinstance(lbl, torch.Tensor):
+                for l in lbl:
+                    key = str(l)
+                    counts[key] = counts.get(key, 0) + 1
+            else:
+                key = str(lbl)
+                counts[key] = counts.get(key, 0) + 1
+
+        # Create list of all individual detections with their positions, filtered for single instances
+        all_detections = []
+        for det in detections:
+            lbl = det.label
+            if isinstance(lbl, torch.Tensor):
+                for i, l in enumerate(lbl):
+                    key = str(l)
+                    if counts.get(key, 0) == 1:
+                        bbox = det.as_xyxy()[i]
+                        all_detections.append((bbox, key, det, i))
+            else:
+                key = str(lbl)
+                if counts.get(key, 0) == 1:
+                    bbox = det.as_xyxy()[0]
+                    all_detections.append((bbox, key, det, 0))
+
+        # Sort by left edge (x1)
+        all_detections.sort(key=lambda x: float(x[0][0]))
+
         im_width, _ = image.size
 
-        left_idx = None
-        second_idx = None
-        for pos, idx in enumerate(order):
-            lbl = labels[idx]
-            if counts.get(lbl, 0) != 1:
-                continue
-            x1, x2 = float(bxyxy[idx, 0]), float(bxyxy[idx, 2])
+        for pos, (bbox, label, det, idx) in enumerate(all_detections):
+            x1, x2 = float(bbox[0]), float(bbox[2])
             if not (x1 < im_width / 2 and x2 < im_width / 2):
-                return []
-            left_idx = idx
-            if pos + 1 < len(order):
-                second_idx = order[pos + 1]
-            break
-        if left_idx is None:
-            return []
-        if second_idx is not None:
-            left_x2 = float(bxyxy[left_idx, 2])
-            second_x1 = float(bxyxy[second_idx, 0])
-            required_margin = self.spatial_margin_ratio * im_width
-            if (second_x1 - left_x2) < required_margin:
-                return []
-            # ensure no overlap
-            if ObjectDetectionUtils.pairwise_iou(ctx["detections"][left_idx], ctx["detections"][second_idx]).max() > 0:
-                logger.debug("Leftmost object overlaps with second-leftmost object")
-                return []
-        ratio = float(aspects[left_idx]) if aspects.numel() > left_idx else None
-        if ratio is None:
-            b = bxyxy[left_idx]
-            ratio = float((b[2]-b[0]) / max(float(b[3]-b[1]), 1e-6))
-        qa = self._question_answer_ratio(labels[left_idx], ratio, reverse=reverse)
-        return [qa] if qa is not None else []
+                continue  # Must be in left half
+
+            # Check spatial separation if there's a second leftmost
+            if pos + 1 < len(all_detections):
+                second_bbox, second_label, second_det, second_idx = all_detections[
+                    pos + 1
+                ]
+                second_x1 = float(second_bbox[0])
+                required_margin = self.spatial_margin_ratio * im_width
+                if (second_x1 - x2) < required_margin:
+                    continue  # Not enough separation
+
+                # Check for overlap
+                single_det1 = ObjectDetectionResultI(
+                    score=(
+                        det.score[idx]
+                        if isinstance(det.score, torch.Tensor)
+                        else det.score
+                    ),
+                    cls=det.cls[idx] if isinstance(det.cls, torch.Tensor) else det.cls,
+                    label=label,
+                    bbox=bbox.unsqueeze(0),  # Ensure 2D shape (1, 4)
+                    image_hw=(image.height, image.width),
+                )
+                single_det2 = ObjectDetectionResultI(
+                    score=(
+                        second_det.score[second_idx]
+                        if isinstance(second_det.score, torch.Tensor)
+                        else second_det.score
+                    ),
+                    cls=(
+                        second_det.cls[second_idx]
+                        if isinstance(second_det.cls, torch.Tensor)
+                        else second_det.cls
+                    ),
+                    label=second_label,
+                    bbox=second_bbox.unsqueeze(0),  # Ensure 2D shape (1, 4)
+                    image_hw=(image.height, image.width),
+                )
+
+                if (
+                    ObjectDetectionUtils.pairwise_iou(single_det1, single_det2).max()
+                    > 0
+                ):
+                    logger.debug("Leftmost object overlaps with second-leftmost object")
+                    continue
+
+            # Calculate aspect ratio
+            w = float(bbox[2] - bbox[0])
+            h = float(bbox[3] - bbox[1])
+            ratio = w / max(h, 1e-6)
+
+            qa = self._question_answer_ratio(label, ratio, reverse=reverse)
+            return [qa] if qa is not None else []
+
+        return []
 
 
 class RightMostWidthVsHeight(WidthVsHeight):
-    def __init__(self, threshold: float = 0.75, spatial_margin_ratio: float = 0.05) -> None:
+    def __init__(
+        self, threshold: float = 0.75, spatial_margin_ratio: float = 0.05
+    ) -> None:
         """RightMostWidthVsHeight with spatial stability checks.
-        
+
         Args:
             threshold: Aspect ratio threshold (inherited from WidthVsHeight)
             spatial_margin_ratio: Required spatial separation as fraction of image width.
@@ -1206,332 +1429,100 @@ class RightMostWidthVsHeight(WidthVsHeight):
         reverse: bool = False,
     ) -> list[tuple[str, str]]:
         # @precondition: at_least_one_single_detection(image, detections) == True
-        ctx = self._get_ctx(image, detections)
-        counts: dict[str, int] = ctx.get("counts", {})
-        bxyxy: torch.Tensor = ctx.get("bboxes_xyxy", torch.empty((0, 4)))
-        aspects: torch.Tensor = ctx.get("aspects", torch.empty((0,)))
-        labels: list[str] = ctx.get("labels", [])
-        order = self.sort_detections_by(image, detections, key="x2", reverse=True)
+        # Count detections per class
+        counts: dict[str, int] = {}
+        for det in detections:
+            lbl = det.label
+            if isinstance(lbl, torch.Tensor):
+                for l in lbl:
+                    key = str(l)
+                    counts[key] = counts.get(key, 0) + 1
+            else:
+                key = str(lbl)
+                counts[key] = counts.get(key, 0) + 1
+
+        # Create list of all individual detections with their positions, filtered for single instances
+        all_detections = []
+        for det in detections:
+            lbl = det.label
+            if isinstance(lbl, torch.Tensor):
+                for i, l in enumerate(lbl):
+                    key = str(l)
+                    if counts.get(key, 0) == 1:
+                        bbox = det.as_xyxy()[i]
+                        all_detections.append((bbox, key, det, i))
+            else:
+                key = str(lbl)
+                if counts.get(key, 0) == 1:
+                    bbox = det.as_xyxy()[0]
+                    all_detections.append((bbox, key, det, 0))
+
+        # Sort by right edge (x2) descending
+        all_detections.sort(key=lambda x: float(x[0][2]), reverse=True)
+
         im_width, _ = image.size
 
-        right_idx = None
-        second_idx = None
-        for pos, idx in enumerate(order):
-            lbl = labels[idx]
-            if counts.get(lbl, 0) != 1:
-                continue
-            x1, x2 = float(bxyxy[idx, 0]), float(bxyxy[idx, 2])
+        for pos, (bbox, label, det, idx) in enumerate(all_detections):
+            x1, x2 = float(bbox[0]), float(bbox[2])
             if not (x1 > im_width / 2 and x2 > im_width / 2):
-                return []
-            right_idx = idx
-            if pos + 1 < len(order):
-                second_idx = order[pos + 1]
-            break
-        if right_idx is None:
-            return []
-        if second_idx is not None:
-            right_x1 = float(bxyxy[right_idx, 0])
-            second_x2 = float(bxyxy[second_idx, 2])
-            required_margin = self.spatial_margin_ratio * im_width
-            if (right_x1 - second_x2) < required_margin:
-                return []
-            if ObjectDetectionUtils.pairwise_iou(ctx["detections"][right_idx], ctx["detections"][second_idx]).max() > 0:
-                logger.debug("Rightmost object overlaps with second-rightmost object")
-                return []
-        ratio = float(aspects[right_idx]) if aspects.numel() > right_idx else None
-        if ratio is None:
-            b = bxyxy[right_idx]
-            ratio = float((b[2]-b[0]) / max(float(b[3]-b[1]), 1e-6))
-        qa = self._question_answer_ratio(labels[right_idx], ratio, reverse=reverse)
-        return [qa] if qa is not None else []
+                continue  # Must be in right half
 
+            # Check spatial separation if there's a second rightmost
+            if pos + 1 < len(all_detections):
+                second_bbox, second_label, second_det, second_idx = all_detections[
+                    pos + 1
+                ]
+                second_x2 = float(second_bbox[2])
+                required_margin = self.spatial_margin_ratio * im_width
+                if (x1 - second_x2) < required_margin:
+                    continue  # Not enough separation
 
-# drop this question
-class ObjectsInRow(Question):
-    def __init__(self, variance_threshold: float = 0.1) -> None:
-        """Linear regression-based row detection.
+                # Check for overlap
+                single_det1 = ObjectDetectionResultI(
+                    score=(
+                        det.score[idx]
+                        if isinstance(det.score, torch.Tensor)
+                        else det.score
+                    ),
+                    cls=det.cls[idx] if isinstance(det.cls, torch.Tensor) else det.cls,
+                    label=label,
+                    bbox=bbox.unsqueeze(0),  # Ensure 2D shape (1, 4)
+                    image_hw=(image.height, image.width),
+                )
+                single_det2 = ObjectDetectionResultI(
+                    score=(
+                        second_det.score[second_idx]
+                        if isinstance(second_det.score, torch.Tensor)
+                        else second_det.score
+                    ),
+                    cls=(
+                        second_det.cls[second_idx]
+                        if isinstance(second_det.cls, torch.Tensor)
+                        else second_det.cls
+                    ),
+                    label=second_label,
+                    bbox=second_bbox.unsqueeze(0),  # Ensure 2D shape (1, 4)
+                    image_hw=(image.height, image.width),
+                )
 
-        Args:
-            variance_threshold: Maximum normalized variance for y-centers to be 
-                considered in a row. Lower values = stricter row detection.
-        """
-        super().__init__(
-            question="Are there any objects arranged in a row?",
-            variables=[],
-            predicates=[
-                lambda image, detections: ObjectDetectionPredicates.at_least_x_detections(
-                    image, detections, 3
-                ),
-            ],
-        )
-        self.variance_threshold = variance_threshold
+                if (
+                    ObjectDetectionUtils.pairwise_iou(single_det1, single_det2).max()
+                    > 0
+                ):
+                    logger.debug(
+                        "Rightmost object overlaps with second-rightmost object"
+                    )
+                    continue
 
-    def apply(
-        self,
-        image: Image.Image,
-        detections: list[ObjectDetectionResultI],
-    ) -> list[tuple[str, str]]:
-        from sklearn.linear_model import LinearRegression
+            # Calculate aspect ratio
+            w = float(bbox[2] - bbox[0])
+            h = float(bbox[3] - bbox[1])
+            ratio = w / max(h, 1e-6)
 
-        if len(detections) < 3:
-            return [(self.question, "No")]
+            qa = self._question_answer_ratio(label, ratio, reverse=reverse)
+            return [qa] if qa is not None else []
 
-        # Get center points
-        centers = []
-        for detection in detections:
-            bbox = detection.as_xyxy().squeeze(0)
-            x_center = float((bbox[0] + bbox[2]) / 2)
-            y_center = float((bbox[1] + bbox[3]) / 2)
-            centers.append((x_center, y_center))
-
-        # Sort by x-coordinate
-        centers = sorted(centers, key=lambda p: p[0])
-
-        # Try sliding windows of 3+ objects
-        image_height = image.size[1]
-
-        for window_size in range(3, len(centers) + 1):
-            for start in range(len(centers) - window_size + 1):
-                window = centers[start:start + window_size]
-
-                # Extract x and y coordinates
-                x_coords = np.array([p[0] for p in window]).reshape(-1, 1)
-                y_coords = np.array([p[1] for p in window])
-
-                # Fit linear regression
-                reg = LinearRegression().fit(x_coords, y_coords)
-                y_pred = reg.predict(x_coords)
-
-                # Calculate normalized variance (by image height)
-                variance = np.var(y_coords - y_pred)
-                normalized_variance = variance / (image_height ** 2)
-
-                if normalized_variance < self.variance_threshold:
-                    return [(self.question, "Yes")]
-
-        return [(self.question, "No")]
-
-
-class ObjectsInLine(Question):
-    def __init__(self, variance_threshold: float = 0.1) -> None:
-        """Multiple choice question about which objects are in a row.
-
-        Args:
-            variance_threshold: Same as ObjectsInRow for consistency.
-        """
-        super().__init__(
-            question="Which objects appear to be arranged in a row? A) {option_a}, B) {option_b}, C) {option_c}, D) No clear row arrangement. Respond with the letter only.",
-            variables=["option_a", "option_b", "option_c"],
-            predicates=[
-                lambda image, detections: ObjectDetectionPredicates.at_least_x_detections(
-                    image, detections, 3
-                ),
-            ],
-        )
-        self.variance_threshold = variance_threshold
-
-    def apply(
-        self,
-        image: Image.Image,
-        detections: list[ObjectDetectionResultI],
-    ) -> list[tuple[str, str]]:
-        from sklearn.linear_model import LinearRegression
-
-        if len(detections) < 3:
-            return []
-
-        # Get centers with labels
-        centers_with_labels = []
-        for detection in detections:
-            bbox = detection.as_xyxy().squeeze(0)
-            x_center = float((bbox[0] + bbox[2]) / 2)
-            y_center = float((bbox[1] + bbox[3]) / 2)
-            label = str(detection.label)
-            centers_with_labels.append((x_center, y_center, label))
-
-        # Sort by x-coordinate
-        centers_with_labels = sorted(centers_with_labels, key=lambda p: p[0])
-
-        # Find best row arrangement
-        best_row = None
-        best_variance = float('inf')
-        image_height = image.size[1]
-
-        for window_size in range(3, len(centers_with_labels) + 1):
-            for start in range(len(centers_with_labels) - window_size + 1):
-                window = centers_with_labels[start:start + window_size]
-
-                x_coords = np.array([p[0] for p in window]).reshape(-1, 1)
-                y_coords = np.array([p[1] for p in window])
-
-                reg = LinearRegression().fit(x_coords, y_coords)
-                y_pred = reg.predict(x_coords)
-
-                variance = np.var(y_coords - y_pred)
-                normalized_variance = variance / (image_height ** 2)
-
-                if normalized_variance < self.variance_threshold and normalized_variance < best_variance:
-                    best_variance = normalized_variance
-                    best_row = [p[2] for p in window]  # Extract labels
-
-        if best_row is None:
-            return []
-
-        # Create multiple choice options
-        row_text = ", ".join(best_row)
-
-        # Generate plausible distractors that are different from correct answer
-        all_labels = list(set(str(d.label) for d in detections))
-        random.shuffle(all_labels)
-
-        # Create distractors ensuring they're different from correct answer
-        distractor1 = ", ".join(all_labels[:min(3, len(all_labels))])
-        distractor2 = ", ".join(all_labels[-min(3, len(all_labels)):])
-
-        # Ensure distractors are different from correct answer
-        max_attempts = 10
-        attempt = 0
-        while (distractor1 == row_text or distractor2 == row_text or distractor1 == distractor2) and attempt < max_attempts:
-            random.shuffle(all_labels)
-            distractor1 = ", ".join(all_labels[:min(3, len(all_labels))])
-            # Use different slice
-            distractor2 = ", ".join(all_labels[-min(2, len(all_labels)):])
-            attempt += 1
-
-        # If still duplicates after attempts, skip this question
-        if distractor1 == row_text or distractor2 == row_text or distractor1 == distractor2:
-            return []
-
-        # Randomly assign correct answer to A/B/C
-        options = [row_text, distractor1, distractor2]
-        random.shuffle(options)
-        correct_letter = ["A", "B", "C"][options.index(row_text)]
-
-        q = self.question.format(
-            option_a=options[0],
-            option_b=options[1],
-            option_c=options[2]
-        )
-
-        return [(q, correct_letter)]
-
-
-# drop this question
-class MostClusteredObjects(Question):
-    def __init__(self, eps_ratio: float = 0.05, min_samples: int = 3) -> None:
-        """DBSCAN-based clustering with multiple choice answers.
-
-        Args:
-            eps_ratio: Maximum distance between points in a cluster as a fraction 
-                of the image diagonal. Default 0.05 means 5% of image diagonal.
-            min_samples: Minimum points required to form a cluster.
-        """
-        super().__init__(
-            question="Which group of objects appears most tightly clustered? A) {option_a}, B) {option_b}, C) {option_c}, D) No clear clusters. Respond with the letter only.",
-            variables=["option_a", "option_b", "option_c"],
-            predicates=[
-                lambda image, detections: ObjectDetectionPredicates.at_least_x_detections(
-                    image, detections, 9  # Need at least 3 clusters × 3 objects each
-                ),
-            ],
-        )
-        self.eps_ratio = eps_ratio
-        self.min_samples = min_samples
-
-    def apply(
-        self,
-        image: Image.Image,
-        detections: list[ObjectDetectionResultI],
-    ) -> list[tuple[str, str]]:
-        from sklearn.cluster import DBSCAN
-
-        if len(detections) < 9:
-            return []
-
-        # Get centers and labels
-        centers = []
-        labels = []
-        for detection in detections:
-            bbox = detection.as_xyxy().squeeze(0)
-            x_center = float((bbox[0] + bbox[2]) / 2)
-            y_center = float((bbox[1] + bbox[3]) / 2)
-            centers.append([x_center, y_center])
-            labels.append(str(detection.label))
-
-        centers = np.array(centers)
-
-        # Calculate eps as a fraction of image diagonal
-        image_width, image_height = image.size
-        image_diagonal = math.sqrt(image_width**2 + image_height**2)
-        eps = self.eps_ratio * image_diagonal
-
-        # Apply DBSCAN
-        clustering = DBSCAN(
-            eps=eps, min_samples=self.min_samples).fit(centers)
-        cluster_labels = clustering.labels_
-
-        # Group objects by cluster (ignore noise points with label -1)
-        clusters = {}
-        for i, cluster_id in enumerate(cluster_labels):
-            if cluster_id != -1:  # Not noise
-                if cluster_id not in clusters:
-                    clusters[cluster_id] = []
-                clusters[cluster_id].append(labels[i])
-
-        if len(clusters) < 2:
-            return []  # Need at least 2 clusters to compare
-
-        # Find most compact cluster
-        def cluster_compactness(cluster_id):
-            cluster_points = centers[cluster_labels == cluster_id]
-            if len(cluster_points) < 2:
-                return float('inf')
-            return np.mean(np.var(cluster_points, axis=0))
-
-        most_compact_id = min(clusters.keys(), key=cluster_compactness)
-        most_compact_objects = list(
-            set(clusters[most_compact_id]))  # Remove duplicates
-
-        # Create multiple choice options
-        correct_text = ", ".join(sorted(most_compact_objects))
-
-        # Generate distractors from other clusters or random combinations
-        all_unique_labels = list(set(labels))
-        random.shuffle(all_unique_labels)
-
-        # Create distractors ensuring they're different from correct answer
-        distractor1 = ", ".join(
-            all_unique_labels[:min(3, len(all_unique_labels))])
-        distractor2 = ", ".join(
-            all_unique_labels[-min(2, len(all_unique_labels)):])
-
-        # Ensure distractors are different from correct answer
-        max_attempts = 10
-        attempt = 0
-        while (distractor1 == correct_text or distractor2 == correct_text or distractor1 == distractor2) and attempt < max_attempts:
-            random.shuffle(all_unique_labels)
-            distractor1 = ", ".join(
-                all_unique_labels[:min(3, len(all_unique_labels))])
-            distractor2 = ", ".join(
-                all_unique_labels[-min(2, len(all_unique_labels)):])
-            attempt += 1
-
-        # If still duplicates after attempts, skip this question
-        if distractor1 == correct_text or distractor2 == correct_text or distractor1 == distractor2:
-            return []
-
-        # Randomly assign correct answer
-        options = [correct_text, distractor1, distractor2]
-        random.shuffle(options)
-        correct_letter = ["A", "B", "C"][options.index(correct_text)]
-
-        q = self.question.format(
-            option_a=options[0],
-            option_b=options[1],
-            option_c=options[2]
-        )
-
-        return [(q, correct_letter)]
+        return []
 
 
 class MoreThanThresholdHowMany(Question):
@@ -1551,12 +1542,11 @@ class MoreThanThresholdHowMany(Question):
 
     def __init__(self, threshold: float = 2.0):
         if threshold <= 1.0:
-            raise ValueError(
-                "threshold should be > 1.0 for 'more than' questions")
+            raise ValueError("threshold should be > 1.0 for 'more than' questions")
 
         self.threshold: float = threshold
         super().__init__(
-            question="Are there more than {target} {object_1}(s) in this image? Respond Yes/No.",
+            question="Are there {target} or more {object_1}(s) in this image? Respond Yes/No.",
             variables=["object_1", "target"],
             predicates=[
                 lambda image, detections: ObjectDetectionPredicates.at_least_x_many_class_detections(
@@ -1619,8 +1609,7 @@ class LessThanThresholdHowMany(Question):
 
     def __init__(self, threshold: float = 0.5):
         if not (0.0 < threshold < 1.0):
-            raise ValueError(
-                "threshold must be between 0 and 1 for 'less than'")
+            raise ValueError("threshold must be between 0 and 1 for 'less than'")
 
         self.threshold: float = threshold
         super().__init__(
@@ -1666,8 +1655,16 @@ class LessThanThresholdHowMany(Question):
             if target_no == n:
                 target_no = max(1, target_no - 1)
 
-            q_no = self.question.format(object_1=cls, target=target_no)
-            qa_pairs.append((q_no, "No"))
+            # If target is 1, switch to grammatically correct presence question
+            if target_no == 1:
+                q_no = (
+                    "Are there any {object_1}(s) in this image? Respond Yes/No."
+                ).format(object_1=cls)
+                # Since n > 0 (we skipped n == 0 above), the correct answer is "Yes"
+                qa_pairs.append((q_no, "Yes"))
+            else:
+                q_no = self.question.format(object_1=cls, target=target_no)
+                qa_pairs.append((q_no, "No"))
 
         return qa_pairs
 
@@ -1770,8 +1767,11 @@ class MultiChoiceHowMany(Question):
                 if isinstance(lbl, torch.Tensor):
                     for idx in range(lbl.shape[0]):
                         if str(lbl[idx]) == cls:
-                            scores.append(float(conf[idx]) if isinstance(
-                                conf, torch.Tensor) else float(conf))
+                            scores.append(
+                                float(conf[idx])
+                                if isinstance(conf, torch.Tensor)
+                                else float(conf)
+                            )
                 else:
                     if str(lbl) == cls:
                         scores.append(float(conf))
@@ -1785,8 +1785,9 @@ class MultiChoiceHowMany(Question):
             random.shuffle(letters)
             bucket_keys = ["low", "mid", "high"]
 
-            letter_to_bucket = {letter: bucket for letter,
-                                bucket in zip(letters, bucket_keys)}
+            letter_to_bucket = {
+                letter: bucket for letter, bucket in zip(letters, bucket_keys)
+            }
 
             # Build question text in A/B/C order after permutation
             q = self.question.format(
@@ -1796,26 +1797,27 @@ class MultiChoiceHowMany(Question):
                 range_c=buckets[letter_to_bucket["C"].lower()],
             )
 
-            # Identify the letter assigned to the mid bucket (the correct answer)
+            # Identify the letter assigned to the correct bucket
             correct_letter = {bkey: ltr for ltr, bkey in letter_to_bucket.items()}[
-                "mid"]
+                correct_bucket
+            ]
 
             qa_pairs.append((q, correct_letter))
 
         return qa_pairs
 
 
-class FrontOf(Question):
+class Closer(Question):
     def __init__(self, margin_ratio: float = 0.1) -> None:
         """
-        FrontOf question using depth perception and SAM segmentation.
-        
+        Closer question using depth perception and SAM segmentation.
+
         Args:
             margin_ratio: Required relative depth difference for reliable comparison.
                 Objects must differ by at least this fraction of the closer object's depth.
         """
         super().__init__(
-            question="Is there at least one {object_1} in front of any {object_2}?",
+            question="Is there at least one {object_1} that appears closer to the camera than any {object_2}?",
             variables=["object_1", "object_2"],
             predicates=[
                 lambda image, detections: ObjectDetectionPredicates.at_least_x_many_class_detections(
@@ -1827,23 +1829,29 @@ class FrontOf(Question):
         if margin_ratio <= 0 or margin_ratio >= 1:
             raise ValueError("margin_ratio must be between 0 and 1")
         self.margin_ratio = margin_ratio
-        
+
         # Initialize SAM and DepthPro models lazily
         self._sam_predictor = None
         self._depth_model = None
 
-    def _get_sam_predictor(self):
-        """Lazy initialization of SAM predictor."""
+    def _get_sam_predictor(self, cache: Optional[dict[str, Any]] = None):
+        """Get SAM predictor, preferring shared cache if available."""
+        if cache and "sam_predictor" in cache:
+            return cache["sam_predictor"]   
         if self._sam_predictor is None:
             from graid.utilities.sam_utils import SAMPredictor
-            self._sam_predictor = SAMPredictor()
+            from graid.utilities.common import get_default_device            
+            device = get_default_device()
+            self._sam_predictor = SAMPredictor(device=device)
         return self._sam_predictor
 
     def _get_depth_model(self):
         """Lazy initialization of DepthPro model."""
         if self._depth_model is None:
             from graid.models.DepthPro import DepthPro
-            self._depth_model = DepthPro()
+            from graid.utilities.common import get_default_device
+            device = get_default_device()
+            self._depth_model = DepthPro(device=device)
         return self._depth_model
 
     def apply(
@@ -1851,133 +1859,106 @@ class FrontOf(Question):
         image: Image.Image,
         detections: list[ObjectDetectionResultI],
     ) -> list[tuple[str, str]]:
-        """
-        Apply FrontOf question using depth-based comparison.
-        
-        @precondition: at_least_x_many_class_detections(image, detections, 2) == True
-        @precondition: exists_non_overlapping_detections(image, detections) == True
-        """
+        return self.apply_with_cache(image, detections, {})
+
+    # New method using shared cache to reuse precomputed depth maps
+    def apply_with_cache(
+        self,
+        image: Image.Image,
+        detections: list[ObjectDetectionResultI],
+        cache: dict,
+    ) -> list[tuple[str, str]]:
+        import time
         from graid.utilities.sam_utils import compare_object_depths
-        
-        try:
-            # Get depth map for the image
-            depth_model = self._get_depth_model()
-            depth_result = depth_model.predict_depth(image)
-            depth_map = depth_result.depth_prediction
-            
-            # Get SAM predictor
-            sam_predictor = self._get_sam_predictor()
-            
-            # Group detections by class
-            detections_by_class = {}
-            for detection in detections:
-                class_name = detection.label
-                if isinstance(class_name, torch.Tensor):
-                    # Handle tensor labels - flatten to individual detections
-                    flattened = detection.flatten()
-                    for flat_det in flattened:
-                        cls = str(flat_det.label)
-                        if cls not in detections_by_class:
-                            detections_by_class[cls] = []
-                        detections_by_class[cls].append(flat_det)
-                else:
-                    cls = str(class_name)
-                    if cls not in detections_by_class:
-                        detections_by_class[cls] = []
-                    detections_by_class[cls].append(detection)
-            
-            # Generate question-answer pairs by comparing different object classes
-            question_answer_pairs = []
-            class_names = list(detections_by_class.keys())
-            
-            for i in range(len(class_names)):
-                for j in range(i + 1, len(class_names)):
-                    obj1_class = class_names[i]
-                    obj2_class = class_names[j]
-                    
-                    obj_1_detections = detections_by_class[obj1_class]
-                    obj_2_detections = detections_by_class[obj2_class]
 
-                    # Track evidence across all non-overlapping pairs
-                    found_yes_case = False  # decisive evidence that obj1 is in front of obj2 (or swapped)
-                    total_pairs = 0
-                    decisive_pairs = 0
-                    all_opposite = True  # every decisive pair showed obj2 in front of obj1
+        start_time = time.time()
+        depth_model = cache.get("depth_model") if cache else None
+        if "depth_map" not in cache:
+            if depth_model is None:
+                depth_model = self._get_depth_model()
+            try:
+                dm = depth_model.predict_depth(image).depth_prediction
+                cache["depth_map"] = dm
+            except Exception as e:
+                logger.debug(f"Closer depth calculation failed: {e}")
+                return []
+        depth_map = cache["depth_map"]
+        sam_predictor = self._get_sam_predictor(cache)
 
-                    # Try all combinations of objects from the two classes
-                    for obj_1_det in obj_1_detections:
-                        for obj_2_det in obj_2_detections:
-                            # Check if objects are non-overlapping
-                            iou = ObjectDetectionUtils.pairwise_iou(obj_1_det, obj_2_det)
-                            if iou.max() > 0:
-                                continue  # Skip overlapping objects
-                            total_pairs += 1
+        # 1. Group detections by class and build a flat list
+        class_detections: dict[str, list[ObjectDetectionResultI]] = {}
+        for det in detections:
+            key = str(det.label)
+            class_detections.setdefault(key, []).append(det)
 
-                            # Get refined masks using SAM
-                            mask1 = sam_predictor.get_mask_from_bbox(image, obj_1_det)
-                            mask2 = sam_predictor.get_mask_from_bbox(image, obj_2_det)
-                            
-                            if mask1 is None or mask2 is None:
-                                # ambiguous; do not count as decisive
-                                all_opposite = False
+        # 2. Build a mask cache using the batched SAM helper
+        mask_cache: dict[int, Optional[torch.Tensor]] = cache.get("sam_masks", {})
+        missing = [d for d in detections if id(d) not in mask_cache]
+        if missing:
+            try:
+                new_masks = sam_predictor.get_masks_from_bboxes(image, detections)
+            except Exception:
+                return []
+            if len(new_masks) != len(detections):
+                return []
+            for d, m in new_masks:
+                mask_cache[id(d)] = m
+            cache["sam_masks"] = mask_cache
+
+        qa_pairs = []
+        classes = list(class_detections.keys())
+        main_loop_start_time = time.time()
+
+        for i in range(len(classes)):
+            for j in range(len(classes)):
+                if i == j:
                                 continue
-                            
-                            # Compare depths using masks
-                            comparison, depth1, depth2 = compare_object_depths(
-                                depth_map, obj_1_det, mask1, obj_2_det, mask2, self.margin_ratio
+                c1, c2 = classes[i], classes[j]
+
+                found_yes = False
+                for det1 in class_detections[c1]:
+                    for det2 in class_detections[c2]:
+                        if ObjectDetectionUtils.pairwise_iou(det1, det2).max() > 0:
+                            continue
+
+                        mask1 = mask_cache.get(id(det1))
+                        mask2 = mask_cache.get(id(det2))
+                        if mask1 is None or mask2 is None:
+                            continue
+
+                        comparison, _, _ = compare_object_depths(
+                            depth_map, det1, mask1, det2, mask2, self.margin_ratio
+                        )
+
+                        if comparison == "object1_front":
+                            qa_pairs.append(
+                                (self.question.format(object_1=c1, object_2=c2), "Yes")
                             )
-                            
-                            if comparison is None:
-                                # ambiguous; do not count as decisive
-                                all_opposite = False
-                                continue
-
-                            decisive_pairs += 1
-                            if comparison == "object1_front":
-                                # obj1 is in front of obj2 → ask the direct question with Yes
-                                question = self.question.format(object_1=obj1_class, object_2=obj2_class)
-                                question_answer_pairs.append((question, "Yes"))
-                                found_yes_case = True
-                                break
-                            elif comparison == "object2_front":
-                                # obj2 is in front of obj1 → ask the swapped question with Yes
-                                question = self.question.format(object_1=obj2_class, object_2=obj1_class)
-                                question_answer_pairs.append((question, "Yes"))
-                                # keep scanning to ensure no conflicting evidence for direct order
-                            else:
-                                all_opposite = False
-                        if found_yes_case:
+                            found_yes = True
                             break
+                    if found_yes:
+                        break
 
-                    if found_yes_case:
-                        # We already emitted a decisive Yes; do not emit a No for the opposite
-                        continue
+                if not found_yes:
+                    qa_pairs.append(
+                        (self.question.format(object_1=c1, object_2=c2), "No")
+                    )
 
-                    # Only emit a "No" when it is decisively obvious according to the margin:
-                    # - we evaluated at least one non-overlapping pair
-                    # - every decisive comparison contradicted the direct question (obj2 in front)
-                    # - and there were no ambiguous comparisons
-                    if total_pairs > 0 and decisive_pairs == total_pairs and all_opposite:
-                        question = self.question.format(object_1=obj1_class, object_2=obj2_class)
-                        question_answer_pairs.append((question, "No"))
-
-            return question_answer_pairs
-            
-        except Exception as e:
-            logger.debug(f"FrontOf question failed: {e}")
-            return []
+        logger.debug(f"Closer: Main question loop took {time.time() - main_loop_start_time:.4f}s")
+        logger.debug(f"Closer: Total apply_with_cache took {time.time() - start_time:.4f}s")
+        return qa_pairs
 
 
-class BehindOf(Question):
+class Farther(Question):
     def __init__(self, margin_ratio: float = 0.1) -> None:
         """
-        BehindOf question using depth perception and SAM segmentation.
-        
+        Farther question using depth perception and SAM segmentation.
+
         Args:
             margin_ratio: Required relative depth difference for reliable comparison.
         """
         super().__init__(
-            question="Is there at least one {object_1} behind any {object_2}?", 
+            question="Is there at least one {object_1} that appears farther from the camera than any {object_2}?",
             variables=["object_1", "object_2"],
             predicates=[
                 lambda image, detections: ObjectDetectionPredicates.at_least_x_many_class_detections(
@@ -1989,7 +1970,7 @@ class BehindOf(Question):
         if margin_ratio <= 0 or margin_ratio >= 1:
             raise ValueError("margin_ratio must be between 0 and 1")
         self.margin_ratio = margin_ratio
-        
+
         # Initialize SAM and DepthPro models lazily
         self._sam_predictor = None
         self._depth_model = None
@@ -1998,14 +1979,18 @@ class BehindOf(Question):
         """Lazy initialization of SAM predictor."""
         if self._sam_predictor is None:
             from graid.utilities.sam_utils import SAMPredictor
-            self._sam_predictor = SAMPredictor()
+            from graid.utilities.common import get_default_device
+            device = get_default_device()
+            self._sam_predictor = SAMPredictor(device=device)
         return self._sam_predictor
 
     def _get_depth_model(self):
         """Lazy initialization of DepthPro model."""
         if self._depth_model is None:
             from graid.models.DepthPro import DepthPro
-            self._depth_model = DepthPro()
+            from graid.utilities.common import get_default_device
+            device = get_default_device()
+            self._depth_model = DepthPro(device=device)
         return self._depth_model
 
     def apply(
@@ -2013,123 +1998,113 @@ class BehindOf(Question):
         image: Image.Image,
         detections: list[ObjectDetectionResultI],
     ) -> list[tuple[str, str]]:
-        """
-        Apply BehindOf question using depth-based comparison.
-        
-        @precondition: at_least_x_many_class_detections(image, detections, 2) == True
-        @precondition: exists_non_overlapping_detections(image, detections) == True
-        """
-        from graid.utilities.sam_utils import compare_object_depths
-        
-        try:
-            # Get depth map for the image
-            depth_model = self._get_depth_model()
-            depth_result = depth_model.predict_depth(image)
-            depth_map = depth_result.depth_prediction
-            
-            # Get SAM predictor
-            sam_predictor = self._get_sam_predictor()
-            
-            # Group detections by class
-            detections_by_class = {}
-            for detection in detections:
-                class_name = detection.label
-                if isinstance(class_name, torch.Tensor):
-                    # Handle tensor labels - flatten to individual detections
-                    flattened = detection.flatten()
-                    for flat_det in flattened:
-                        cls = str(flat_det.label)
-                        if cls not in detections_by_class:
-                            detections_by_class[cls] = []
-                        detections_by_class[cls].append(flat_det)
-                else:
-                    cls = str(class_name)
-                    if cls not in detections_by_class:
-                        detections_by_class[cls] = []
-                    detections_by_class[cls].append(detection)
-            
-            # Generate question-answer pairs by comparing different object classes
-            question_answer_pairs = []
-            class_names = list(detections_by_class.keys())
-            
-            for i in range(len(class_names)):
-                for j in range(i + 1, len(class_names)):
-                    obj1_class = class_names[i]
-                    obj2_class = class_names[j]
-                    
-                    obj_1_detections = detections_by_class[obj1_class]
-                    obj_2_detections = detections_by_class[obj2_class]
-                    
-                    found_yes_case = False
-                    # Try all combinations of objects from the two classes
-                    for obj_1_det in obj_1_detections:
-                        for obj_2_det in obj_2_detections:
-                            # Check if objects are non-overlapping
-                            iou = ObjectDetectionUtils.pairwise_iou(obj_1_det, obj_2_det)
-                            if iou.max() > 0:
-                                continue  # Skip overlapping objects
-                            
-                            # Get refined masks using SAM
-                            mask1 = sam_predictor.get_mask_from_bbox(image, obj_1_det)
-                            mask2 = sam_predictor.get_mask_from_bbox(image, obj_2_det)
-                            
-                            if mask1 is None or mask2 is None:
-                                continue
-                            
-                            # Compare depths using masks
-                            comparison, depth1, depth2 = compare_object_depths(
-                                depth_map, obj_1_det, mask1, obj_2_det, mask2, self.margin_ratio
-                            )
-                            
-                            if comparison is None:
-                                continue  # Depths too similar for reliable comparison
-                            
-                            # Generate question-answer pairs (behind means farther = higher depth)
-                            if comparison == "object2_front":
-                                # obj1 is behind obj2 (obj2 is in front)
-                                question = self.question.format(
-                                    object_1=obj1_class, object_2=obj2_class
-                                )
-                                question_answer_pairs.append((question, "Yes"))
-                                found_yes_case = True
-                                break
-                            elif comparison == "object1_front":
-                                # obj2 is behind obj1 (obj1 is in front)
-                                question = self.question.format(
-                                    object_1=obj2_class, object_2=obj1_class
-                                )
-                                question_answer_pairs.append((question, "Yes"))
-                                found_yes_case = True
-                                break
-                        if found_yes_case:
-                            break
-                    
-                    if not found_yes_case:
-                        question = self.question.format(object_1=obj1_class, object_2=obj2_class)
-                        question_answer_pairs.append((question, "No"))
-                        question = self.question.format(object_1=obj2_class, object_2=obj1_class)
-                        question_answer_pairs.append((question, "No"))
+        return self.apply_with_cache(image, detections, {})
 
-            return question_answer_pairs
-            
-        except Exception as e:
-            logger.debug(f"BehindOf question failed: {e}")
-            return []
+    def apply_with_cache(
+        self,
+        image: Image.Image,
+        detections: list[ObjectDetectionResultI],
+        cache: dict,
+    ) -> list[tuple[str, str]]:
+        import time
+        from graid.utilities.sam_utils import compare_object_depths
+
+        start_time = time.time()
+        depth_model = cache.get("depth_model") if cache else None
+        if "depth_map" not in cache:
+            if depth_model is None:
+                depth_model = self._get_depth_model()
+            try:
+                dm = depth_model.predict_depth(image).depth_prediction
+                cache["depth_map"] = dm
+            except Exception as e:
+                logger.debug(f"Farther depth calculation failed: {e}")
+                return []
+        depth_map = cache["depth_map"]
+        
+
+        sam_predictor = self._get_sam_predictor()
+        
+
+        # Group detections by class and flat list
+        class_detections: dict[str, list[ObjectDetectionResultI]] = {}
+        for det in detections:
+            for d_single in det.flatten():
+                key = str(d_single.label)
+                class_detections.setdefault(key, []).append(d_single)
+
+        # Build mask cache via batched SAM
+        # Reuse per-image SAM mask cache if present
+        mask_cache: dict[int, Optional[torch.Tensor]] = cache.get("sam_masks", {})
+        missing = [d for d in detections if id(d) not in mask_cache]
+        if missing:
+            try:
+                new_masks = sam_predictor.get_masks_from_bboxes(image, detections)
+            except Exception:
+                return []
+            if len(new_masks) != len(detections):
+                return []
+            for d, m in new_masks:
+                mask_cache[id(d)] = m
+            cache["sam_masks"] = mask_cache
+
+        qa_pairs = []
+        classes = list(class_detections.keys())
+        main_loop_start_time = time.time()
+
+        for i in range(len(classes)):
+            for j in range(len(classes)):
+                if i == j:
+                    continue
+                c1, c2 = classes[i], classes[j]
+
+                found_yes = False
+                for det1 in class_detections[c1]:
+                    for det2 in class_detections[c2]:
+                        if ObjectDetectionUtils.pairwise_iou(det1, det2).max() > 0:
+                            continue
+
+                        mask1 = mask_cache.get(id(det1))
+                        mask2 = mask_cache.get(id(det2))
+                        if mask1 is None or mask2 is None:
+                            continue
+
+                        comparison, _, _ = compare_object_depths(
+                            depth_map, det1, mask1, det2, mask2, self.margin_ratio
+                        )
+
+                        if comparison == "object2_front":
+                            qa_pairs.append(
+                                (self.question.format(object_1=c1, object_2=c2), "Yes")
+                            )
+                            found_yes = True
+                            break
+                    if found_yes:
+                        break
+
+                if not found_yes:
+                    qa_pairs.append(
+                        (self.question.format(object_1=c1, object_2=c2), "No")
+                    )
+
+        logger.debug(f"Farther: Main question loop took {time.time() - main_loop_start_time:.4f}s")
+        logger.debug(f"Farther: Total apply_with_cache took {time.time() - start_time:.4f}s")
+        return qa_pairs
 
 
 class DepthRanking(Question):
     """Rank the *k* object classes that are closest to the camera.
-    
+
     Example question (for k=3):
-    
+
         "Rank the 3 kinds of objects that appear the closest in the image from
         closest to farthest. Provide your answer as a comma-separated list of
         object names only."
     """
 
-    def __init__(self, k: int, margin_ratio: float = 0.1) -> None:
+    def __init__(self, k: int, margin_ratio: float = 0.2) -> None:
         """Create a DepthRanking question.
-        
+
         Args:
             k: number of classes to rank.
             margin_ratio: required multiplicative margin between consecutive
@@ -2168,14 +2143,18 @@ class DepthRanking(Question):
         """Lazy initialization of SAM predictor."""
         if self._sam_predictor is None:
             from graid.utilities.sam_utils import SAMPredictor
-            self._sam_predictor = SAMPredictor()
+            from graid.utilities.common import get_default_device
+            device = get_default_device()
+            self._sam_predictor = SAMPredictor(device=device)
         return self._sam_predictor
 
     def _get_depth_model(self):
         """Lazy initialization of DepthPro model."""
         if self._depth_model is None:
             from graid.models.DepthPro import DepthPro
-            self._depth_model = DepthPro()
+            from graid.utilities.common import get_default_device
+            device = get_default_device()
+            self._depth_model = DepthPro(device=device)
         return self._depth_model
 
     def apply(
@@ -2186,113 +2165,402 @@ class DepthRanking(Question):
         if len(detections) == 0:
             logger.debug("No detections for DepthRanking question")
             return []
+        return self.apply_with_cache(image, detections, {})
+
+    def apply_with_cache(
+        self,
+        image: Image.Image,
+        detections: list[ObjectDetectionResultI],
+        cache: dict,
+    ) -> list[tuple[str, str]]:
+        depth_model = cache.get("depth_model") if cache else None
+        if "depth_map" not in cache:
+            if depth_model is None:
+                depth_model = self._get_depth_model()
+            try:
+                cache["depth_map"] = depth_model.predict_depth(image).depth_prediction
+            except Exception as e:
+                logger.debug(f"DepthRanking depth calc failed: {e}")
+                return []
+        depth_map = cache["depth_map"]
 
         from graid.utilities.sam_utils import extract_average_depth_from_mask
 
+        sam_predictor = self._get_sam_predictor()
+
         try:
-            depth_model = self._get_depth_model()
-            depth_result = depth_model.predict_depth(image)
-            depth_map = depth_result.depth_prediction
-
-            sam_predictor = self._get_sam_predictor()
-
-            # Build min-depth per class dictionary
-            class_min_depth: dict[str, float] = {}
-            for detection in detections:
-                label = detection.label
-                if isinstance(label, torch.Tensor):
-                    # Iterate through tensor labels (multiple boxes per detection)
-                    for idx in range(label.shape[0]):
-                        cls_name = str(label[idx].item())
-                        
-                        # Create a single detection result for this box
-                        # Handle both scalar and tensor score/cls
-                        if isinstance(detection.score, torch.Tensor):
-                            det_score = detection.score[idx]
-                        else:
-                            det_score = detection.score
-                            
-                        if isinstance(detection.cls, torch.Tensor):
-                            det_cls = detection.cls[idx]
-                        else:
-                            det_cls = detection.cls
-                            
-                        single_detection = ObjectDetectionResultI(
-                            score=det_score,
-                            cls=det_cls,
-                            label=cls_name,
-                            bbox=detection.as_xyxy()[idx],
-                            image_hw=detection.as_ultra_box.orig_shape,
-                        )
-                        
-                        mask = sam_predictor.get_mask_from_bbox(image, single_detection)
-                        if mask is not None:
-                            depth = extract_average_depth_from_mask(depth_map, mask)
-                            if depth is not None:
-                                class_min_depth[cls_name] = min(
-                                    class_min_depth.get(cls_name, float('inf')), depth
-                                )
-                else:
-                    cls_name = str(label)
-                    mask = sam_predictor.get_mask_from_bbox(image, detection)
-                    if mask is not None:
-                        depth = extract_average_depth_from_mask(depth_map, mask)
-                        if depth is not None:
-                            class_min_depth[cls_name] = min(
-                                class_min_depth.get(cls_name, float('inf')), depth
-                            )
-            
-            if len(class_min_depth) < self.k:
-                logger.debug("Not enough unique classes with depth for DepthRanking question")
+            if len(detections) < self.k:
                 return []
-            
-            # Sort classes by their closest instance depth
-            sorted_classes = sorted(
-                class_min_depth.items(), key=lambda item: item[1]
-            )
-            
-            # Verify margin criterion among top-k depths
-            top_k = sorted_classes[: self.k]
-            for i in range(len(top_k) - 1):
-                depth_i = top_k[i][1]
-                depth_next = top_k[i + 1][1]
-                if depth_i > (1 - self.margin_ratio) * depth_next:
-                    logger.debug(
-                        "DepthRanking margin threshold not met between %s and %s", top_k[i][0], top_k[i+1][0]
-                    )
-                    return []
-            
-            top_k_labels = [cls for cls, _ in top_k]
-            
-            question = self.question.format(k=self.k)
-            answer = ", ".join(map(str, top_k_labels))
-            return [(question, answer)]
 
+            # Use batched SAM to get masks for all detections
+            # Reuse per-image SAM mask cache if available
+            mask_cache: dict[int, Optional[torch.Tensor]] = cache.get("sam_masks", {})
+            missing = [d for d in detections if id(d) not in mask_cache]
+            if missing:
+                for d, m in sam_predictor.get_masks_from_bboxes(image, detections):
+                    mask_cache[id(d)] = m
+                cache["sam_masks"] = mask_cache
+
+            # Compute refined depth per detection
+            class_min_depth: dict[str, float] = {}
+            for det in detections:
+                mask = mask_cache.get(id(det))
+                if mask is None:
+                    continue
+                avg_depth = extract_average_depth_from_mask(depth_map, mask)
+                if avg_depth is None:
+                    continue
+                cls = str(det.label)
+                if cls not in class_min_depth or avg_depth < class_min_depth[cls]:
+                    class_min_depth[cls] = avg_depth
+
+            if len(class_min_depth) < self.k:
+                logger.debug("Not enough classes with valid depth for DepthRanking")
+                return []
+
+            sorted_classes = sorted(class_min_depth.items(), key=lambda kv: kv[1])
+            top_k = sorted_classes[: self.k]
+
+            # margin check
+            for i in range(len(top_k) - 1):
+                if top_k[i][1] > (1 - self.margin_ratio) * top_k[i + 1][1]:
+                    logger.debug("DepthRanking margin threshold not met between %s and %s", top_k[i][0], top_k[i + 1][0])
+                    return []
+
+            labels_ordered = [cls for cls, _ in top_k]
+            return [(self.question.format(k=self.k), ", ".join(labels_ordered))]
         except Exception as e:
-            logger.debug(f"DepthRanking question failed: {e}")
+            logger.debug(f"DepthRanking failed with cache: {e}")
             return []
+
+
+class ObjectsInRow(Question):
+    def __init__(self, variance_threshold: float = 0.1) -> None:
+        """Linear regression-based row detection.
+
+        Args:
+            variance_threshold: Maximum normalized variance for y-centers to be
+                considered in a row. Lower values = stricter row detection.
+        """
+        super().__init__(
+            question="Are there any objects arranged in a row?",
+            variables=[],
+            predicates=[
+                lambda image, detections: ObjectDetectionPredicates.at_least_x_detections(
+                    image, detections, 3
+                ),
+            ],
+        )
+        self.variance_threshold = variance_threshold
+
+    def apply(
+        self,
+        image: Image.Image,
+        detections: list[ObjectDetectionResultI],
+    ) -> list[tuple[str, str]]:
+        from sklearn.linear_model import LinearRegression
+
+        if len(detections) < 3:
+            return [(self.question, "No")]
+
+        # Get center points - normalized detections have bbox shape (1, 4)
+        centers = []
+        for detection in detections:
+            bbox = detection.as_xyxy()[0]  # Shape (4,) after indexing
+            x_center = float((bbox[0] + bbox[2]) / 2)
+            y_center = float((bbox[1] + bbox[3]) / 2)
+            centers.append((x_center, y_center))
+
+        # Sort by x-coordinate
+        centers = sorted(centers, key=lambda p: p[0])
+
+        # Try sliding windows of 3+ objects
+        image_height = image.size[1]
+
+        for window_size in range(3, len(centers) + 1):
+            for start in range(len(centers) - window_size + 1):
+                window = centers[start : start + window_size]
+
+                # Extract x and y coordinates
+                x_coords = np.array([p[0] for p in window]).reshape(-1, 1)
+                y_coords = np.array([p[1] for p in window])
+
+                # Fit linear regression
+                reg = LinearRegression().fit(x_coords, y_coords)
+                y_pred = reg.predict(x_coords)
+
+                # Calculate normalized variance (by image height)
+                variance = np.var(y_coords - y_pred)
+                normalized_variance = variance / (image_height**2)
+
+                if normalized_variance < self.variance_threshold:
+                    return [(self.question, "Yes")]
+
+        return [(self.question, "No")]
+
+
+class ObjectsInLine(Question):
+    def __init__(self, variance_threshold: float = 0.1) -> None:
+        """Multiple choice question about which objects are in a row.
+
+        Args:
+            variance_threshold: Same as ObjectsInRow for consistency.
+        """
+        super().__init__(
+            question="Which objects appear to be arranged in a row? A) {option_a}, B) {option_b}, C) {option_c}, D) No clear row arrangement. Respond with the letter only.",
+            variables=["option_a", "option_b", "option_c"],
+            predicates=[
+                lambda image, detections: ObjectDetectionPredicates.at_least_x_detections(
+                    image, detections, 3
+                ),
+            ],
+        )
+        self.variance_threshold = variance_threshold
+
+    def apply(
+        self,
+        image: Image.Image,
+        detections: list[ObjectDetectionResultI],
+    ) -> list[tuple[str, str]]:
+        from sklearn.linear_model import LinearRegression
+
+        if len(detections) < 3:
+            return []
+
+        # Get centers with labels - normalized detections have bbox shape (1, 4)
+        centers_with_labels = []
+        for detection in detections:
+            bbox = detection.as_xyxy()[0]  # Shape (4,) after indexing
+            x_center = float((bbox[0] + bbox[2]) / 2)
+            y_center = float((bbox[1] + bbox[3]) / 2)
+            label = str(detection.label)
+            centers_with_labels.append((x_center, y_center, label))
+
+        # Sort by x-coordinate
+        centers_with_labels = sorted(centers_with_labels, key=lambda p: p[0])
+
+        # Find best row arrangement
+        best_row = None
+        best_variance = float("inf")
+        image_height = image.size[1]
+
+        for window_size in range(3, len(centers_with_labels) + 1):
+            for start in range(len(centers_with_labels) - window_size + 1):
+                window = centers_with_labels[start : start + window_size]
+
+                x_coords = np.array([p[0] for p in window]).reshape(-1, 1)
+                y_coords = np.array([p[1] for p in window])
+
+                reg = LinearRegression().fit(x_coords, y_coords)
+                y_pred = reg.predict(x_coords)
+
+                variance = np.var(y_coords - y_pred)
+                normalized_variance = variance / (image_height**2)
+
+                if (
+                    normalized_variance < self.variance_threshold
+                    and normalized_variance < best_variance
+                ):
+                    best_variance = normalized_variance
+                    best_row = [p[2] for p in window]  # Extract labels
+
+        if best_row is None:
+            return []  # No valid row found
+
+        # Create multiple choice options
+        correct_text = ", ".join(sorted(set(best_row)))
+
+        # Generate distractors
+        all_labels = [str(d.label) for d in detections]
+        unique_labels = list(set(all_labels))
+        random.shuffle(unique_labels)
+
+        # Create distinct distractors
+        distractor1 = ", ".join(unique_labels[: min(3, len(unique_labels))])
+        distractor2 = ", ".join(unique_labels[-min(2, len(unique_labels)) :])
+
+        # Ensure distractors are different from correct answer
+        max_attempts = 10
+        attempt = 0
+        while (
+            distractor1 == correct_text
+            or distractor2 == correct_text
+            or distractor1 == distractor2
+        ) and attempt < max_attempts:
+            random.shuffle(unique_labels)
+            distractor1 = ", ".join(unique_labels[: min(3, len(unique_labels))])
+            distractor2 = ", ".join(unique_labels[-min(2, len(unique_labels)) :])
+            attempt += 1
+
+        # If still duplicates, skip this question
+        if (
+            distractor1 == correct_text
+            or distractor2 == correct_text
+            or distractor1 == distractor2
+        ):
+            return []
+
+        # Randomly assign correct answer to A, B, or C
+        options = [correct_text, distractor1, distractor2]
+        random.shuffle(options)
+        correct_letter = ["A", "B", "C"][options.index(correct_text)]
+
+        q = self.question.format(
+            option_a=options[0], option_b=options[1], option_c=options[2]
+        )
+
+        return [(q, correct_letter)]
+
+
+class MostClusteredObjects(Question):
+    def __init__(self, eps_ratio: float = 0.05, min_samples: int = 3) -> None:
+        """DBSCAN-based clustering with multiple choice answers.
+
+        Args:
+            eps_ratio: Maximum distance between points in a cluster as a fraction
+                of the image diagonal. Default 0.05 means 5% of image diagonal.
+            min_samples: Minimum points required to form a cluster.
+        """
+        super().__init__(
+            question="Which group of objects appears most tightly clustered? A) {option_a}, B) {option_b}, C) {option_c}, D) No clear clusters. Respond with the letter only.",
+            variables=["option_a", "option_b", "option_c"],
+            predicates=[
+                lambda image, detections: ObjectDetectionPredicates.at_least_x_detections(
+                    image, detections, 9  # Need at least 3 clusters × 3 objects each
+                ),
+            ],
+        )
+        self.eps_ratio = eps_ratio
+        self.min_samples = min_samples
+
+    def apply(
+        self,
+        image: Image.Image,
+        detections: list[ObjectDetectionResultI],
+    ) -> list[tuple[str, str]]:
+        from sklearn.cluster import DBSCAN
+
+        if len(detections) < 9:
+            return []
+
+        # Get centers and labels - normalized detections have bbox shape (1, 4)
+        centers = []
+        labels = []
+        for detection in detections:
+            bbox = detection.as_xyxy()[0]  # Shape (4,) after indexing
+            x_center = float((bbox[0] + bbox[2]) / 2)
+            y_center = float((bbox[1] + bbox[3]) / 2)
+            centers.append([x_center, y_center])
+            labels.append(str(detection.label))
+
+        centers = np.array(centers)
+
+        # Calculate eps as a fraction of image diagonal
+        image_width, image_height = image.size
+        image_diagonal = math.sqrt(image_width**2 + image_height**2)
+        eps = self.eps_ratio * image_diagonal
+
+        # Apply DBSCAN
+        clustering = DBSCAN(eps=eps, min_samples=self.min_samples).fit(centers)
+        cluster_labels = clustering.labels_
+
+        # Group objects by cluster (ignore noise points with label -1)
+        clusters = {}
+        for i, cluster_id in enumerate(cluster_labels):
+            if cluster_id != -1:  # Not noise
+                if cluster_id not in clusters:
+                    clusters[cluster_id] = []
+                clusters[cluster_id].append(labels[i])
+
+        if len(clusters) < 2:
+            return []  # Need at least 2 clusters to compare
+
+        # Find most compact cluster
+        def cluster_compactness(cluster_id):
+            cluster_points = centers[cluster_labels == cluster_id]
+            if len(cluster_points) < 2:
+                return float("inf")
+            return np.mean(np.var(cluster_points, axis=0))
+
+        most_compact_id = min(clusters.keys(), key=cluster_compactness)
+        most_compact_objects = list(set(clusters[most_compact_id]))  # Remove duplicates
+
+        # Create multiple choice options
+        correct_text = ", ".join(sorted(most_compact_objects))
+
+        # Generate distractors from other clusters or random combinations
+        all_unique_labels = list(set(labels))
+        random.shuffle(all_unique_labels)
+
+        # Create distractors ensuring they're different from correct answer
+        distractor1 = ", ".join(all_unique_labels[: min(3, len(all_unique_labels))])
+        distractor2 = ", ".join(all_unique_labels[-min(2, len(all_unique_labels)) :])
+
+        # Ensure distractors are different from correct answer
+        max_attempts = 10
+        attempt = 0
+        while (
+            distractor1 == correct_text
+            or distractor2 == correct_text
+            or distractor1 == distractor2
+        ) and attempt < max_attempts:
+            random.shuffle(all_unique_labels)
+            distractor1 = ", ".join(all_unique_labels[: min(3, len(all_unique_labels))])
+            distractor2 = ", ".join(
+                all_unique_labels[-min(2, len(all_unique_labels)) :]
+            )
+            attempt += 1
+
+        # If still duplicates after attempts, skip this question
+        if (
+            distractor1 == correct_text
+            or distractor2 == correct_text
+            or distractor1 == distractor2
+        ):
+            return []
+
+        # Randomly assign correct answer
+        options = [correct_text, distractor1, distractor2]
+        random.shuffle(options)
+        correct_letter = ["A", "B", "C"][options.index(correct_text)]
+
+        q = self.question.format(
+            option_a=options[0], option_b=options[1], option_c=options[2]
+        )
+
+        return [(q, correct_letter)]
 
 
 # Dynamically discover all Question classes in this module
 import inspect
 import sys
 
+
 def _build_all_questions():
     """Build ALL_QUESTIONS list by discovering all Question subclasses in this module."""
     current_module = sys.modules[__name__]
     question_classes = {}
-    
+
     # Find all classes that inherit from Question
     for name, obj in inspect.getmembers(current_module, inspect.isclass):
-        if (issubclass(obj, Question) and 
-            obj != Question and  # Exclude the base class
-            hasattr(obj, 'is_applicable')):  # Ensure it's a concrete question class
+        if (
+            issubclass(obj, Question)
+            and obj != Question  # Exclude the base class
+            and hasattr(obj, "is_applicable")
+        ):  # Ensure it's a concrete question class
             question_classes[name] = obj
-    
+
     return question_classes
+
 
 # Build the dictionary of available question classes
 ALL_QUESTION_CLASSES = _build_all_questions()
 
 # Keep the old ALL_QUESTIONS for backward compatibility, but it's no longer used
 ALL_QUESTIONS = []
+
+DEPTH_QUESTIONS = [
+    Closer,
+    Farther,
+    DepthRanking,
+]

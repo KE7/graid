@@ -1,0 +1,151 @@
+{
+  "dataset_name": "waymo",
+  "split": "train+val",
+  "models": [],
+  "use_wbf": false,
+  "confidence_threshold": 0.0,
+  "batch_size": 16,
+  "device": null,
+  "allowable_set": null,
+  "num_workers": 8,
+  "qa_workers": 12,
+  "num_samples": 0,
+  "question_configs": [
+    {
+      "name": "IsObjectCentered",
+      "params": {
+        "buffer_ratio": 0.05
+      }
+    },
+    {
+      "name": "Quadrants",
+      "params": {
+        "N": 2,
+        "M": 2,
+        "margin_ratio": 0.1
+      }
+    },
+    {
+      "name": "Quadrants",
+      "params": {
+        "N": 2,
+        "M": 3,
+        "margin_ratio": 0.1
+      }
+    },
+    {
+      "name": "Quadrants",
+      "params": {
+        "N": 3,
+        "M": 2,
+        "margin_ratio": 0.1
+      }
+    },
+    {
+      "name": "Quadrants",
+      "params": {
+        "N": 3,
+        "M": 3,
+        "margin_ratio": 0.1
+      }
+    },
+    {
+      "name": "LargestAppearance",
+      "params": {
+        "threshold": 0.3
+      }
+    },
+    {
+      "name": "RankLargestK",
+      "params": {
+        "k": 2,
+        "margin_ratio": 0.3
+      }
+    },
+    {
+      "name": "RankLargestK",
+      "params": {
+        "k": 3,
+        "margin_ratio": 0.3
+      }
+    },
+    {
+      "name": "MostAppearance",
+      "params": {
+        "margin_ratio": 0.2
+      }
+    },
+    {
+      "name": "LeastAppearance",
+      "params": {
+        "margin_ratio": 0.2
+      }
+    },
+    {
+      "name": "LeftOf",
+      "params": {}
+    },
+    {
+      "name": "RightOf",
+      "params": {}
+    },
+    {
+      "name": "LeftMost",
+      "params": {}
+    },
+    {
+      "name": "RightMost",
+      "params": {}
+    },
+    {
+      "name": "HowMany",
+      "params": {}
+    },
+    {
+      "name": "AreMore",
+      "params": {
+        "margin_ratio": 0.2
+      }
+    },
+    {
+      "name": "WhichMore",
+      "params": {
+        "margin_ratio": 0.2
+      }
+    },
+    {
+      "name": "LeftMostWidthVsHeight",
+      "params": {
+        "threshold": 0.75,
+        "spatial_margin_ratio": 0.05
+      }
+    },
+    {
+      "name": "RightMostWidthVsHeight",
+      "params": {
+        "threshold": 0.75,
+        "spatial_margin_ratio": 0.05
+      }
+    },
+    {
+      "name": "MoreThanThresholdHowMany",
+      "params": {
+        "threshold": 1.5
+      }
+    },
+    {
+      "name": "LessThanThresholdHowMany",
+      "params": {
+        "threshold": 0.5
+      }
+    },
+    {
+      "name": "MultiChoiceHowMany",
+      "params": {}
+    }
+  ],
+  "save_path": "./waymo_gt_dataset_unique",
+  "upload_to_hub": true,
+  "hub_repo_id": "kd7/graid-waymo-unique",
+  "hub_private": false
+} 

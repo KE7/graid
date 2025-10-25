@@ -12,13 +12,12 @@ import numpy as np
 import torch
 from dotenv import load_dotenv
 from google import genai
+from graid.utilities.coco import coco_labels
 from openai import OpenAI
 from PIL import Image
 from pydantic import BaseModel, Field
 from tenacity import retry, stop_after_attempt, wait_exponential
 from torchvision import transforms
-
-from graid.utilities.coco import coco_labels
 
 
 class VLM(ABC):
@@ -68,47 +67,47 @@ class GPT(VLM):
     def _convert_messages_for_openai(self, messages, base64_image):
         """Convert message list to OpenAI API format with image attached to last user message."""
         converted_messages = []
-        
+
         # Find the last user message to attach the image
         last_user_idx = None
         for i in range(len(messages) - 1, -1, -1):
             if messages[i]["role"] == "user":
                 last_user_idx = i
                 break
-        
+
         for i, msg in enumerate(messages):
             if msg["role"] in ["system", "assistant"]:
                 # Pass through system and assistant messages as-is
-                converted_messages.append({
-                    "role": msg["role"],
-                    "content": msg["content"]
-                })
+                converted_messages.append(
+                    {"role": msg["role"], "content": msg["content"]}
+                )
             elif msg["role"] == "user":
                 if i == last_user_idx:
                     # Attach image to the last user message
-                    converted_messages.append({
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/jpeg;base64,{base64_image}",
-                                    "detail": "high",
+                    converted_messages.append(
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/jpeg;base64,{base64_image}",
+                                        "detail": "high",
+                                    },
                                 },
-                            },
-                            {
-                                "type": "text",
-                                "text": msg["content"],
-                            },
-                        ],
-                    })
+                                {
+                                    "type": "text",
+                                    "text": msg["content"],
+                                },
+                            ],
+                        }
+                    )
                 else:
                     # Regular user message without image
-                    converted_messages.append({
-                        "role": "user",
-                        "content": msg["content"]
-                    })
-        
+                    converted_messages.append(
+                        {"role": "user", "content": msg["content"]}
+                    )
+
         return converted_messages
 
     @retry(
@@ -118,7 +117,7 @@ class GPT(VLM):
     def generate_answer(self, image, messages: list[dict[str, str]]):
         # reference: https://platform.openai.com/docs/guides/vision
         base64_image = self.encode_image(image)
-        
+
         converted_messages = self._convert_messages_for_openai(messages, base64_image)
 
         completion = self.client.chat.completions.create(
@@ -194,7 +193,7 @@ class Gemini(VLM):
     )
     def generate_answer(self, image, messages: list[dict[str, str]]):
         from google.genai import types
-        
+
         image = self.encode_image(image)
 
         system_instruction, contents = self._prepare_gemini_request(messages, image)
@@ -276,38 +275,43 @@ class Llama(VLM):
     def _convert_messages_for_openai(self, messages, base64_image):
         """Convert message list to OpenAI API format with image attached to last user message."""
         converted_messages = []
-        
+
         # Find the last user message to attach the image
         last_user_idx = None
         for i in range(len(messages) - 1, -1, -1):
             if messages[i]["role"] == "user":
                 last_user_idx = i
                 break
-        
+
         for i, msg in enumerate(messages):
             if msg["role"] in ["system", "assistant"]:
                 # Pass through system and assistant messages as-is
-                converted_messages.append({
-                    "role": msg["role"],
-                    "content": msg["content"]
-                })
+                converted_messages.append(
+                    {"role": msg["role"], "content": msg["content"]}
+                )
             elif msg["role"] == "user":
                 if i == last_user_idx:
                     # Attach image to the last user message
-                    converted_messages.append({
-                        "role": "user",
-                        "content": [
-                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}},
-                            {"type": "text", "text": msg["content"]},
-                        ],
-                    })
+                    converted_messages.append(
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/jpeg;base64,{base64_image}"
+                                    },
+                                },
+                                {"type": "text", "text": msg["content"]},
+                            ],
+                        }
+                    )
                 else:
                     # Regular user message without image
-                    converted_messages.append({
-                        "role": "user",
-                        "content": msg["content"]
-                    })
-        
+                    converted_messages.append(
+                        {"role": "user", "content": msg["content"]}
+                    )
+
         return converted_messages
 
     @retry(
@@ -545,7 +549,7 @@ class GPT_CD(GPT):
 
         question = messages[-1]["content"]
         answer_cls = get_answer_class_from_question(question)
-        
+
         converted_messages = self._convert_messages_for_openai(messages, base64_image)
 
         completion = self.client.beta.chat.completions.parse(
@@ -606,7 +610,7 @@ class Gemini_CD(Gemini):
 
     def generate_answer(self, image, messages: list[dict[str, str]]):
         from google.genai import types
-        
+
         image = self.encode_image(image)
 
         question = messages[-1]["content"]
@@ -650,13 +654,15 @@ class GPT_CoT_CD(GPT):
         base64_image = self.encode_image(image)
 
         converted_messages = self._convert_messages_for_openai(messages, base64_image)
-        
+
         question = messages[-1]["content"]
         # Add the additional system message for CoT_CD
-        converted_messages.append({
-            "role": "system",
-            "content": f"The final_answer should be of type: {get_answer_class_from_question(question).model_json_schema()}",
-        })
+        converted_messages.append(
+            {
+                "role": "system",
+                "content": f"The final_answer should be of type: {get_answer_class_from_question(question).model_json_schema()}",
+            }
+        )
 
         completion = self.client.beta.chat.completions.parse(
             model=self.model_name,
@@ -691,12 +697,14 @@ class Llama_CoT_CD(Llama):
         # to be the answer_cls so we will include it in the prompt
 
         converted_messages = self._convert_messages_for_openai(messages, base64_image)
-        
+
         # Add the additional system message for CoT_CD
-        converted_messages.append({
-            "role": "system",
-            "content": f"The final_answer should be of type: {answer_cls.model_json_schema()}",
-        })
+        converted_messages.append(
+            {
+                "role": "system",
+                "content": f"The final_answer should be of type: {answer_cls.model_json_schema()}",
+            }
+        )
 
         response = self.client.beta.chat.completions.parse(
             model=self.model,
@@ -724,16 +732,18 @@ class Gemini_CoT_CD(Gemini):
 
     def generate_answer(self, image, messages: list[dict[str, str]]):
         from google.genai import types
-        
+
         image = self.encode_image(image)
 
         question = messages[-1]["content"]
         response_format = get_answer_class_from_question(question)
 
         system_instruction, contents = self._prepare_gemini_request(messages, image)
-        
+
         # Add the schema information for CoT_CD as an extra text element
-        contents.append(f"The final_answer should be of type: {response_format.model_json_schema()}")
+        contents.append(
+            f"The final_answer should be of type: {response_format.model_json_schema()}"
+        )
 
         config_kwargs = {
             "response_mime_type": "application/json",
@@ -797,7 +807,9 @@ class Claude(VLM):
         for i, msg in enumerate(messages):
             role, content = msg["role"], msg["content"]
             if role == "system":
-                system_prompt = content if system_prompt is None else f"{system_prompt}\n{content}"
+                system_prompt = (
+                    content if system_prompt is None else f"{system_prompt}\n{content}"
+                )
                 continue  # system prompt handled separately
 
             if role in ("user", "assistant"):
@@ -828,7 +840,9 @@ class Claude(VLM):
     def generate_answer(self, image, messages: list[dict[str, str]]):
         base64_image = self.encode_image(image)
 
-        claude_messages, system_prompt = self._convert_messages_for_claude(messages, base64_image)
+        claude_messages, system_prompt = self._convert_messages_for_claude(
+            messages, base64_image
+        )
 
         response = self.client.messages.create(
             model=self.model,
@@ -861,7 +875,9 @@ class Claude_CD(Claude):
 
         base64_image = self.encode_image(image)
 
-        claude_messages, system_prompt = self._convert_messages_for_claude(messages, base64_image)
+        claude_messages, system_prompt = self._convert_messages_for_claude(
+            messages, base64_image
+        )
 
         # Use anthropic.messages.create with response_model parameter for constrained decoding
         response = self.client.messages.create(
@@ -889,8 +905,10 @@ class Claude_CoT_CD(Claude):
 
         base64_image = self.encode_image(image)
 
-        claude_messages, system_prompt = self._convert_messages_for_claude(messages, base64_image)
-        
+        claude_messages, system_prompt = self._convert_messages_for_claude(
+            messages, base64_image
+        )
+
         # Add schema information to the last user message for Claude
         if claude_messages and claude_messages[-1]["role"] == "user":
             schema_text = f"\n\nThe final_answer should be of type: {answer_class.model_json_schema()}"

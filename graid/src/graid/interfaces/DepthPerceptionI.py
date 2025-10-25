@@ -60,6 +60,7 @@ class DepthPerceptionI:
         )
         # Local import to avoid loading matplotlib unless visualization is needed
         from matplotlib import pyplot as plt
+
         cmap = plt.get_cmap("turbo")
         color_depth = (cmap(inverse_depth_normalized)[..., :3] * 255).astype(np.uint8)
 

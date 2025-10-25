@@ -11,7 +11,6 @@ import logging
 from typing import Any, Optional
 
 import typer
-
 from graid.data.config_support import (
     ConfigurationError,
     DatasetGenerationConfig,
