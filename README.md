@@ -3,7 +3,7 @@
 Official website for the GRAID paper (arXiv preprint).
 
 🌐 **Website**: [https://graid.github.io](https://graid.github.io) (update with your actual URL)  
-📄 **Paper**: [arXiv:PLACEHOLDER](https://arxiv.org) (update when published)  
+📄 **Paper**: [arXiv:2510.22118](https://arxiv.org/abs/2510.22118)  
 💾 **Datasets**: [HuggingFace Collection](https://huggingface.co/collections/kd7/graid-68eeb4f8c77e908db37f7179)  
 💻 **Code**: Coming soon
 
@@ -13,7 +13,7 @@ Official website for the GRAID paper (arXiv preprint).
 @article{elmaaroufi2025graid,
   title={GRAID: Enhancing Spatial Reasoning of VLMs through High-Fidelity Data Generation},
   author={Elmaaroufi, Karim and Lai, Liheng and Svegliato, Justin and Bai, Yutong and Seshia, Sanjit A. and Zaharia, Matei},
-  journal={arXiv preprint arXiv:PLACEHOLDER},
+  journal={arXiv preprint arXiv:2510.22118},
   year={2025}
 }
 ```
