@@ -269,7 +269,7 @@ Generated datasets undergo comprehensive validation:
 - **Metadata Integrity**: Complete provenance tracking for reproducibility
 - **Format Compliance**: COCO-standard annotations with HuggingFace compatibility
 
-## 🔍 Legacy Support
+## 🔍 Example commands
 
 **Interactive CLI**: User-friendly prompts for dataset and model selection
 ```bash
@@ -288,18 +288,6 @@ uv run graid generate-dataset    # Modern HuggingFace generation
 uv run graid generate-dataset --interactive-questions  # Select questions interactively
 uv run graid generate-dataset --list-questions         # Show available questions
 ```
-
-## ✨ Key Advantages
-
-- **🚀 Modern Format**: HuggingFace datasets for seamless ML integration
-- **🎯 Targeted Generation**: Focus on relevant object categories  
-- **🔬 Ensemble Support**: Multi-model fusion for enhanced accuracy
-- **⚙️ Reproducible**: Configuration-driven experiments
-- **🌐 Shareable**: Direct HuggingFace Hub integration
-- **📊 Comprehensive**: Rich metadata and quality metrics
-- **🔧 Extensible**: Support for custom datasets and models
-
-**✅ Ready for production VQA research and applications!**
 
 ## 📄 License
 
