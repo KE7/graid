@@ -1524,8 +1524,8 @@ def generate_dataset(
         )
         logger.info(f"Dataset pushed to HuggingFace Hub: {hub_repo_id}")
 
-        # Note: Using CC BY-NC 4.0 license - no custom license file upload needed
-        # Commercial licensing information is included in the README
+        # Note: Using Apache 2.0 license - permissive open source
+        # License information is included in the README
 
     # Clean up temporary image files only if we uploaded to hub
     # In multi-split scenarios, cleanup is deferred until all splits are processed
