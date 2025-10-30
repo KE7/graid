@@ -845,7 +845,7 @@ def generate_dataset_cmd(
         typer.echo()
         typer.secho("⚖️ License:", fg=typer.colors.YELLOW, bold=True)
         typer.echo(
-            "Licensed under CC BY-NC 4.0: Academic/non-commercial use is free. Commercial use requires a paid license from MESH."
+            "Licensed under Apache 2.0: Free for all uses including commercial. See LICENSE file for details."
         )
 
     except ValidationError as e:

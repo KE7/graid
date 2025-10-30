@@ -741,8 +741,8 @@ class DatasetProcessor:
 
             logger.info(f"Successfully uploaded to Hub: {config.hub_repo_id}")
 
-            # Note: Using CC BY-NC 4.0 license - no custom license file upload needed
-            # Commercial licensing information is included in the README
+            # Note: Using Apache 2.0 license - permissive open source
+            # License information is included in the README
 
         except Exception as e:
             raise ProcessingError(f"Hub upload failed: {e}")
@@ -969,13 +969,9 @@ image.show()  # Display the image
 
 """
 
-        readme_content += f"""This generated dataset is licensed under **Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)**, which permits free use for non-commercial purposes including academic research and education.
+        readme_content += f"""This generated dataset is licensed under the **Apache License 2.0**, which permits free use for all purposes including commercial applications, academic research, and education.
 
-**Commercial Use Policy**: Commercial entities (including startups and companies) that wish to use this dataset for commercial purposes must obtain a paid license from **MESH**. The CC BY-NC license prohibits commercial use without explicit permission.
-
-To request a commercial license, please contact **Karim Elmaaroufi**.
-
-**Original Source Compliance**: The original source datasets and their licenses still apply to the underlying images and annotations. You must comply with both the CC BY-NC terms and the source dataset terms:
+**Original Source Compliance**: The original source datasets and their licenses still apply to the underlying images and annotations. You must comply with both the Apache 2.0 terms and the source dataset terms:
 
 {dataset_config['license_text']}
 

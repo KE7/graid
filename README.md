@@ -300,3 +300,9 @@ uv run graid generate-dataset --list-questions         # Show available question
 - **🔧 Extensible**: Support for custom datasets and models
 
 **✅ Ready for production VQA research and applications!**
+
+## 📄 License
+
+GRAID is open source software licensed under the [Apache License 2.0](LICENSE). This applies to both the GRAID framework code and any datasets generated using GRAID.
+
+**Important**: When using GRAID with source datasets (BDD100K, Waymo, nuImages, etc.), you must also comply with the original source dataset license terms.
