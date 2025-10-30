@@ -1,1206 +1,0 @@
-
-
-🤖 Welcome to GRAID!
-   Generating Reasoning questions from Analysis of Images via Discriminative artificial intelligence
-
-GRAID provides two main capabilities:
-
-🗄️ Dataset Generation (generate-dataset):
-• Multiple datasets: BDD100K, NuImages, Waymo + Custom datasets
-• Multi-backend support: Detectron2, MMDetection, Ultralytics
-• Ensemble models with Weighted Box Fusion (WBF)
-• Ground truth data or custom model predictions
-• Unlabeled image support (models generate detections)
-• Standard formats with COCO-style annotations
-• Interactive configuration and batch processing
-
-🧠 VLM Evaluation (eval-vlms):
-• Evaluate Vision Language Models: GPT, Gemini, Llama
-• Multiple evaluation metrics: LLMJudge, ExactMatch, Contains
-• Various prompting strategies: ZeroShot, CoT, SetOfMark, Constrained Decoding
-
-📄 Loading and validating configuration...
-18:27:49 WARNING [graid.data.config_support] No models specified, will use ground truth
-✓ Configuration validated successfully
-
-📋 Configuration Summary
-Dataset: waymo
-Split: train+val
-Models: 0 (using ground truth if 0)
-Batch size: 16
-Workers: 8 (loading), 12 (QA)
-Save path: ./waymo_gt_dataset_unique
-Upload to Hub: Yes
-Hub repo: kd7/graid-waymo-unique
-
-🚀 Starting dataset generation...
-18:27:50 INFO [graid.cli_helpers] Processing split: train
-18:27:50 WARNING [graid.data.config_support] No models specified, will use ground truth
-18:27:50 DEBUG [graid.data.generate_dataset] ✓ Initialized device: cuda:0
-18:27:50 INFO [graid.data.generate_dataset] 🚀 Building HuggingFace dataset for waymo/train 
-18:27:50 INFO [graid.data.generate_dataset] 🔧 Creating dataset using a generator...
-Generating train split: 0 examples [00:00, ? examples/s]18:27:50 DEBUG [graid.data.generate_dataset] 📋 Initializing data loader and processing components
-18:27:50 INFO [graid.data.generate_dataset] 🚀 Creating ParallelQAProcessor with 12 workers
-18:27:50 DEBUG [graid.data.generate_dataset] ✓ Initialized ParallelQAProcessor with 12 workers, profiling=True
-18:27:50 INFO [graid.data.generate_dataset] 📊 Processing 50 total batches (16 images per batch) with generator
-18:27:50 DEBUG [graid.data.generate_dataset] 🔄 Starting batch processing with parallel strategy
-
-Generating QA pairs:   0%|          | 0/50 [00:00<?, ?it/s][A18:27:51 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:27:52 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:27:52 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:27:52 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:27:52 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:27:52 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:27:52 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 1 examples [00:02,  2.06s/ examples]18:27:52 INFO [graid.data.generate_dataset] Processed 16 images, generated 186 QA pairs
-
-Generated 186 QA pairs from 16 images:   0%|          | 0/50 [00:02<?, ?it/s][A
-Generated 186 QA pairs from 16 images:   2%|▏         | 1/50 [00:02<01:39,  2.03s/it][A18:27:52 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:27:52 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:27:52 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:27:52 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:27:52 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:27:52 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:27:52 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:27:53 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 187 examples [00:02, 81.85 examples/s]Generating train split: 201 examples [00:04, 53.51 examples/s]
-Generated 397 QA pairs from 32 images:   2%|▏         | 1/50 [00:03<01:39,  2.03s/it][A
-Generated 397 QA pairs from 32 images:   4%|▍         | 2/50 [00:03<01:35,  1.98s/it][A18:27:54 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:27:55 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:27:55 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:27:55 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:27:55 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:27:55 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:27:55 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:27:55 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:27:55 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:27:55 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 398 examples [00:05, 99.69 examples/s]Generating train split: 600 examples [00:07, 99.87 examples/s]
-Generated 612 QA pairs from 48 images:   4%|▍         | 2/50 [00:07<01:35,  1.98s/it][A
-Generated 612 QA pairs from 48 images:   6%|▌         | 3/50 [00:07<02:05,  2.66s/it][A18:27:58 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:27:58 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:27:58 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:27:58 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:27:58 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:27:58 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:27:58 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:27:58 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:27:58 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:27:58 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:27:58 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 613 examples [00:08, 73.04 examples/s]Generating train split: 800 examples [00:09, 109.72 examples/s]
-Generated 834 QA pairs from 64 images:   6%|▌         | 3/50 [00:09<02:05,  2.66s/it][A
-Generated 834 QA pairs from 64 images:   8%|▊         | 4/50 [00:09<01:50,  2.40s/it][A18:28:00 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:28:00 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:28:00 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:28:00 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:00 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple columns
-18:28:00 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:00 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:00 DEBUG [graid.questions.ObjectDetectionQ] RankLargestK margin threshold not met between person and car
-18:28:00 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 835 examples [00:10, 83.29 examples/s] Generating train split: 1000 examples [00:11, 113.88 examples/s]
-Generated 1031 QA pairs from 80 images:   8%|▊         | 4/50 [00:11<01:50,  2.40s/it][A
-Generated 1031 QA pairs from 80 images:  10%|█         | 5/50 [00:11<01:40,  2.23s/it][A18:28:02 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:28:02 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:28:02 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:02 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:02 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:02 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:02 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:02 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:28:02 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:02 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:02 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:02 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:02 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 1032 examples [00:12, 84.75 examples/s] Generating train split: 1200 examples [00:12, 117.37 examples/s]
-Generated 1261 QA pairs from 96 images:  10%|█         | 5/50 [00:13<01:40,  2.23s/it][A
-Generated 1261 QA pairs from 96 images:  12%|█▏        | 6/50 [00:13<01:33,  2.13s/it][A18:28:04 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:28:04 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 1262 examples [00:14, 92.78 examples/s] Generating train split: 1400 examples [00:14, 114.71 examples/s]
-Generated 1520 QA pairs from 112 images:  12%|█▏        | 6/50 [00:15<01:33,  2.13s/it][A
-Generated 1520 QA pairs from 112 images:  14%|█▍        | 7/50 [00:15<01:30,  2.10s/it][A18:28:06 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:28:06 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:28:06 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:06 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:06 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 1521 examples [00:16, 104.91 examples/s]Generating train split: 1600 examples [00:17, 105.21 examples/s]
-Generated 1778 QA pairs from 128 images:  14%|█▍        | 7/50 [00:17<01:30,  2.10s/it][A
-Generated 1778 QA pairs from 128 images:  16%|█▌        | 8/50 [00:17<01:28,  2.10s/it][A18:28:08 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:28:08 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:08 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:08 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:08 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:08 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:08 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:08 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:08 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:08 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 1779 examples [00:18, 116.42 examples/s]Generating train split: 1800 examples [00:19, 96.17 examples/s] 
-Generated 1993 QA pairs from 144 images:  16%|█▌        | 8/50 [00:19<01:28,  2.10s/it][A
-Generated 1993 QA pairs from 144 images:  18%|█▊        | 9/50 [00:19<01:25,  2.08s/it][A18:28:10 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:28:10 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:10 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:10 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:10 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:10 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:28:10 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:10 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:10 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:10 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:10 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:10 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:10 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:10 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:10 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple columns
-18:28:10 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:10 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple columns
-18:28:10 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 1994 examples [00:20, 114.62 examples/s]Generating train split: 2200 examples [00:22, 113.40 examples/s]
-Generated 2273 QA pairs from 160 images:  18%|█▊        | 9/50 [00:22<01:25,  2.08s/it][A
-Generated 2273 QA pairs from 160 images:  20%|██        | 10/50 [00:22<01:36,  2.42s/it][A18:28:13 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:28:13 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:28:13 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:13 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:13 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:13 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:13 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:13 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:13 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:13 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple columns
-18:28:13 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 2274 examples [00:23, 95.08 examples/s] Generating train split: 2400 examples [00:24, 109.10 examples/s]18:28:14 INFO [graid.data.generate_dataset] Processed 176 images, generated 2533 QA pairs
-
-Generated 2533 QA pairs from 176 images:  20%|██        | 10/50 [00:24<01:36,  2.42s/it][A
-Generated 2533 QA pairs from 176 images:  22%|██▏       | 11/50 [00:24<01:31,  2.34s/it][A18:28:15 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:28:15 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:28:15 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:15 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:15 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:28:15 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:15 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:16 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 2534 examples [00:25, 102.83 examples/s]Generating train split: 2600 examples [00:26, 100.07 examples/s]Generating train split: 2800 examples [00:27, 125.49 examples/s]
-Generated 2811 QA pairs from 192 images:  22%|██▏       | 11/50 [00:28<01:31,  2.34s/it][A
-Generated 2811 QA pairs from 192 images:  24%|██▍       | 12/50 [00:28<01:39,  2.62s/it][A18:28:18 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:28:19 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:19 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:19 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:19 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:19 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:28:19 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:19 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:19 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:19 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:28:19 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 3000 examples [00:29, 112.01 examples/s]
-Generated 3057 QA pairs from 208 images:  24%|██▍       | 12/50 [00:30<01:39,  2.62s/it][A
-Generated 3057 QA pairs from 208 images:  26%|██▌       | 13/50 [00:30<01:30,  2.46s/it][A18:28:21 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:28:21 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:28:21 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:21 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:21 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:21 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple columns
-18:28:21 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple columns
-18:28:21 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:21 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:21 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:21 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 3058 examples [00:31, 92.79 examples/s] Generating train split: 3200 examples [00:31, 111.51 examples/s]
-Generated 3318 QA pairs from 224 images:  26%|██▌       | 13/50 [00:32<01:30,  2.46s/it][A
-Generated 3318 QA pairs from 224 images:  28%|██▊       | 14/50 [00:32<01:23,  2.33s/it][A18:28:23 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:28:23 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:23 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:23 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:23 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:23 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 3319 examples [00:33, 106.93 examples/s]Generating train split: 3400 examples [00:33, 107.31 examples/s]
-Generated 3535 QA pairs from 240 images:  28%|██▊       | 14/50 [00:34<01:23,  2.33s/it][A
-Generated 3535 QA pairs from 240 images:  30%|███       | 15/50 [00:34<01:17,  2.23s/it][A18:28:25 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:28:25 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple columns
-18:28:25 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple columns
-18:28:25 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple columns
-18:28:25 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple columns
-18:28:25 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:25 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:25 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:25 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:25 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:25 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:25 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:25 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 3536 examples [00:35, 106.66 examples/s]Generating train split: 3600 examples [00:35, 102.19 examples/s]
-Generated 3748 QA pairs from 256 images:  30%|███       | 15/50 [00:36<01:17,  2.23s/it][A
-Generated 3748 QA pairs from 256 images:  32%|███▏      | 16/50 [00:36<01:14,  2.18s/it][A18:28:27 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:28:27 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 3749 examples [00:37, 107.06 examples/s]Generating train split: 3800 examples [00:37, 98.39 examples/s] 
-Generated 3912 QA pairs from 272 images:  32%|███▏      | 16/50 [00:38<01:14,  2.18s/it][A
-Generated 3912 QA pairs from 272 images:  34%|███▍      | 17/50 [00:38<01:10,  2.15s/it][A18:28:29 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:28:29 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:29 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:29 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple columns
-18:28:29 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple columns
-18:28:29 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:29 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:29 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:29 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:29 DEBUG [graid.questions.ObjectDetectionQ] RankLargestK margin threshold not met between car and person
-18:28:29 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:28:29 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 3913 examples [00:39, 92.84 examples/s]Generating train split: 4000 examples [00:39, 98.71 examples/s]
-Generated 4128 QA pairs from 288 images:  34%|███▍      | 17/50 [00:40<01:10,  2.15s/it][A
-Generated 4128 QA pairs from 288 images:  36%|███▌      | 18/50 [00:40<01:08,  2.13s/it][A18:28:31 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:28:31 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 4129 examples [00:41, 93.40 examples/s]Generating train split: 4200 examples [00:42, 94.10 examples/s]
-Generated 4376 QA pairs from 304 images:  36%|███▌      | 18/50 [00:42<01:08,  2.13s/it][A
-Generated 4376 QA pairs from 304 images:  38%|███▊      | 19/50 [00:42<01:06,  2.13s/it][A18:28:33 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:28:33 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple columns
-18:28:33 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:33 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple columns
-18:28:33 DEBUG [graid.questions.ObjectDetectionQ] RankLargestK margin threshold not met between person and car
-18:28:33 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 4377 examples [00:43, 106.15 examples/s]Generating train split: 4400 examples [00:44, 89.85 examples/s] Generating train split: 4600 examples [00:45, 118.67 examples/s]
-Generated 4626 QA pairs from 320 images:  38%|███▊      | 19/50 [00:45<01:06,  2.13s/it][A
-Generated 4626 QA pairs from 320 images:  40%|████      | 20/50 [00:45<01:14,  2.47s/it][A18:28:36 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:28:36 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:36 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:28:36 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:36 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:36 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:36 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:36 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:36 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:36 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:36 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:36 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:36 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:28:36 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:36 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:36 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:36 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 4627 examples [00:46, 86.56 examples/s] 18:28:36 INFO [graid.data.generate_dataset] Processed 336 images, generated 4796 QA pairs
-
-Generated 4796 QA pairs from 336 images:  40%|████      | 20/50 [00:46<01:14,  2.47s/it][A
-Generated 4796 QA pairs from 336 images:  42%|████▏     | 21/50 [00:46<00:57,  1.99s/it][A18:28:37 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:28:37 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:37 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:37 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:37 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:37 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 4797 examples [00:47, 113.12 examples/s]
-Generated 4975 QA pairs from 352 images:  42%|████▏     | 21/50 [00:48<00:57,  1.99s/it][A
-Generated 4975 QA pairs from 352 images:  44%|████▍     | 22/50 [00:48<00:55,  1.99s/it][A18:28:39 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:28:39 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:39 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:39 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:39 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:39 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:39 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:39 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:39 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:39 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:39 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:39 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:39 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:39 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:39 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:39 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:39 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 4976 examples [00:49, 103.68 examples/s]Generating train split: 5000 examples [00:50, 89.56 examples/s] 
-Generated 5165 QA pairs from 368 images:  44%|████▍     | 22/50 [00:50<00:55,  1.99s/it][A
-Generated 5165 QA pairs from 368 images:  46%|████▌     | 23/50 [00:50<00:53,  1.98s/it][A18:28:41 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:28:41 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:41 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:41 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:41 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:41 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:41 DEBUG [graid.questions.ObjectDetectionQ] RankLargestK margin threshold not met between car and person
-18:28:41 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 5166 examples [00:51, 102.61 examples/s]Generating train split: 5200 examples [00:52, 90.81 examples/s] 
-Generated 5364 QA pairs from 384 images:  46%|████▌     | 23/50 [00:52<00:53,  1.98s/it][A
-Generated 5364 QA pairs from 384 images:  48%|████▊     | 24/50 [00:52<00:51,  1.99s/it][A18:28:43 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:28:43 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:43 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:43 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 5365 examples [00:53, 98.87 examples/s]Generating train split: 5400 examples [00:54, 88.11 examples/s]
-Generated 5596 QA pairs from 400 images:  48%|████▊     | 24/50 [00:54<00:51,  1.99s/it][A
-Generated 5596 QA pairs from 400 images:  50%|█████     | 25/50 [00:54<00:51,  2.07s/it][A18:28:45 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:28:45 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:45 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:45 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 5597 examples [00:55, 109.49 examples/s]
-Generated 5794 QA pairs from 416 images:  50%|█████     | 25/50 [00:56<00:51,  2.07s/it][A
-Generated 5794 QA pairs from 416 images:  52%|█████▏    | 26/50 [00:56<00:49,  2.05s/it][A18:28:47 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:28:48 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 5795 examples [00:57, 104.27 examples/s]
-Generated 5974 QA pairs from 432 images:  52%|█████▏    | 26/50 [00:58<00:49,  2.05s/it][A
-Generated 5974 QA pairs from 432 images:  54%|█████▍    | 27/50 [00:58<00:47,  2.05s/it][A18:28:49 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:28:50 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:50 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:50 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:50 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 5975 examples [00:59, 97.08 examples/s] Generating train split: 6000 examples [01:00, 86.59 examples/s]
-Generated 6195 QA pairs from 448 images:  54%|█████▍    | 27/50 [01:01<00:47,  2.05s/it][A
-Generated 6195 QA pairs from 448 images:  56%|█████▌    | 28/50 [01:01<00:45,  2.08s/it][A18:28:51 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:28:52 DEBUG [graid.questions.ObjectDetectionQ] RankLargestK margin threshold not met between car and person
-18:28:52 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:28:52 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple columns
-18:28:52 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple columns
-18:28:52 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 6196 examples [01:02, 103.00 examples/s]Generating train split: 6400 examples [01:03, 105.18 examples/s]
-Generated 6433 QA pairs from 464 images:  56%|█████▌    | 28/50 [01:04<00:45,  2.08s/it][A
-Generated 6433 QA pairs from 464 images:  58%|█████▊    | 29/50 [01:04<00:50,  2.42s/it][A18:28:55 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:28:55 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:55 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:55 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 6434 examples [01:05, 84.97 examples/s] Generating train split: 6600 examples [01:05, 110.35 examples/s]
-Generated 6627 QA pairs from 480 images:  58%|█████▊    | 29/50 [01:06<00:50,  2.42s/it][A
-Generated 6627 QA pairs from 480 images:  60%|██████    | 30/50 [01:06<00:45,  2.28s/it][A18:28:57 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:28:57 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:57 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:57 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:57 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:57 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:57 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:28:57 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 6628 examples [01:07, 83.30 examples/s] 18:28:57 INFO [graid.data.generate_dataset] Processed 496 images, generated 6799 QA pairs
-
-Generated 6799 QA pairs from 496 images:  60%|██████    | 30/50 [01:07<00:45,  2.28s/it][A
-Generated 6799 QA pairs from 496 images:  62%|██████▏   | 31/50 [01:07<00:35,  1.87s/it][A18:28:58 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:28:58 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:58 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:58 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:58 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:28:58 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:28:58 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 6800 examples [01:08, 89.83 examples/s]Generating train split: 7000 examples [01:10, 113.43 examples/s]
-Generated 7051 QA pairs from 512 images:  62%|██████▏   | 31/50 [01:10<00:35,  1.87s/it][A
-Generated 7051 QA pairs from 512 images:  64%|██████▍   | 32/50 [01:10<00:40,  2.26s/it][A18:29:01 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:29:01 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:01 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:01 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 7052 examples [01:11, 90.21 examples/s] Generating train split: 7200 examples [01:12, 111.75 examples/s]
-Generated 7305 QA pairs from 528 images:  64%|██████▍   | 32/50 [01:12<00:40,  2.26s/it][A
-Generated 7305 QA pairs from 528 images:  66%|██████▌   | 33/50 [01:12<00:37,  2.21s/it][A18:29:03 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:29:03 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple columns
-18:29:03 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:03 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple columns
-18:29:03 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:03 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:03 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:03 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:03 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 7306 examples [01:13, 100.23 examples/s]Generating train split: 7400 examples [01:14, 105.59 examples/s]
-Generated 7563 QA pairs from 544 images:  66%|██████▌   | 33/50 [01:14<00:37,  2.21s/it][A
-Generated 7563 QA pairs from 544 images:  68%|██████▊   | 34/50 [01:14<00:35,  2.20s/it][A18:29:05 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:29:05 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:29:05 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:29:05 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:05 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:05 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:05 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:05 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 7564 examples [01:15, 107.54 examples/s]Generating train split: 7600 examples [01:16, 95.35 examples/s] Generating train split: 7800 examples [01:17, 122.20 examples/s]
-Generated 7816 QA pairs from 560 images:  68%|██████▊   | 34/50 [01:17<00:35,  2.20s/it][A
-Generated 7816 QA pairs from 560 images:  70%|███████   | 35/50 [01:17<00:37,  2.52s/it][A18:29:08 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:29:08 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:08 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:08 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:08 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:08 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 7817 examples [01:18, 84.84 examples/s] Generating train split: 8000 examples [01:19, 121.16 examples/s]
-Generated 8050 QA pairs from 576 images:  70%|███████   | 35/50 [01:19<00:37,  2.52s/it][A
-Generated 8050 QA pairs from 576 images:  72%|███████▏  | 36/50 [01:19<00:32,  2.36s/it][A18:29:10 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:29:10 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:29:10 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:29:10 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:29:10 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:29:10 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:29:10 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:29:10 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:10 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:10 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:10 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:10 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:11 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 8051 examples [01:20, 90.77 examples/s] Generating train split: 8200 examples [01:21, 115.29 examples/s]
-Generated 8303 QA pairs from 592 images:  72%|███████▏  | 36/50 [01:21<00:32,  2.36s/it][A
-Generated 8303 QA pairs from 592 images:  74%|███████▍  | 37/50 [01:21<00:29,  2.28s/it][A18:29:12 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:29:13 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:13 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:13 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:13 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:13 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 8304 examples [01:23, 100.54 examples/s]Generating train split: 8400 examples [01:23, 106.92 examples/s]
-Generated 8562 QA pairs from 608 images:  74%|███████▍  | 37/50 [01:24<00:29,  2.28s/it][A
-Generated 8562 QA pairs from 608 images:  76%|███████▌  | 38/50 [01:24<00:26,  2.23s/it][A18:29:14 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:29:15 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:15 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:15 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:29:15 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:29:15 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:15 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:15 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 8563 examples [01:25, 113.05 examples/s]Generating train split: 8600 examples [01:25, 98.95 examples/s] 
-Generated 8789 QA pairs from 624 images:  76%|███████▌  | 38/50 [01:26<00:26,  2.23s/it][A
-Generated 8789 QA pairs from 624 images:  78%|███████▊  | 39/50 [01:26<00:23,  2.18s/it][A18:29:17 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:29:17 DEBUG [graid.questions.ObjectDetectionQ] RankLargestK margin threshold not met between person and car
-18:29:17 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:17 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:17 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:17 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:17 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 8790 examples [01:27, 112.44 examples/s]
-Generated 8996 QA pairs from 640 images:  78%|███████▊  | 39/50 [01:28<00:23,  2.18s/it][A
-Generated 8996 QA pairs from 640 images:  80%|████████  | 40/50 [01:28<00:21,  2.17s/it][A18:29:19 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:29:19 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:29:19 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:29:19 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:19 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 8997 examples [01:29, 109.22 examples/s]18:29:20 INFO [graid.data.generate_dataset] Processed 656 images, generated 9175 QA pairs
-
-Generated 9175 QA pairs from 656 images:  80%|████████  | 40/50 [01:30<00:21,  2.17s/it][A
-Generated 9175 QA pairs from 656 images:  82%|████████▏ | 41/50 [01:30<00:18,  2.10s/it][A18:29:21 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:29:21 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:29:21 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:21 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:21 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:21 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:29:21 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:29:21 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:29:21 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:21 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple columns
-18:29:21 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple columns
-18:29:21 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 9176 examples [01:31, 94.45 examples/s] Generating train split: 9200 examples [01:32, 84.79 examples/s]
-Generated 9374 QA pairs from 672 images:  82%|████████▏ | 41/50 [01:32<00:18,  2.10s/it][A
-Generated 9374 QA pairs from 672 images:  84%|████████▍ | 42/50 [01:32<00:17,  2.19s/it][A18:29:23 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:29:23 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:23 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:23 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:23 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:23 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 9375 examples [01:33, 99.12 examples/s]Generating train split: 9400 examples [01:34, 86.62 examples/s]
-Generated 9588 QA pairs from 688 images:  84%|████████▍ | 42/50 [01:34<00:17,  2.19s/it][A
-Generated 9588 QA pairs from 688 images:  86%|████████▌ | 43/50 [01:34<00:15,  2.15s/it][A18:29:25 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:29:25 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:29:25 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:29:25 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:25 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 9589 examples [01:35, 106.76 examples/s]Generating train split: 9600 examples [01:36, 87.40 examples/s] 
-Generated 9759 QA pairs from 704 images:  86%|████████▌ | 43/50 [01:36<00:15,  2.15s/it][A
-Generated 9759 QA pairs from 704 images:  88%|████████▊ | 44/50 [01:36<00:12,  2.11s/it][A18:29:27 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:29:27 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 9760 examples [01:37, 99.67 examples/s]Generating train split: 9800 examples [01:38, 89.46 examples/s]
-Generated 9953 QA pairs from 720 images:  88%|████████▊ | 44/50 [01:38<00:12,  2.11s/it][A
-Generated 9953 QA pairs from 720 images:  90%|█████████ | 45/50 [01:38<00:10,  2.10s/it][A18:29:29 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:29:29 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:29:29 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:29 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:29 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:29 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:29:29 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:29 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:29 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:29 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:29 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:29:29 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:29 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:29 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:29 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:29 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:29 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:29:29 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:29:29 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 9954 examples [01:39, 100.30 examples/s]Generating train split: 10000 examples [01:40, 91.85 examples/s]
-Generated 10159 QA pairs from 736 images:  90%|█████████ | 45/50 [01:40<00:10,  2.10s/it][A
-Generated 10159 QA pairs from 736 images:  92%|█████████▏| 46/50 [01:40<00:08,  2.06s/it][A18:29:31 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:29:31 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:29:31 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:29:31 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:31 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:29:31 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:31 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:31 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:31 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 10160 examples [01:41, 105.77 examples/s]Generating train split: 10200 examples [01:42, 94.42 examples/s] 
-Generated 10392 QA pairs from 752 images:  92%|█████████▏| 46/50 [01:42<00:08,  2.06s/it][A
-Generated 10392 QA pairs from 752 images:  94%|█████████▍| 47/50 [01:42<00:06,  2.03s/it][A18:29:33 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:29:33 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:29:33 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:29:33 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:33 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 10393 examples [01:43, 113.88 examples/s]Generating train split: 10600 examples [01:45, 114.35 examples/s]
-Generated 10609 QA pairs from 768 images:  94%|█████████▍| 47/50 [01:45<00:06,  2.03s/it][A
-Generated 10609 QA pairs from 768 images:  96%|█████████▌| 48/50 [01:45<00:04,  2.35s/it][A18:29:36 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:29:36 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:36 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:36 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:29:36 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:36 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:29:36 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:36 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:29:36 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:36 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:36 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:36 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:29:36 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:29:36 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:36 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 10800 examples [01:47, 106.70 examples/s]
-Generated 10844 QA pairs from 784 images:  96%|█████████▌| 48/50 [01:47<00:04,  2.35s/it][A
-Generated 10844 QA pairs from 784 images:  98%|█████████▊| 49/50 [01:47<00:02,  2.27s/it][A18:29:38 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 14 images with 12 parallel workers
-18:29:38 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple columns
-18:29:38 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:29:38 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple columns
-18:29:38 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:29:38 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:38 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:38 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:29:38 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:29:38 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 14 results
-Generating train split: 10845 examples [01:48, 89.23 examples/s] Generating train split: 11000 examples [01:49, 111.18 examples/s]
-Generated 11049 QA pairs from 798 images:  98%|█████████▊| 49/50 [01:49<00:02,  2.27s/it][A
-Generated 11049 QA pairs from 798 images: 100%|██████████| 50/50 [01:49<00:00,  2.16s/it][AGenerated 11049 QA pairs from 798 images: 100%|██████████| 50/50 [01:49<00:00,  2.20s/it]
-18:29:40 INFO [graid.data.generate_dataset] 🎯 Generator completed: 11049 QA pairs from 798 images
-Generating train split: 11049 examples [01:49, 112.37 examples/s]Generating train split: 11049 examples [01:50, 100.29 examples/s]
-18:29:40 DEBUG [graid.data.generate_dataset] 🎯 Converting image bytes to HFImage format...
-18:29:41 INFO [graid.data.generate_dataset] ✅ Generated 11049 question-answer pairs
-18:29:41 INFO [graid.data.generate_dataset] Per-question counts: MoreThanThresholdHowMany=2456, LessThanThresholdHowMany=2456, HowMany=1228, MultiChoiceHowMany=952, LeftOf=858, RightOf=858, RankLargestK=424, MostAppearance=395, LeastAppearance=395, AreMore=395, LargestAppearance=337, Quadrants=139, IsObjectCentered=83, RightMost=31, LeftMost=31, RightMostWidthVsHeight=6, LeftMostWidthVsHeight=5
-18:29:41 INFO [graid.utils.profiling] 📊 Detailed Question Processing Statistics:
-18:29:41 INFO [graid.utils.profiling] ===============================================================================================
-18:29:41 INFO [graid.utils.profiling] Question Type                            is_app(ms)   apply(ms)    Hit Rate   Failed   Total QA  
-18:29:41 INFO [graid.utils.profiling] -----------------------------------------------------------------------------------------------
-18:29:41 INFO [graid.utils.profiling] Divide the image into thirds. In which   0.03         0.31         67.5      % 40       83        
-18:29:41 INFO [graid.utils.profiling] Divide the image into a grid of {N} row  0.01         1.80         28.3      % 353      139       
-18:29:41 INFO [graid.utils.profiling] If you were to draw a tight box around   0.02         18.81        78.4      % 93       337       
-18:29:41 INFO [graid.utils.profiling] Rank the {k} kinds of objects that appe  0.02         15.94        98.6      % 6        424       
-18:29:41 INFO [graid.utils.profiling] What kind of object appears the most fr  0.01         0.02         91.9      % 35       395       
-18:29:41 INFO [graid.utils.profiling] What kind of object appears the least f  0.01         0.02         91.9      % 35       395       
-18:29:41 INFO [graid.utils.profiling] Is there at least one {object_1} to the  1.56         9.01         100.0     % 0        858       
-18:29:41 INFO [graid.utils.profiling] Is there at least one {object_1} to the  1.39         7.95         100.0     % 0        858       
-18:29:41 INFO [graid.utils.profiling] What is the leftmost object in the imag  0.02         1.35         25.2      % 92       31        
-18:29:41 INFO [graid.utils.profiling] What is the rightmost object in the ima  0.01         1.24         25.2      % 92       31        
-18:29:41 INFO [graid.utils.profiling] How many {object_1}(s) are there in thi  0.01         0.02         100.0     % 0        1228      
-18:29:41 INFO [graid.utils.profiling] Are there more {object_1}(s) than {obje  0.01         0.02         91.9      % 35       395       
-18:29:41 INFO [graid.utils.profiling] What appears the most in this image: {o  0.01         0.02         0.0       % 430      0         
-18:29:41 INFO [graid.utils.profiling] Does the leftmost object in the image a  0.01         0.48         4.1       % 118      5         
-18:29:41 INFO [graid.utils.profiling] Does the rightmost object in the image   0.01         0.53         4.9       % 117      6         
-18:29:41 INFO [graid.utils.profiling] Are there {target} or more {object_1}(s  0.01         0.02         100.0     % 0        2456      
-18:29:41 INFO [graid.utils.profiling] Are there less than {target} {object_1}  0.01         0.02         100.0     % 0        2456      
-18:29:41 INFO [graid.utils.profiling] How many {object_1}(s) are in the image  0.01         0.13         89.2      % 86       952       
-18:29:41 INFO [graid.utils.profiling] ===============================================================================================
-18:29:41 INFO [graid.utils.profiling] Notes: Hit Rate = % of applicable cases that generated ≥1 QA pair
-18:29:41 INFO [graid.utils.profiling]        Failed = cases where is_applicable=True but apply returned no QA pairs
-18:29:41 INFO [graid.cli_helpers] Processing split: val
-18:29:41 WARNING [graid.data.config_support] No models specified, will use ground truth
-18:29:41 DEBUG [graid.data.generate_dataset] ✓ Initialized device: cuda:0
-18:29:41 INFO [graid.data.generate_dataset] 🚀 Building HuggingFace dataset for waymo/val 
-18:29:41 INFO [graid.data.generate_dataset] 🔧 Creating dataset using a generator...
-Generating train split: 0 examples [00:00, ? examples/s]18:29:41 DEBUG [graid.data.generate_dataset] 📋 Initializing data loader and processing components
-18:29:41 INFO [graid.data.generate_dataset] 🚀 Creating ParallelQAProcessor with 12 workers
-18:29:41 DEBUG [graid.data.generate_dataset] ✓ Initialized ParallelQAProcessor with 12 workers, profiling=True
-18:29:41 INFO [graid.data.generate_dataset] 📊 Processing 13 total batches (16 images per batch) with generator
-18:29:41 DEBUG [graid.data.generate_dataset] 🔄 Starting batch processing with parallel strategy
-
-Generating QA pairs:   0%|          | 0/13 [00:00<?, ?it/s][A18:29:42 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:29:42 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:42 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:42 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:29:42 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:29:42 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:42 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:42 DEBUG [graid.questions.ObjectDetectionQ] RankLargestK margin threshold not met between person and car
-18:29:42 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 1 examples [00:01,  1.71s/ examples]Generating train split: 200 examples [00:02, 102.81 examples/s]18:29:43 INFO [graid.data.generate_dataset] Processed 16 images, generated 248 QA pairs
-
-Generated 248 QA pairs from 16 images:   0%|          | 0/13 [00:02<?, ?it/s][A
-Generated 248 QA pairs from 16 images:   8%|▊         | 1/13 [00:02<00:33,  2.77s/it][A18:29:44 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:29:44 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:44 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:44 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:29:44 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:29:44 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:44 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple columns
-18:29:44 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple columns
-18:29:44 DEBUG [graid.questions.ObjectDetectionQ] RankLargestK margin threshold not met between person and car
-18:29:44 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 249 examples [00:03, 72.02 examples/s] Generating train split: 400 examples [00:04, 110.75 examples/s]
-Generated 481 QA pairs from 32 images:   8%|▊         | 1/13 [00:04<00:33,  2.77s/it][A
-Generated 481 QA pairs from 32 images:  15%|█▌        | 2/13 [00:04<00:25,  2.32s/it][A18:29:46 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:29:46 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:29:46 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:29:46 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:46 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:46 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 482 examples [00:05, 94.63 examples/s] Generating train split: 600 examples [00:06, 112.39 examples/s]
-Generated 663 QA pairs from 48 images:  15%|█▌        | 2/13 [00:06<00:25,  2.32s/it][A
-Generated 663 QA pairs from 48 images:  23%|██▎       | 3/13 [00:06<00:21,  2.14s/it][A18:29:48 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:29:48 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:29:48 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:49 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 664 examples [00:07, 81.51 examples/s] Generating train split: 800 examples [00:08, 105.26 examples/s]
-Generated 844 QA pairs from 64 images:  23%|██▎       | 3/13 [00:08<00:21,  2.14s/it][A
-Generated 844 QA pairs from 64 images:  31%|███       | 4/13 [00:08<00:19,  2.19s/it][A18:29:50 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:29:50 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:29:50 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:50 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:50 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:50 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 845 examples [00:09, 80.44 examples/s] Generating train split: 1000 examples [00:10, 111.01 examples/s]
-Generated 1054 QA pairs from 80 images:  31%|███       | 4/13 [00:10<00:19,  2.19s/it][A
-Generated 1054 QA pairs from 80 images:  38%|███▊      | 5/13 [00:10<00:16,  2.10s/it][A18:29:52 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:29:52 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:29:52 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:29:52 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple columns
-18:29:52 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:29:52 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:29:52 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:52 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:53 DEBUG [graid.questions.ObjectDetectionQ] RankLargestK margin threshold not met between person and car
-18:29:53 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:53 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:53 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:53 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:53 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 1055 examples [00:11, 84.43 examples/s] Generating train split: 1200 examples [00:12, 110.72 examples/s]
-Generated 1296 QA pairs from 96 images:  38%|███▊      | 5/13 [00:12<00:16,  2.10s/it][A
-Generated 1296 QA pairs from 96 images:  46%|████▌     | 6/13 [00:12<00:14,  2.09s/it][A18:29:54 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:29:54 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:54 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:54 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:54 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:55 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 1297 examples [00:13, 97.88 examples/s] Generating train split: 1400 examples [00:14, 107.81 examples/s]
-Generated 1562 QA pairs from 112 images:  46%|████▌     | 6/13 [00:15<00:14,  2.09s/it][A
-Generated 1562 QA pairs from 112 images:  54%|█████▍    | 7/13 [00:15<00:12,  2.07s/it][A18:29:56 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:29:56 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:56 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:56 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:56 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:56 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:56 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:56 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:56 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:56 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:29:56 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:56 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:29:57 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 1563 examples [00:15, 115.37 examples/s]Generating train split: 1600 examples [00:16, 100.18 examples/s]Generating train split: 1800 examples [00:17, 127.52 examples/s]
-Generated 1838 QA pairs from 128 images:  54%|█████▍    | 7/13 [00:18<00:12,  2.07s/it][A
-Generated 1838 QA pairs from 128 images:  62%|██████▏   | 8/13 [00:18<00:11,  2.39s/it][A18:29:59 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:30:00 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:30:00 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:30:00 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:30:00 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:30:00 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:30:00 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:30:00 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:30:00 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:30:00 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:30:00 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:30:00 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:30:00 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:30:00 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 1839 examples [00:19, 92.91 examples/s] Generating train split: 2000 examples [00:19, 121.38 examples/s]
-Generated 2055 QA pairs from 144 images:  62%|██████▏   | 8/13 [00:20<00:11,  2.39s/it][A
-Generated 2055 QA pairs from 144 images:  69%|██████▉   | 9/13 [00:20<00:09,  2.27s/it][A18:30:01 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:30:02 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:30:02 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:30:02 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:30:02 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:30:02 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:30:02 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:30:02 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 2056 examples [00:21, 93.31 examples/s] Generating train split: 2200 examples [00:21, 116.89 examples/s]
-Generated 2265 QA pairs from 160 images:  69%|██████▉   | 9/13 [00:22<00:09,  2.27s/it][A
-Generated 2265 QA pairs from 160 images:  77%|███████▋  | 10/13 [00:22<00:06,  2.21s/it][A18:30:04 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:30:04 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:30:04 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:30:04 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:30:04 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:30:04 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 2266 examples [00:23, 88.75 examples/s] Generating train split: 2400 examples [00:23, 109.40 examples/s]18:30:05 INFO [graid.data.generate_dataset] Processed 176 images, generated 2448 QA pairs
-
-Generated 2448 QA pairs from 176 images:  77%|███████▋  | 10/13 [00:24<00:06,  2.21s/it][A
-Generated 2448 QA pairs from 176 images:  85%|████████▍ | 11/13 [00:24<00:04,  2.20s/it][A18:30:06 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 16 images with 12 parallel workers
-18:30:06 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:30:06 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple columns
-18:30:06 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:30:06 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:30:06 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:30:06 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:30:06 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 16 results
-Generating train split: 2449 examples [00:25, 81.72 examples/s] Generating train split: 2600 examples [00:26, 109.31 examples/s]
-Generated 2687 QA pairs from 192 images:  85%|████████▍ | 11/13 [00:26<00:04,  2.20s/it][A
-Generated 2687 QA pairs from 192 images:  92%|█████████▏| 12/13 [00:26<00:02,  2.16s/it][A18:30:08 DEBUG [graid.data.generate_dataset] 🚀 Processing batch of 10 images with 12 parallel workers
-18:30:08 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:30:08 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:30:08 DEBUG [graid.questions.ObjectDetectionQ] Object spans multiple rows
-18:30:08 DEBUG [graid.questions.ObjectDetectionQ] IsObjectCentered skipped due to ambiguity buffer
-18:30:08 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:30:08 DEBUG [graid.questions.ObjectDetectionQ] Quadrants skipped due to margin ambiguity
-18:30:08 DEBUG [graid.data.generate_dataset] ✅ Parallel batch processing completed: 10 results
-Generating train split: 2688 examples [00:27, 103.21 examples/s]Generating train split: 2800 examples [00:27, 113.42 examples/s]
-Generated 2806 QA pairs from 202 images:  92%|█████████▏| 12/13 [00:28<00:02,  2.16s/it][A
-Generated 2806 QA pairs from 202 images: 100%|██████████| 13/13 [00:28<00:00,  2.05s/it][AGenerated 2806 QA pairs from 202 images: 100%|██████████| 13/13 [00:28<00:00,  2.17s/it]
-18:30:09 INFO [graid.data.generate_dataset] 🎯 Generator completed: 2806 QA pairs from 202 images
-Generating train split: 2806 examples [00:28, 99.11 examples/s] 
-18:30:09 DEBUG [graid.data.generate_dataset] 🎯 Converting image bytes to HFImage format...
-18:30:09 INFO [graid.data.generate_dataset] ✅ Generated 2806 question-answer pairs
-18:30:09 INFO [graid.data.generate_dataset] Per-question counts: MoreThanThresholdHowMany=624, LessThanThresholdHowMany=624, HowMany=312, MultiChoiceHowMany=234, LeftOf=216, RightOf=216, RankLargestK=107, MostAppearance=102, LeastAppearance=102, AreMore=102, LargestAppearance=86, Quadrants=42, IsObjectCentered=21, LeftMost=7, RightMost=6, RightMostWidthVsHeight=3, LeftMostWidthVsHeight=2
-18:30:09 INFO [graid.utils.profiling] 📊 Detailed Question Processing Statistics:
-18:30:09 INFO [graid.utils.profiling] ===============================================================================================
-18:30:09 INFO [graid.utils.profiling] Question Type                            is_app(ms)   apply(ms)    Hit Rate   Failed   Total QA  
-18:30:09 INFO [graid.utils.profiling] -----------------------------------------------------------------------------------------------
-18:30:09 INFO [graid.utils.profiling] Divide the image into thirds. In which   0.03         0.36         61.8      % 13       21        
-18:30:09 INFO [graid.utils.profiling] Divide the image into a grid of {N} row  0.01         1.89         30.9      % 94       42        
-18:30:09 INFO [graid.utils.profiling] If you were to draw a tight box around   0.01         16.81        78.2      % 24       86        
-18:30:09 INFO [graid.utils.profiling] Rank the {k} kinds of objects that appe  0.02         14.93        97.3      % 3        107       
-18:30:09 INFO [graid.utils.profiling] What kind of object appears the most fr  0.01         0.02         92.7      % 8        102       
-18:30:09 INFO [graid.utils.profiling] What kind of object appears the least f  0.01         0.02         92.7      % 8        102       
-18:30:09 INFO [graid.utils.profiling] Is there at least one {object_1} to the  1.74         9.42         100.0     % 0        216       
-18:30:09 INFO [graid.utils.profiling] Is there at least one {object_1} to the  1.58         8.24         100.0     % 0        216       
-18:30:09 INFO [graid.utils.profiling] What is the leftmost object in the imag  0.02         1.88         20.6      % 27       7         
-18:30:09 INFO [graid.utils.profiling] What is the rightmost object in the ima  0.01         1.81         17.6      % 28       6         
-18:30:09 INFO [graid.utils.profiling] How many {object_1}(s) are there in thi  0.01         0.02         100.0     % 0        312       
-18:30:09 INFO [graid.utils.profiling] Are there more {object_1}(s) than {obje  0.01         0.02         92.7      % 8        102       
-18:30:09 INFO [graid.utils.profiling] What appears the most in this image: {o  0.01         0.02         0.0       % 110      0         
-18:30:09 INFO [graid.utils.profiling] Does the leftmost object in the image a  0.01         0.60         5.9       % 32       2         
-18:30:09 INFO [graid.utils.profiling] Does the rightmost object in the image   0.01         0.62         8.8       % 31       3         
-18:30:09 INFO [graid.utils.profiling] Are there {target} or more {object_1}(s  0.01         0.02         100.0     % 0        624       
-18:30:09 INFO [graid.utils.profiling] Are there less than {target} {object_1}  0.01         0.02         100.0     % 0        624       
-18:30:09 INFO [graid.utils.profiling] How many {object_1}(s) are in the image  0.01         0.13         87.1      % 26       234       
-18:30:09 INFO [graid.utils.profiling] ===============================================================================================
-18:30:09 INFO [graid.utils.profiling] Notes: Hit Rate = % of applicable cases that generated ≥1 QA pair
-18:30:09 INFO [graid.utils.profiling]        Failed = cases where is_applicable=True but apply returned no QA pairs
-18:30:09 INFO [graid.utils.profiling] 📊 Multi-Split Aggregated Question Processing Statistics:
-18:30:09 INFO [graid.utils.profiling] ===============================================================================================
-18:30:09 INFO [graid.utils.profiling] Question Type                            is_app(ms)   apply(ms)    Hit Rate   Failed   Total QA  
-18:30:09 INFO [graid.utils.profiling] -----------------------------------------------------------------------------------------------
-18:30:09 INFO [graid.utils.profiling] Divide the image into thirds. In which   0.03         0.32         66.2      % 53       104       
-18:30:09 INFO [graid.utils.profiling] Divide the image into a grid of {N} row  0.01         1.82         28.8      % 447      181       
-18:30:09 INFO [graid.utils.profiling] If you were to draw a tight box around   0.02         18.40        78.3      % 117      423       
-18:30:09 INFO [graid.utils.profiling] Rank the {k} kinds of objects that appe  0.02         15.74        98.3      % 9        531       
-18:30:09 INFO [graid.utils.profiling] What kind of object appears the most fr  0.01         0.02         92.0      % 43       497       
-18:30:09 INFO [graid.utils.profiling] What kind of object appears the least f  0.01         0.02         92.0      % 43       497       
-18:30:09 INFO [graid.utils.profiling] Is there at least one {object_1} to the  1.60         9.09         100.0     % 0        1074      
-18:30:09 INFO [graid.utils.profiling] Is there at least one {object_1} to the  1.43         8.01         100.0     % 0        1074      
-18:30:09 INFO [graid.utils.profiling] What is the leftmost object in the imag  0.02         1.47         24.2      % 119      38        
-18:30:09 INFO [graid.utils.profiling] What is the rightmost object in the ima  0.01         1.36         23.6      % 120      37        
-18:30:09 INFO [graid.utils.profiling] How many {object_1}(s) are there in thi  0.01         0.02         100.0     % 0        1540      
-18:30:09 INFO [graid.utils.profiling] Are there more {object_1}(s) than {obje  0.01         0.02         92.0      % 43       497       
-18:30:09 INFO [graid.utils.profiling] What appears the most in this image: {o  0.01         0.02         0.0       % 540      0         
-18:30:09 INFO [graid.utils.profiling] Does the leftmost object in the image a  0.01         0.50         4.5       % 150      7         
-18:30:09 INFO [graid.utils.profiling] Does the rightmost object in the image   0.01         0.55         5.7       % 148      9         
-18:30:09 INFO [graid.utils.profiling] Are there {target} or more {object_1}(s  0.01         0.02         100.0     % 0        3080      
-18:30:09 INFO [graid.utils.profiling] Are there less than {target} {object_1}  0.01         0.02         100.0     % 0        3080      
-18:30:09 INFO [graid.utils.profiling] How many {object_1}(s) are in the image  0.01         0.13         88.8      % 112      1186      
-18:30:09 INFO [graid.utils.profiling] ===============================================================================================
-18:30:09 INFO [graid.utils.profiling] Notes: Hit Rate = % of applicable cases that generated ≥1 QA pair
-18:30:09 INFO [graid.utils.profiling]        Failed = cases where is_applicable=True but apply returned no QA pairs
-18:30:09 INFO [graid.cli_helpers] Notes: Aggregated across all processed splits
-18:30:09 INFO [graid.cli_helpers] 📝 Saved README with profiling to disk: waymo_gt_dataset_unique/README.md
-18:30:09 INFO [graid.cli_helpers] 💾 Saved profiling statistics JSON: waymo_gt_dataset_unique/graid_profiling.json
-18:30:09 INFO [graid.cli_helpers] Uploading to HuggingFace Hub: kd7/graid-waymo-unique
-18:30:09 INFO [graid.cli_helpers] 📝 Generated and saved README + profiling stats to waymo_gt_dataset_unique
-18:30:10 INFO [graid.cli_helpers] 📄 README uploaded successfully
-Uploading the dataset shards:   0%|          | 0/17 [00:00<?, ? shards/s]
-Map:   0%|          | 0/650 [00:00<?, ? examples/s][A
-Map:  15%|█▌        | 100/650 [00:00<00:01, 308.98 examples/s][A
-Map:  31%|███       | 200/650 [00:00<00:01, 273.64 examples/s][A
-Map:  46%|████▌     | 300/650 [00:01<00:01, 242.59 examples/s][A
-Map:  62%|██████▏   | 400/650 [00:01<00:00, 267.41 examples/s][A
-Map:  77%|███████▋  | 500/650 [00:01<00:00, 282.85 examples/s][A
-Map:  92%|█████████▏| 600/650 [00:02<00:00, 218.25 examples/s][A
-Map: 100%|██████████| 650/650 [00:02<00:00, 232.15 examples/s][AMap: 100%|██████████| 650/650 [00:02<00:00, 245.97 examples/s]
-
-Creating parquet from Arrow format:   0%|          | 0/7 [00:00<?, ?ba/s][A
-Creating parquet from Arrow format:  14%|█▍        | 1/7 [00:00<00:01,  3.91ba/s][A
-Creating parquet from Arrow format:  29%|██▊       | 2/7 [00:00<00:01,  3.95ba/s][A
-Creating parquet from Arrow format:  43%|████▎     | 3/7 [00:00<00:01,  3.76ba/s][A
-Creating parquet from Arrow format:  57%|█████▋    | 4/7 [00:01<00:00,  3.86ba/s][A
-Creating parquet from Arrow format:  71%|███████▏  | 5/7 [00:01<00:00,  3.77ba/s][A
-Creating parquet from Arrow format:  86%|████████▌ | 6/7 [00:01<00:00,  3.94ba/s][A
-Creating parquet from Arrow format: 100%|██████████| 7/7 [00:01<00:00,  4.56ba/s][ACreating parquet from Arrow format: 100%|██████████| 7/7 [00:01<00:00,  4.13ba/s]
-Uploading the dataset shards:   6%|▌         | 1/17 [00:09<02:39,  9.97s/ shards]
-Map:   0%|          | 0/650 [00:00<?, ? examples/s][A
-Map:  15%|█▌        | 100/650 [00:00<00:01, 302.97 examples/s][A
-Map:  31%|███       | 200/650 [00:00<00:01, 239.68 examples/s][A
-Map:  46%|████▌     | 300/650 [00:01<00:01, 210.81 examples/s][A
-Map:  62%|██████▏   | 400/650 [00:04<00:04, 60.09 examples/s] [A
-Map:  77%|███████▋  | 500/650 [00:11<00:05, 29.49 examples/s][A
-Map:  92%|█████████▏| 600/650 [00:18<00:02, 21.74 examples/s][A
-Map: 100%|██████████| 650/650 [00:21<00:00, 19.94 examples/s][AMap: 100%|██████████| 650/650 [00:21<00:00, 30.09 examples/s]
-
-Creating parquet from Arrow format:   0%|          | 0/7 [00:00<?, ?ba/s][A
-Creating parquet from Arrow format:  14%|█▍        | 1/7 [00:00<00:01,  4.08ba/s][A
-Creating parquet from Arrow format:  29%|██▊       | 2/7 [00:00<00:01,  4.36ba/s][A
-Creating parquet from Arrow format:  43%|████▎     | 3/7 [00:00<00:00,  4.31ba/s][A
-Creating parquet from Arrow format:  57%|█████▋    | 4/7 [00:00<00:00,  4.09ba/s][A
-Creating parquet from Arrow format:  71%|███████▏  | 5/7 [00:01<00:00,  3.82ba/s][A
-Creating parquet from Arrow format:  86%|████████▌ | 6/7 [00:01<00:00,  3.90ba/s][A
-Creating parquet from Arrow format: 100%|██████████| 7/7 [00:01<00:00,  4.71ba/s][ACreating parquet from Arrow format: 100%|██████████| 7/7 [00:01<00:00,  4.31ba/s]
-Uploading the dataset shards:  12%|█▏        | 2/17 [00:37<05:08, 20.54s/ shards]
-Map:   0%|          | 0/650 [00:00<?, ? examples/s][A
-Map:  15%|█▌        | 100/650 [00:06<00:35, 15.52 examples/s][A
-Map:  31%|███       | 200/650 [00:12<00:29, 15.48 examples/s][A
-Map:  46%|████▌     | 300/650 [00:19<00:22, 15.39 examples/s][A
-Map:  62%|██████▏   | 400/650 [00:25<00:16, 15.49 examples/s][A
-Map:  77%|███████▋  | 500/650 [00:32<00:09, 15.53 examples/s][A
-Map:  92%|█████████▏| 600/650 [00:39<00:03, 15.22 examples/s][A
-Map: 100%|██████████| 650/650 [00:42<00:00, 15.35 examples/s][AMap: 100%|██████████| 650/650 [00:42<00:00, 15.39 examples/s]
-
-Creating parquet from Arrow format:   0%|          | 0/7 [00:00<?, ?ba/s][A
-Creating parquet from Arrow format:  14%|█▍        | 1/7 [00:00<00:01,  3.76ba/s][A
-Creating parquet from Arrow format:  29%|██▊       | 2/7 [00:00<00:01,  4.19ba/s][A
-Creating parquet from Arrow format:  43%|████▎     | 3/7 [00:00<00:00,  4.15ba/s][A
-Creating parquet from Arrow format:  57%|█████▋    | 4/7 [00:00<00:00,  4.20ba/s][A
-Creating parquet from Arrow format:  71%|███████▏  | 5/7 [00:01<00:00,  4.12ba/s][A
-Creating parquet from Arrow format:  86%|████████▌ | 6/7 [00:01<00:00,  4.13ba/s][A
-Creating parquet from Arrow format: 100%|██████████| 7/7 [00:01<00:00,  4.79ba/s][ACreating parquet from Arrow format: 100%|██████████| 7/7 [00:01<00:00,  4.39ba/s]
-Uploading the dataset shards:  18%|█▊        | 3/17 [01:30<08:10, 35.00s/ shards]
-Map:   0%|          | 0/650 [00:00<?, ? examples/s][A
-Map:  15%|█▌        | 100/650 [00:06<00:36, 15.00 examples/s][A
-Map:  31%|███       | 200/650 [00:13<00:30, 14.88 examples/s][A
-Map:  46%|████▌     | 300/650 [00:20<00:23, 14.72 examples/s][A
-Map:  62%|██████▏   | 400/650 [00:27<00:16, 14.79 examples/s][A
-Map:  77%|███████▋  | 500/650 [00:33<00:10, 14.90 examples/s][A
-Map:  92%|█████████▏| 600/650 [00:40<00:03, 14.81 examples/s][A
-Map: 100%|██████████| 650/650 [00:43<00:00, 14.98 examples/s][AMap: 100%|██████████| 650/650 [00:43<00:00, 14.89 examples/s]
-
-Creating parquet from Arrow format:   0%|          | 0/7 [00:00<?, ?ba/s][A
-Creating parquet from Arrow format:  14%|█▍        | 1/7 [00:00<00:01,  4.21ba/s][A
-Creating parquet from Arrow format:  29%|██▊       | 2/7 [00:00<00:01,  4.10ba/s][A
-Creating parquet from Arrow format:  43%|████▎     | 3/7 [00:00<00:00,  4.49ba/s][A
-Creating parquet from Arrow format:  57%|█████▋    | 4/7 [00:00<00:00,  4.48ba/s][A
-Creating parquet from Arrow format:  71%|███████▏  | 5/7 [00:01<00:00,  4.26ba/s][A
-Creating parquet from Arrow format:  86%|████████▌ | 6/7 [00:01<00:00,  4.18ba/s][A
-Creating parquet from Arrow format: 100%|██████████| 7/7 [00:01<00:00,  4.91ba/s][ACreating parquet from Arrow format: 100%|██████████| 7/7 [00:01<00:00,  4.54ba/s]
-Uploading the dataset shards:  24%|██▎       | 4/17 [02:18<08:46, 40.48s/ shards]
-Map:   0%|          | 0/650 [00:00<?, ? examples/s][A
-Map:  15%|█▌        | 100/650 [00:06<00:34, 15.76 examples/s][A
-Map:  31%|███       | 200/650 [00:12<00:28, 15.61 examples/s][A
-Map:  46%|████▌     | 300/650 [00:19<00:22, 15.50 examples/s][A
-Map:  62%|██████▏   | 400/650 [00:25<00:16, 15.57 examples/s][A
-Map:  77%|███████▋  | 500/650 [00:32<00:09, 15.63 examples/s][A
-Map:  92%|█████████▏| 600/650 [00:38<00:03, 15.43 examples/s][A
-Map: 100%|██████████| 650/650 [00:41<00:00, 15.47 examples/s][AMap: 100%|██████████| 650/650 [00:41<00:00, 15.52 examples/s]
-
-Creating parquet from Arrow format:   0%|          | 0/7 [00:00<?, ?ba/s][A
-Creating parquet from Arrow format:  14%|█▍        | 1/7 [00:00<00:01,  4.19ba/s][A
-Creating parquet from Arrow format:  29%|██▊       | 2/7 [00:00<00:01,  4.35ba/s][A
-Creating parquet from Arrow format:  43%|████▎     | 3/7 [00:00<00:00,  4.19ba/s][A
-Creating parquet from Arrow format:  57%|█████▋    | 4/7 [00:00<00:00,  4.26ba/s][A
-Creating parquet from Arrow format:  71%|███████▏  | 5/7 [00:01<00:00,  4.25ba/s][A
-Creating parquet from Arrow format:  86%|████████▌ | 6/7 [00:01<00:00,  4.30ba/s][A
-Creating parquet from Arrow format: 100%|██████████| 7/7 [00:01<00:00,  4.97ba/s][ACreating parquet from Arrow format: 100%|██████████| 7/7 [00:01<00:00,  4.54ba/s]
-Uploading the dataset shards:  29%|██▉       | 5/17 [03:06<08:34, 42.91s/ shards]
-Map:   0%|          | 0/650 [00:00<?, ? examples/s][A
-Map:  15%|█▌        | 100/650 [00:06<00:35, 15.64 examples/s][A
-Map:  31%|███       | 200/650 [00:12<00:29, 15.37 examples/s][A
-Map:  46%|████▌     | 300/650 [00:19<00:23, 15.13 examples/s][A
-Map:  62%|██████▏   | 400/650 [00:25<00:16, 15.48 examples/s][A
-Map:  77%|███████▋  | 500/650 [00:32<00:09, 15.63 examples/s][A
-Map:  92%|█████████▏| 600/650 [00:38<00:03, 15.42 examples/s][A
-Map: 100%|██████████| 650/650 [00:42<00:00, 15.53 examples/s][AMap: 100%|██████████| 650/650 [00:42<00:00, 15.47 examples/s]
-
-Creating parquet from Arrow format:   0%|          | 0/7 [00:00<?, ?ba/s][A
-Creating parquet from Arrow format:  14%|█▍        | 1/7 [00:00<00:01,  4.48ba/s][A
-Creating parquet from Arrow format:  29%|██▊       | 2/7 [00:00<00:01,  3.73ba/s][A
-Creating parquet from Arrow format:  43%|████▎     | 3/7 [00:00<00:00,  4.13ba/s][A
-Creating parquet from Arrow format:  57%|█████▋    | 4/7 [00:00<00:00,  4.17ba/s][A
-Creating parquet from Arrow format:  71%|███████▏  | 5/7 [00:01<00:00,  4.00ba/s][A
-Creating parquet from Arrow format:  86%|████████▌ | 6/7 [00:01<00:00,  3.76ba/s][A
-Creating parquet from Arrow format: 100%|██████████| 7/7 [00:01<00:00,  4.36ba/s][ACreating parquet from Arrow format: 100%|██████████| 7/7 [00:01<00:00,  4.14ba/s]
-Uploading the dataset shards:  35%|███▌      | 6/17 [03:54<08:13, 44.86s/ shards]
-Map:   0%|          | 0/650 [00:00<?, ? examples/s][A
-Map:  15%|█▌        | 100/650 [00:06<00:34, 15.86 examples/s][A
-Map:  31%|███       | 200/650 [00:12<00:29, 15.50 examples/s][A
-Map:  46%|████▌     | 300/650 [00:19<00:22, 15.31 examples/s][A
-Map:  62%|██████▏   | 400/650 [00:25<00:16, 15.35 examples/s][A
-Map:  77%|███████▋  | 500/650 [00:32<00:09, 15.25 examples/s][A
-Map:  92%|█████████▏| 600/650 [00:39<00:03, 15.05 examples/s][A
-Map: 100%|██████████| 650/650 [00:42<00:00, 14.84 examples/s][AMap: 100%|██████████| 650/650 [00:42<00:00, 15.12 examples/s]
-
-Creating parquet from Arrow format:   0%|          | 0/7 [00:00<?, ?ba/s][A
-Creating parquet from Arrow format:  14%|█▍        | 1/7 [00:00<00:01,  4.40ba/s][A
-Creating parquet from Arrow format:  29%|██▊       | 2/7 [00:00<00:01,  4.36ba/s][A
-Creating parquet from Arrow format:  43%|████▎     | 3/7 [00:00<00:01,  3.92ba/s][A
-Creating parquet from Arrow format:  57%|█████▋    | 4/7 [00:01<00:00,  3.91ba/s][A
-Creating parquet from Arrow format:  71%|███████▏  | 5/7 [00:01<00:00,  4.13ba/s][A
-Creating parquet from Arrow format:  86%|████████▌ | 6/7 [00:01<00:00,  4.12ba/s][A
-Creating parquet from Arrow format: 100%|██████████| 7/7 [00:01<00:00,  4.97ba/s][ACreating parquet from Arrow format: 100%|██████████| 7/7 [00:01<00:00,  4.44ba/s]
-Uploading the dataset shards:  41%|████      | 7/17 [04:43<07:39, 45.99s/ shards]
-Map:   0%|          | 0/650 [00:00<?, ? examples/s][A
-Map:  15%|█▌        | 100/650 [00:06<00:35, 15.65 examples/s][A
-Map:  31%|███       | 200/650 [00:12<00:28, 15.52 examples/s][A
-Map:  46%|████▌     | 300/650 [00:19<00:22, 15.22 examples/s][A
-Map:  62%|██████▏   | 400/650 [00:26<00:16, 15.26 examples/s][A
-Map:  77%|███████▋  | 500/650 [00:32<00:09, 15.45 examples/s][A
-Map:  92%|█████████▏| 600/650 [00:39<00:03, 15.13 examples/s][A
-Map: 100%|██████████| 650/650 [00:42<00:00, 15.17 examples/s][AMap: 100%|██████████| 650/650 [00:42<00:00, 15.26 examples/s]
-
-Creating parquet from Arrow format:   0%|          | 0/7 [00:00<?, ?ba/s][A
-Creating parquet from Arrow format:  14%|█▍        | 1/7 [00:00<00:01,  3.99ba/s][A
-Creating parquet from Arrow format:  29%|██▊       | 2/7 [00:00<00:01,  3.62ba/s][A
-Creating parquet from Arrow format:  43%|████▎     | 3/7 [00:00<00:01,  3.44ba/s][A
-Creating parquet from Arrow format:  57%|█████▋    | 4/7 [00:01<00:00,  3.57ba/s][A
-Creating parquet from Arrow format:  71%|███████▏  | 5/7 [00:01<00:00,  3.50ba/s][A
-Creating parquet from Arrow format:  86%|████████▌ | 6/7 [00:01<00:00,  3.71ba/s][A
-Creating parquet from Arrow format: 100%|██████████| 7/7 [00:01<00:00,  4.46ba/s][ACreating parquet from Arrow format: 100%|██████████| 7/7 [00:01<00:00,  3.93ba/s]
-Uploading the dataset shards:  47%|████▋     | 8/17 [05:33<07:05, 47.26s/ shards]
-Map:   0%|          | 0/650 [00:00<?, ? examples/s][A
-Map:  15%|█▌        | 100/650 [00:06<00:34, 16.00 examples/s][A
-Map:  31%|███       | 200/650 [00:12<00:28, 15.81 examples/s][A
-Map:  46%|████▌     | 300/650 [00:19<00:22, 15.65 examples/s][A
-Map:  62%|██████▏   | 400/650 [00:25<00:16, 15.56 examples/s][A
-Map:  77%|███████▋  | 500/650 [00:31<00:09, 15.57 examples/s][A
-Map:  92%|█████████▏| 600/650 [00:38<00:03, 15.38 examples/s][A
-Map: 100%|██████████| 650/650 [00:41<00:00, 15.44 examples/s][AMap: 100%|██████████| 650/650 [00:41<00:00, 15.54 examples/s]
-
-Creating parquet from Arrow format:   0%|          | 0/7 [00:00<?, ?ba/s][A
-Creating parquet from Arrow format:  14%|█▍        | 1/7 [00:00<00:01,  3.72ba/s][A
-Creating parquet from Arrow format:  29%|██▊       | 2/7 [00:00<00:01,  4.04ba/s][A
-Creating parquet from Arrow format:  43%|████▎     | 3/7 [00:00<00:01,  3.88ba/s][A
-Creating parquet from Arrow format:  57%|█████▋    | 4/7 [00:01<00:00,  4.01ba/s][A
-Creating parquet from Arrow format:  71%|███████▏  | 5/7 [00:01<00:00,  4.04ba/s][A
-Creating parquet from Arrow format:  86%|████████▌ | 6/7 [00:01<00:00,  3.93ba/s][A
-Creating parquet from Arrow format: 100%|██████████| 7/7 [00:01<00:00,  4.62ba/s][ACreating parquet from Arrow format: 100%|██████████| 7/7 [00:01<00:00,  4.22ba/s]
-Uploading the dataset shards:  53%|█████▎    | 9/17 [06:20<06:19, 47.42s/ shards]
-Map:   0%|          | 0/650 [00:00<?, ? examples/s][A
-Map:  15%|█▌        | 100/650 [00:06<00:35, 15.61 examples/s][A
-Map:  31%|███       | 200/650 [00:13<00:30, 14.97 examples/s][A
-Map:  46%|████▌     | 300/650 [00:20<00:23, 14.87 examples/s][A
-Map:  62%|██████▏   | 400/650 [00:26<00:16, 15.10 examples/s][A
-Map:  77%|███████▋  | 500/650 [00:33<00:09, 15.22 examples/s][A
-Map:  92%|█████████▏| 600/650 [00:39<00:03, 14.99 examples/s][A
-Map: 100%|██████████| 650/650 [00:43<00:00, 15.09 examples/s][AMap: 100%|██████████| 650/650 [00:43<00:00, 15.08 examples/s]
-
-Creating parquet from Arrow format:   0%|          | 0/7 [00:00<?, ?ba/s][A
-Creating parquet from Arrow format:  14%|█▍        | 1/7 [00:00<00:01,  3.99ba/s][A
-Creating parquet from Arrow format:  29%|██▊       | 2/7 [00:00<00:01,  3.83ba/s][A
-Creating parquet from Arrow format:  43%|████▎     | 3/7 [00:00<00:01,  3.74ba/s][A
-Creating parquet from Arrow format:  57%|█████▋    | 4/7 [00:01<00:00,  3.90ba/s][A
-Creating parquet from Arrow format:  71%|███████▏  | 5/7 [00:01<00:00,  3.98ba/s][A
-Creating parquet from Arrow format:  86%|████████▌ | 6/7 [00:01<00:00,  4.13ba/s][A
-Creating parquet from Arrow format: 100%|██████████| 7/7 [00:01<00:00,  4.55ba/s][ACreating parquet from Arrow format: 100%|██████████| 7/7 [00:01<00:00,  4.18ba/s]
-Uploading the dataset shards:  59%|█████▉    | 10/17 [07:10<05:36, 48.05s/ shards]
-Map:   0%|          | 0/650 [00:00<?, ? examples/s][A
-Map:  15%|█▌        | 100/650 [00:06<00:35, 15.35 examples/s][A
-Map:  31%|███       | 200/650 [00:12<00:29, 15.47 examples/s][A
-Map:  46%|████▌     | 300/650 [00:19<00:22, 15.46 examples/s][A
-Map:  62%|██████▏   | 400/650 [00:25<00:16, 15.44 examples/s][A
-Map:  77%|███████▋  | 500/650 [00:32<00:09, 15.43 examples/s][A
-Map:  92%|█████████▏| 600/650 [00:39<00:03, 15.22 examples/s][A
-Map: 100%|██████████| 650/650 [00:42<00:00, 15.34 examples/s][AMap: 100%|██████████| 650/650 [00:42<00:00, 15.37 examples/s]
-
-Creating parquet from Arrow format:   0%|          | 0/7 [00:00<?, ?ba/s][A
-Creating parquet from Arrow format:  14%|█▍        | 1/7 [00:00<00:01,  4.23ba/s][A
-Creating parquet from Arrow format:  29%|██▊       | 2/7 [00:00<00:01,  3.72ba/s][A
-Creating parquet from Arrow format:  43%|████▎     | 3/7 [00:00<00:01,  3.56ba/s][A
-Creating parquet from Arrow format:  57%|█████▋    | 4/7 [00:01<00:00,  3.76ba/s][A
-Creating parquet from Arrow format:  71%|███████▏  | 5/7 [00:01<00:00,  3.95ba/s][A
-Creating parquet from Arrow format:  86%|████████▌ | 6/7 [00:01<00:00,  4.13ba/s][A
-Creating parquet from Arrow format: 100%|██████████| 7/7 [00:01<00:00,  4.86ba/s][ACreating parquet from Arrow format: 100%|██████████| 7/7 [00:01<00:00,  4.25ba/s]
-Uploading the dataset shards:  65%|██████▍   | 11/17 [08:00<04:51, 48.66s/ shards]
-Map:   0%|          | 0/650 [00:00<?, ? examples/s][A
-Map:  15%|█▌        | 100/650 [00:06<00:35, 15.41 examples/s][A
-Map:  31%|███       | 200/650 [00:12<00:29, 15.48 examples/s][A
-Map:  46%|████▌     | 300/650 [00:19<00:22, 15.31 examples/s][A
-Map:  62%|██████▏   | 400/650 [00:25<00:16, 15.46 examples/s][A
-Map:  77%|███████▋  | 500/650 [00:32<00:09, 15.12 examples/s][A
-Map:  92%|█████████▏| 600/650 [00:39<00:03, 15.06 examples/s][A
-Map: 100%|██████████| 650/650 [00:42<00:00, 15.20 examples/s][AMap: 100%|██████████| 650/650 [00:42<00:00, 15.24 examples/s]
-
-Creating parquet from Arrow format:   0%|          | 0/7 [00:00<?, ?ba/s][A
-Creating parquet from Arrow format:  14%|█▍        | 1/7 [00:00<00:01,  4.16ba/s][A
-Creating parquet from Arrow format:  29%|██▊       | 2/7 [00:00<00:01,  4.11ba/s][A
-Creating parquet from Arrow format:  43%|████▎     | 3/7 [00:00<00:00,  4.42ba/s][A
-Creating parquet from Arrow format:  57%|█████▋    | 4/7 [00:00<00:00,  4.26ba/s][A
-Creating parquet from Arrow format:  71%|███████▏  | 5/7 [00:01<00:00,  4.21ba/s][A
-Creating parquet from Arrow format:  86%|████████▌ | 6/7 [00:01<00:00,  4.26ba/s][A
-Creating parquet from Arrow format: 100%|██████████| 7/7 [00:01<00:00,  5.07ba/s][ACreating parquet from Arrow format: 100%|██████████| 7/7 [00:01<00:00,  4.57ba/s]
-Uploading the dataset shards:  71%|███████   | 12/17 [08:48<04:01, 48.37s/ shards]
-Map:   0%|          | 0/650 [00:00<?, ? examples/s][A
-Map:  15%|█▌        | 100/650 [00:07<00:40, 13.43 examples/s][A
-Map:  31%|███       | 200/650 [00:15<00:34, 13.17 examples/s][A
-Map:  46%|████▌     | 300/650 [00:22<00:26, 13.14 examples/s][A
-Map:  62%|██████▏   | 400/650 [00:30<00:19, 13.13 examples/s][A
-Map:  77%|███████▋  | 500/650 [00:38<00:11, 13.09 examples/s][A
-Map:  92%|█████████▏| 600/650 [00:45<00:03, 13.00 examples/s][A
-Map: 100%|██████████| 650/650 [00:49<00:00, 13.05 examples/s][AMap: 100%|██████████| 650/650 [00:49<00:00, 13.09 examples/s]
-
-Creating parquet from Arrow format:   0%|          | 0/7 [00:00<?, ?ba/s][A
-Creating parquet from Arrow format:  14%|█▍        | 1/7 [00:00<00:01,  4.02ba/s][A
-Creating parquet from Arrow format:  29%|██▊       | 2/7 [00:00<00:01,  4.06ba/s][A
-Creating parquet from Arrow format:  43%|████▎     | 3/7 [00:00<00:00,  4.19ba/s][A
-Creating parquet from Arrow format:  57%|█████▋    | 4/7 [00:00<00:00,  4.21ba/s][A
-Creating parquet from Arrow format:  71%|███████▏  | 5/7 [00:01<00:00,  4.35ba/s][A
-Creating parquet from Arrow format:  86%|████████▌ | 6/7 [00:01<00:00,  4.28ba/s][A
-Creating parquet from Arrow format: 100%|██████████| 7/7 [00:01<00:00,  4.98ba/s][ACreating parquet from Arrow format: 100%|██████████| 7/7 [00:01<00:00,  4.52ba/s]
-Uploading the dataset shards:  76%|███████▋  | 13/17 [09:44<03:22, 50.75s/ shards]
-Map:   0%|          | 0/650 [00:00<?, ? examples/s][A
-Map:  15%|█▌        | 100/650 [00:07<00:41, 13.25 examples/s][A
-Map:  31%|███       | 200/650 [00:15<00:34, 13.12 examples/s][A
-Map:  46%|████▌     | 300/650 [00:22<00:26, 13.09 examples/s][A
-Map:  62%|██████▏   | 400/650 [00:30<00:19, 13.08 examples/s][A
-Map:  77%|███████▋  | 500/650 [00:38<00:11, 12.99 examples/s][A
-Map:  92%|█████████▏| 600/650 [00:46<00:03, 12.81 examples/s][A
-Map: 100%|██████████| 650/650 [00:50<00:00, 12.84 examples/s][AMap: 100%|██████████| 650/650 [00:50<00:00, 12.95 examples/s]
-
-Creating parquet from Arrow format:   0%|          | 0/7 [00:00<?, ?ba/s][A
-Creating parquet from Arrow format:  14%|█▍        | 1/7 [00:00<00:01,  4.17ba/s][A
-Creating parquet from Arrow format:  29%|██▊       | 2/7 [00:00<00:01,  4.59ba/s][A
-Creating parquet from Arrow format:  43%|████▎     | 3/7 [00:00<00:00,  4.18ba/s][A
-Creating parquet from Arrow format:  57%|█████▋    | 4/7 [00:00<00:00,  4.09ba/s][A
-Creating parquet from Arrow format:  71%|███████▏  | 5/7 [00:01<00:00,  3.88ba/s][A
-Creating parquet from Arrow format:  86%|████████▌ | 6/7 [00:01<00:00,  3.89ba/s][A
-Creating parquet from Arrow format: 100%|██████████| 7/7 [00:01<00:00,  4.39ba/s][ACreating parquet from Arrow format: 100%|██████████| 7/7 [00:01<00:00,  4.21ba/s]
-Uploading the dataset shards:  82%|████████▏ | 14/17 [10:40<02:37, 52.35s/ shards]
-Map:   0%|          | 0/650 [00:00<?, ? examples/s][A
-Map:  15%|█▌        | 100/650 [00:07<00:41, 13.10 examples/s][A
-Map:  31%|███       | 200/650 [00:15<00:34, 13.15 examples/s][A
-Map:  46%|████▌     | 300/650 [00:22<00:26, 13.10 examples/s][A
-Map:  62%|██████▏   | 400/650 [00:30<00:18, 13.20 examples/s][A
-Map:  77%|███████▋  | 500/650 [00:37<00:11, 13.22 examples/s][A
-Map:  92%|█████████▏| 600/650 [00:45<00:03, 13.08 examples/s][A
-Map: 100%|██████████| 650/650 [00:49<00:00, 13.11 examples/s][AMap: 100%|██████████| 650/650 [00:49<00:00, 13.13 examples/s]
-
-Creating parquet from Arrow format:   0%|          | 0/7 [00:00<?, ?ba/s][A
-Creating parquet from Arrow format:  14%|█▍        | 1/7 [00:00<00:01,  3.57ba/s][A
-Creating parquet from Arrow format:  29%|██▊       | 2/7 [00:00<00:01,  3.99ba/s][A
-Creating parquet from Arrow format:  43%|████▎     | 3/7 [00:00<00:01,  3.85ba/s][A
-Creating parquet from Arrow format:  57%|█████▋    | 4/7 [00:01<00:00,  4.00ba/s][A
-Creating parquet from Arrow format:  71%|███████▏  | 5/7 [00:01<00:00,  3.99ba/s][A
-Creating parquet from Arrow format:  86%|████████▌ | 6/7 [00:01<00:00,  4.06ba/s][A
-Creating parquet from Arrow format: 100%|██████████| 7/7 [00:01<00:00,  4.51ba/s][ACreating parquet from Arrow format: 100%|██████████| 7/7 [00:01<00:00,  4.17ba/s]
-Uploading the dataset shards:  88%|████████▊ | 15/17 [11:36<01:46, 53.41s/ shards]
-Map:   0%|          | 0/650 [00:00<?, ? examples/s][A
-Map:  15%|█▌        | 100/650 [00:07<00:41, 13.31 examples/s][A
-Map:  31%|███       | 200/650 [00:15<00:33, 13.24 examples/s][A
-Map:  46%|████▌     | 300/650 [00:22<00:26, 13.10 examples/s][A
-Map:  62%|██████▏   | 400/650 [00:30<00:18, 13.20 examples/s][A
-Map:  77%|███████▋  | 500/650 [00:37<00:11, 13.20 examples/s][A
-Map:  92%|█████████▏| 600/650 [00:46<00:03, 12.86 examples/s][A
-Map: 100%|██████████| 650/650 [00:49<00:00, 12.91 examples/s][AMap: 100%|██████████| 650/650 [00:49<00:00, 13.04 examples/s]
-
-Creating parquet from Arrow format:   0%|          | 0/7 [00:00<?, ?ba/s][A
-Creating parquet from Arrow format:  14%|█▍        | 1/7 [00:00<00:01,  4.14ba/s][A
-Creating parquet from Arrow format:  29%|██▊       | 2/7 [00:00<00:01,  3.69ba/s][A
-Creating parquet from Arrow format:  43%|████▎     | 3/7 [00:00<00:01,  3.63ba/s][A
-Creating parquet from Arrow format:  57%|█████▋    | 4/7 [00:01<00:00,  3.89ba/s][A
-Creating parquet from Arrow format:  71%|███████▏  | 5/7 [00:01<00:00,  4.12ba/s][A
-Creating parquet from Arrow format:  86%|████████▌ | 6/7 [00:01<00:00,  4.03ba/s][A
-Creating parquet from Arrow format: 100%|██████████| 7/7 [00:01<00:00,  4.51ba/s][ACreating parquet from Arrow format: 100%|██████████| 7/7 [00:01<00:00,  4.15ba/s]
-Uploading the dataset shards:  94%|█████████▍| 16/17 [12:36<00:55, 55.54s/ shards]
-Map:   0%|          | 0/649 [00:00<?, ? examples/s][A
-Map:  15%|█▌        | 100/649 [00:07<00:41, 13.24 examples/s][A
-Map:  31%|███       | 200/649 [00:15<00:34, 12.96 examples/s][A
-Map:  46%|████▌     | 300/649 [00:23<00:27, 12.80 examples/s][A
-Map:  62%|██████▏   | 400/649 [00:31<00:19, 12.87 examples/s][A
-Map:  77%|███████▋  | 500/649 [00:38<00:11, 12.89 examples/s][A
-Map:  92%|█████████▏| 600/649 [00:46<00:03, 12.80 examples/s][A
-Map: 100%|██████████| 649/649 [00:50<00:00, 12.89 examples/s][AMap: 100%|██████████| 649/649 [00:50<00:00, 12.89 examples/s]
-
-Creating parquet from Arrow format:   0%|          | 0/7 [00:00<?, ?ba/s][A
-Creating parquet from Arrow format:  14%|█▍        | 1/7 [00:00<00:01,  3.73ba/s][A
-Creating parquet from Arrow format:  29%|██▊       | 2/7 [00:00<00:01,  4.06ba/s][A
-Creating parquet from Arrow format:  43%|████▎     | 3/7 [00:00<00:00,  4.20ba/s][A
-Creating parquet from Arrow format:  57%|█████▋    | 4/7 [00:00<00:00,  4.25ba/s][A
-Creating parquet from Arrow format:  71%|███████▏  | 5/7 [00:01<00:00,  3.97ba/s][A
-Creating parquet from Arrow format:  86%|████████▌ | 6/7 [00:01<00:00,  4.26ba/s][A
-Creating parquet from Arrow format: 100%|██████████| 7/7 [00:01<00:00,  4.97ba/s][ACreating parquet from Arrow format: 100%|██████████| 7/7 [00:01<00:00,  4.45ba/s]
-Uploading the dataset shards: 100%|██████████| 17/17 [13:35<00:00, 56.63s/ shards]Uploading the dataset shards: 100%|██████████| 17/17 [13:35<00:00, 48.00s/ shards]
-Uploading the dataset shards:   0%|          | 0/5 [00:00<?, ? shards/s]
-Map:   0%|          | 0/562 [00:00<?, ? examples/s][A
-Map:  18%|█▊        | 100/562 [00:00<00:01, 319.93 examples/s][A
-Map:  36%|███▌      | 200/562 [00:00<00:01, 280.43 examples/s][A
-Map:  53%|█████▎    | 300/562 [00:01<00:01, 246.75 examples/s][A
-Map:  71%|███████   | 400/562 [00:01<00:00, 270.66 examples/s][A
-Map:  89%|████████▉ | 500/562 [00:01<00:00, 286.91 examples/s][A
-Map: 100%|██████████| 562/562 [00:01<00:00, 298.00 examples/s][AMap: 100%|██████████| 562/562 [00:01<00:00, 284.51 examples/s]
-
-Creating parquet from Arrow format:   0%|          | 0/6 [00:00<?, ?ba/s][A
-Creating parquet from Arrow format:  17%|█▋        | 1/6 [00:00<00:01,  4.51ba/s][A
-Creating parquet from Arrow format:  33%|███▎      | 2/6 [00:00<00:00,  4.11ba/s][A
-Creating parquet from Arrow format:  50%|█████     | 3/6 [00:00<00:00,  4.31ba/s][A
-Creating parquet from Arrow format:  67%|██████▋   | 4/6 [00:00<00:00,  4.31ba/s][A
-Creating parquet from Arrow format:  83%|████████▎ | 5/6 [00:01<00:00,  4.17ba/s][A
-Creating parquet from Arrow format: 100%|██████████| 6/6 [00:01<00:00,  4.56ba/s][ACreating parquet from Arrow format: 100%|██████████| 6/6 [00:01<00:00,  4.40ba/s]
-Uploading the dataset shards:  20%|██        | 1/5 [00:07<00:31,  7.87s/ shards]
-Map:   0%|          | 0/561 [00:00<?, ? examples/s][A
-Map:  18%|█▊        | 100/561 [00:00<00:01, 259.39 examples/s][A
-Map:  36%|███▌      | 200/561 [00:00<00:01, 235.30 examples/s][A
-Map:  53%|█████▎    | 300/561 [00:01<00:01, 210.84 examples/s][A
-Map:  71%|███████▏  | 400/561 [00:01<00:00, 230.10 examples/s][A
-Map:  89%|████████▉ | 500/561 [00:06<00:01, 49.52 examples/s] [A
-Map: 100%|██████████| 561/561 [00:11<00:00, 29.92 examples/s][AMap: 100%|██████████| 561/561 [00:11<00:00, 50.16 examples/s]
-
-Creating parquet from Arrow format:   0%|          | 0/6 [00:00<?, ?ba/s][A
-Creating parquet from Arrow format:  17%|█▋        | 1/6 [00:00<00:01,  3.36ba/s][A
-Creating parquet from Arrow format:  33%|███▎      | 2/6 [00:00<00:01,  3.34ba/s][A
-Creating parquet from Arrow format:  50%|█████     | 3/6 [00:00<00:00,  3.52ba/s][A
-Creating parquet from Arrow format:  67%|██████▋   | 4/6 [00:01<00:00,  3.75ba/s][A
-Creating parquet from Arrow format:  83%|████████▎ | 5/6 [00:01<00:00,  3.86ba/s][A
-Creating parquet from Arrow format: 100%|██████████| 6/6 [00:01<00:00,  4.45ba/s][ACreating parquet from Arrow format: 100%|██████████| 6/6 [00:01<00:00,  3.98ba/s]
-Uploading the dataset shards:  40%|████      | 2/5 [00:25<00:41, 13.76s/ shards]
-Map:   0%|          | 0/561 [00:00<?, ? examples/s][A
-Map:  18%|█▊        | 100/561 [00:07<00:34, 13.33 examples/s][A
-Map:  36%|███▌      | 200/561 [00:15<00:27, 13.10 examples/s][A
-Map:  53%|█████▎    | 300/561 [00:23<00:20, 12.87 examples/s][A
-Map:  71%|███████▏  | 400/561 [00:30<00:12, 12.99 examples/s][A
-Map:  89%|████████▉ | 500/561 [00:38<00:04, 13.06 examples/s][A
-Map: 100%|██████████| 561/561 [00:42<00:00, 13.12 examples/s][AMap: 100%|██████████| 561/561 [00:42<00:00, 13.07 examples/s]
-
-Creating parquet from Arrow format:   0%|          | 0/6 [00:00<?, ?ba/s][A
-Creating parquet from Arrow format:  17%|█▋        | 1/6 [00:00<00:01,  4.15ba/s][A
-Creating parquet from Arrow format:  33%|███▎      | 2/6 [00:00<00:00,  4.26ba/s][A
-Creating parquet from Arrow format:  50%|█████     | 3/6 [00:00<00:00,  4.13ba/s][A
-Creating parquet from Arrow format:  67%|██████▋   | 4/6 [00:00<00:00,  4.23ba/s][A
-Creating parquet from Arrow format:  83%|████████▎ | 5/6 [00:01<00:00,  4.41ba/s][A
-Creating parquet from Arrow format: 100%|██████████| 6/6 [00:01<00:00,  4.79ba/s][ACreating parquet from Arrow format: 100%|██████████| 6/6 [00:01<00:00,  4.50ba/s]
-Uploading the dataset shards:  60%|██████    | 3/5 [01:13<00:58, 29.16s/ shards]
-Map:   0%|          | 0/561 [00:00<?, ? examples/s][A
-Map:  18%|█▊        | 100/561 [00:07<00:34, 13.32 examples/s][A
-Map:  36%|███▌      | 200/561 [00:15<00:27, 13.32 examples/s][A
-Map:  53%|█████▎    | 300/561 [00:22<00:19, 13.27 examples/s][A
-Map:  71%|███████▏  | 400/561 [00:29<00:11, 14.01 examples/s][A
-Map:  89%|████████▉ | 500/561 [00:35<00:04, 14.54 examples/s][A
-Map: 100%|██████████| 561/561 [00:39<00:00, 14.74 examples/s][AMap: 100%|██████████| 561/561 [00:39<00:00, 14.21 examples/s]
-
-Creating parquet from Arrow format:   0%|          | 0/6 [00:00<?, ?ba/s][A
-Creating parquet from Arrow format:  17%|█▋        | 1/6 [00:00<00:01,  4.43ba/s][A
-Creating parquet from Arrow format:  33%|███▎      | 2/6 [00:00<00:00,  4.22ba/s][A
-Creating parquet from Arrow format:  50%|█████     | 3/6 [00:00<00:00,  3.79ba/s][A
-Creating parquet from Arrow format:  67%|██████▋   | 4/6 [00:00<00:00,  4.04ba/s][A
-Creating parquet from Arrow format:  83%|████████▎ | 5/6 [00:01<00:00,  4.09ba/s][A
-Creating parquet from Arrow format: 100%|██████████| 6/6 [00:01<00:00,  4.52ba/s][ACreating parquet from Arrow format: 100%|██████████| 6/6 [00:01<00:00,  4.27ba/s]
-Uploading the dataset shards:  80%|████████  | 4/5 [01:57<00:35, 35.22s/ shards]
-Map:   0%|          | 0/561 [00:00<?, ? examples/s][A
-Map:  18%|█▊        | 100/561 [00:06<00:28, 15.93 examples/s][A
-Map:  36%|███▌      | 200/561 [00:12<00:22, 15.71 examples/s][A
-Map:  53%|█████▎    | 300/561 [00:19<00:16, 15.58 examples/s][A
-Map:  71%|███████▏  | 400/561 [00:25<00:10, 15.71 examples/s][A
-Map:  89%|████████▉ | 500/561 [00:31<00:03, 15.74 examples/s][A
-Map: 100%|██████████| 561/561 [00:35<00:00, 15.82 examples/s][AMap: 100%|██████████| 561/561 [00:35<00:00, 15.76 examples/s]
-
-Creating parquet from Arrow format:   0%|          | 0/6 [00:00<?, ?ba/s][A
-Creating parquet from Arrow format:  17%|█▋        | 1/6 [00:00<00:01,  3.87ba/s][A
-Creating parquet from Arrow format:  33%|███▎      | 2/6 [00:00<00:01,  3.82ba/s][A
-Creating parquet from Arrow format:  50%|█████     | 3/6 [00:00<00:00,  3.94ba/s][A
-Creating parquet from Arrow format:  67%|██████▋   | 4/6 [00:01<00:00,  4.06ba/s][A
-Creating parquet from Arrow format:  83%|████████▎ | 5/6 [00:01<00:00,  4.13ba/s][A
-Creating parquet from Arrow format: 100%|██████████| 6/6 [00:01<00:00,  4.60ba/s][ACreating parquet from Arrow format: 100%|██████████| 6/6 [00:01<00:00,  4.27ba/s]
-Uploading the dataset shards: 100%|██████████| 5/5 [02:38<00:00, 37.23s/ shards]Uploading the dataset shards: 100%|██████████| 5/5 [02:38<00:00, 31.71s/ shards]
-18:48:42 INFO [graid.cli_helpers] Successfully uploaded to Hub: kd7/graid-waymo-unique
-
-✅ Dataset generation completed successfully!
-📊 Generated 13855 question-answer pairs
-📊 Per-split counts: train=11049, val=2806
-💾 Saved to: ./waymo_gt_dataset_unique
-🤗 Uploaded to HuggingFace Hub: kd7/graid-waymo-unique
-
-⚖️ License:
-Licensed under CC BY-NC 4.0: Academic/non-commercial use is free. Commercial use requires a paid license from MESH.
