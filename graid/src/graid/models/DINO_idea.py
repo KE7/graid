@@ -210,6 +210,10 @@ class DINO_IDEA(ObjectDetectionModelI):
                 label = str(labels[i].item())
                 label = to_coco[label]
 
+                # TODO: DINO_idea hardcodes coco_labels for label lookup. If you
+                # adapt this model for a non-COCO vocabulary, replace `to_coco` and
+                # `coco_labels` with a custom mapping, mirroring the `label_map` kwarg
+                # pattern introduced in MMdetection_obj._extract_detections.
                 odr = ObjectDetectionResultI(
                     score=score,
                     cls=label,

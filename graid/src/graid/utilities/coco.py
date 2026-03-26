@@ -225,6 +225,23 @@ coco_panoptic_labels = {
     200: "rug-merged",
 }
 
+# BDD100K Detection classes (10 classes, 0-9)
+# Source: https://github.com/SysCV/bdd100k-models/blob/main/det/datasets/bdd100k.py
+bdd_labels = {
+    0: "pedestrian",
+    1: "rider",
+    2: "car",
+    3: "truck",
+    4: "bus",
+    5: "train",
+    6: "motorcycle",
+    7: "bicycle",
+    8: "traffic light",
+    9: "traffic sign",
+}
+
+inverse_bdd_label = {v: k for k, v in bdd_labels.items()}
+
 # Backward compatibility
 inverse_coco_label = {v: k for k, v in coco_labels.items()}
 inverse_coco_panoptic_label = {v: k for k, v in coco_panoptic_labels.items()}

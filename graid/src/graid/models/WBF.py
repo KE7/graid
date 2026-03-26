@@ -444,6 +444,11 @@ class WBF(ObjectDetectionModelI):
                 ObjectDetectionResultI(
                     score=float(score),
                     cls=int(cls_id),
+                    # TODO: WBF ensemble hardcodes coco_labels. If any constituent
+                    # model uses a non-COCO label map (e.g. BDD's bdd_labels), the
+                    # fused label here will be wrong. Fix: accept an optional
+                    # `label_map` kwarg in WBFEnsemble.__init__ (mirroring
+                    # MMdetection_obj.label_map) and use it in place of coco_labels.
                     label=coco_labels.get(int(cls_id), str(int(cls_id))),
                     bbox=box.tolist(),
                     image_hw=image_np.shape[:2],

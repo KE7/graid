@@ -426,11 +426,27 @@ class HuggingFaceDatasetBuilder:
 
         # Validate allowable_set
         if allowable_set is not None:
-            from graid.utilities.coco import validate_coco_objects
+            # Check if any model uses a custom (non-COCO) label map
+            custom_labels = None
+            for model in self.models:
+                if hasattr(model, "label_map") and model.label_map is not None:
+                    custom_labels = set(model.label_map.values())
+                    break
 
-            is_valid, error_msg = validate_coco_objects(allowable_set)
-            if not is_valid:
-                raise ValueError(f"Invalid allowable_set: {error_msg}")
+            if custom_labels is not None:
+                # Validate against the model's custom label map
+                invalid = [obj for obj in allowable_set if obj not in custom_labels]
+                if invalid:
+                    raise ValueError(
+                        f"Invalid allowable_set for custom label map: {invalid}. "
+                        f"Valid labels: {sorted(custom_labels)}"
+                    )
+            else:
+                from graid.utilities.coco import validate_coco_objects
+
+                is_valid, error_msg = validate_coco_objects(allowable_set)
+                if not is_valid:
+                    raise ValueError(f"Invalid allowable_set: {error_msg}")
 
         self.transform = self._get_dataset_transform()
 

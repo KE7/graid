@@ -106,9 +106,21 @@ class MMDetectionBase:
 
 
 class MMdetection_obj(MMDetectionBase, ObjectDetectionModelI):
+    """MMDetection object detection model wrapper.
+
+    Args:
+        config_file: Path to MMDetection config file.
+        checkpoint_file: Path to model checkpoint.
+        device: Device for inference (default: auto-detect).
+        label_map: Optional dict mapping class IDs to label strings.
+            If None, uses standard COCO labels. Use this when the model
+            outputs non-COCO class IDs (e.g., BDD100K models).
+    """
+
     def __init__(self, config_file: str, checkpoint_file: str, **kwargs) -> None:
         device = kwargs.get("device", None)
         super().__init__(config_file, checkpoint_file, device)
+        self.label_map = kwargs.get("label_map", None)
 
     def _extract_detections(self, pred) -> List[ObjectDetectionResultI]:
         """Extract object detection results from prediction."""
@@ -116,6 +128,8 @@ class MMdetection_obj(MMDetectionBase, ObjectDetectionModelI):
         labels = pred.pred_instances.labels
         scores = pred.pred_instances.scores
         image_hw = pred.pad_shape
+
+        label_lookup = self.label_map if self.label_map is not None else coco_labels
 
         objects = []
         for i in range(len(labels)):
@@ -126,7 +140,7 @@ class MMdetection_obj(MMDetectionBase, ObjectDetectionModelI):
             odr = ObjectDetectionResultI(
                 score=score,
                 cls=cls_id,
-                label=coco_labels[cls_id],
+                label=label_lookup[cls_id],
                 bbox=bbox,
                 image_hw=image_hw,
                 bbox_format=BBox_Format.XYXY,
@@ -280,6 +294,12 @@ class MMdetection_seg(MMDetectionBase, InstanceSegmentationModelI):
             else:
                 raise TypeError(f"Unknown mask type: {type(mask)}")
 
+            # TODO: MMdetection_seg hardcodes coco_labels here, just as MMdetection_obj
+            # did before the label_map refactor. If you need to run a non-COCO segmentation
+            # model (e.g. a BDD-trained Mask R-CNN or panoptic model), add a `label_map`
+            # kwarg to MMdetection_seg.__init__ and use it here, mirroring the pattern in
+            # MMdetection_obj._extract_detections. The panoptic path at line ~264 that
+            # guards on `coco_panoptic_labels` will also need a parallel update.
             seg += [
                 InstanceSegmentationResultI(
                     score=float(score),
